@@ -1,0 +1,18 @@
+{
+  "login": {
+    "welcome": "Willkommen in Ihrem Kanzleiportal",
+    "email": "E-Mail Adresse",
+    "password": "Passwort",
+    "signIn": "Anmelden",
+    "loading": "Anmeldung läuft..."
+  },
+  "dashboard": {
+    "overview": "Überblick",
+    "cases": "Fälle",
+    "calendar": "Kalender",
+    "documents": "Dokumente",
+    "invoices": "Abrechnung",
+    "messages": "Nachrichten",
+    "logout": "Abmelden"
+  }
+}

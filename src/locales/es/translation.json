@@ -1,0 +1,18 @@
+{
+  "login": {
+    "welcome": "Bienvenido a su portal del bufete",
+    "email": "Correo Electrónico",
+    "password": "Contraseña",
+    "signIn": "Iniciar Sesión",
+    "loading": "Iniciando sesión..."
+  },
+  "dashboard": {
+    "overview": "Resumen",
+    "cases": "Casos",
+    "calendar": "Calendario",
+    "documents": "Documentos",
+    "invoices": "Facturación",
+    "messages": "Mensajes",
+    "logout": "Cerrar Sesión"
+  }
+}

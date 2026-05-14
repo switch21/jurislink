@@ -1,0 +1,18 @@
+{
+  "login": {
+    "welcome": "Bienvenue dans votre espace cabinet",
+    "email": "Adresse Email",
+    "password": "Mot de passe",
+    "signIn": "Se connecter",
+    "loading": "Connexion en cours..."
+  },
+  "dashboard": {
+    "overview": "Tableau de bord",
+    "cases": "Dossiers",
+    "calendar": "Agenda",
+    "documents": "Documents",
+    "invoices": "Facturation",
+    "messages": "Messages",
+    "logout": "Déconnexion"
+  }
+}

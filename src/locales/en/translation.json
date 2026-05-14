@@ -1,0 +1,18 @@
+{
+  "login": {
+    "welcome": "Welcome to your firm portal",
+    "email": "Email Address",
+    "password": "Password",
+    "signIn": "Sign In",
+    "loading": "Signing in..."
+  },
+  "dashboard": {
+    "overview": "Overview",
+    "cases": "Cases",
+    "calendar": "Calendar",
+    "documents": "Documents",
+    "invoices": "Billing",
+    "messages": "Messages",
+    "logout": "Sign Out"
+  }
+}
