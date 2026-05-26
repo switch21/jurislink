@@ -13,6 +13,253 @@
     "documents": "Documents",
     "invoices": "Billing",
     "messages": "Messages",
-    "logout": "Sign Out"
+    "logout": "Sign Out",
+    "open_cases": "Open Cases",
+    "closed_cases": "Closed Cases",
+    "won_cases": "Won Cases",
+    "lost_cases": "Lost Cases",
+    "unpaid_invoices": "Unpaid Invoices",
+    "paid_invoices": "Paid Invoices",
+    "clients": "Clients",
+    "upcoming_events": "Upcoming Events",
+    "recent_cases": "Recent Cases",
+    "case_status": "Case Status",
+    "case_outcome": "Case Outcome",
+    "case_payments": "Case Payments",
+    "ongoing": "Ongoing",
+    "won": "Won",
+    "lost": "Lost",
+    "settled": "Settled",
+    "no_cases": "No cases found",
+    "no_events": "No upcoming events",
+    "pending": "Pending",
+    "closed": "Closed",
+    "archived": "Archived",
+    "partial": "Partial",
+    "paid": "Paid"
+  },
+  "sidebar": {
+    "tenants": "Firms",
+    "users": "Users",
+    "currencies": "Currencies",
+    "audit_logs": "Audit Logs",
+    "team": "Team",
+    "clients": "Clients",
+    "history": "History"
+  },
+  "roles": {
+    "root_admin": "System Administrator (Root)",
+    "firm_admin": "Firm Administrator",
+    "firm_admin_simple": "Administrator",
+    "lawyer": "Lawyer",
+    "secretary": "Secretary",
+    "client": "Client"
+  },
+  "common": {
+    "loading": "Loading...",
+    "no_data": "No data found",
+    "actions": "Actions",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "search": "Search...",
+    "all": "All",
+    "status": "Status",
+    "date": "Date",
+    "amount": "Amount",
+    "confirm_delete": "Are you sure you want to delete this?"
+  },
+  "cases": {
+    "title": "Case Management",
+    "new_case": "New Case",
+    "search_placeholder": "Search for a case...",
+    "client": "Client",
+    "created_on": "Created on",
+    "notes": "Notes",
+    "assigned": "Assigned",
+    "secret": "Secret",
+    "annotations": "Case Annotations",
+    "no_notes": "No notes yet.",
+    "add_annotation": "Add an annotation...",
+    "delete_confirm": "Delete this case?",
+    "modal": {
+      "edit_title": "Edit Case",
+      "new_title": "New Case",
+      "subtitle": "Manage legal details and team access.",
+      "section_details": "Case Details",
+      "section_state": "Status & Finances",
+      "section_team": "Team Assignment",
+      "field_secret": "Restricted Confidentiality (Secret Case)",
+      "field_title": "Case Title *",
+      "field_client": "Associated Client *",
+      "field_description": "Description / Summary of Facts",
+      "field_status": "Status",
+      "field_outcome": "Verdict/Outcome",
+      "field_payment": "Payment",
+      "team_help": "Collaborators authorized to work on this case",
+      "no_collaborators": "No collaborators found",
+      "secret_warning": "⚠️ Secret Case: Only selected collaborators above will be able to access this case.",
+      "select_client_prompt": "-- Select a client --",
+      "error_select_client": "Please select a client",
+      "processing": "Processing...",
+      "create_btn": "Create Case",
+      "update_btn": "Update Case",
+      "placeholder_title": "Ex: Doe vs State"
+    },
+    "status": {
+      "open": "Open",
+      "closed": "Closed",
+      "pending": "Pending",
+      "archived": "Archived"
+    },
+    "outcome": {
+      "ongoing": "Ongoing",
+      "won": "Won",
+      "lost": "Lost",
+      "settled": "Settled",
+      "dismissed": "Dismissed"
+    },
+    "payment": {
+      "pending": "Pending",
+      "partial": "Partial",
+      "paid": "Paid"
+    },
+    "documents": {
+      "modal": {
+        "edit_title": "Edit Document",
+        "new_title": "New Document",
+        "field_file": "File *",
+        "field_file_replace": "Replace file (optional)",
+        "file_help": "Max size: 3 MB. Accepted formats: PDF, DOC, Excel, Images.",
+        "field_name": "File Name",
+        "field_tags": "Tags (comma separated)",
+        "placeholder_tags": "contract, invoice, evidence",
+        "field_case": "Linked Case (optional)",
+        "none": "-- None --",
+        "error_file_too_large": "File must not exceed 3 MB.",
+        "error_select_file": "Please select a file.",
+        "error_upload": "Error uploading file: ",
+        "saving": "Saving...",
+        "save": "Save"
+      }
+    },
+    "invoices": {
+      "modal": {
+        "edit_title": "Edit Invoice",
+        "new_title": "New Invoice",
+        "subtitle": "Manage billing details and track payments.",
+        "section_id": "Identification",
+        "section_amount": "Amount & Payment Status",
+        "field_client": "Associated Client *",
+        "field_case": "Linked Case (Optional)",
+        "field_amount": "Total Amount *",
+        "field_currency": "Currency *",
+        "field_status": "Invoice Status",
+        "field_due_date": "Due Date",
+        "select_prompt": "-- Select --",
+        "none": "-- None --",
+        "status": {
+          "draft": "Draft",
+          "sent": "Sent",
+          "paid": "Paid (Generates receipt)",
+          "overdue": "Overdue",
+          "cancelled": "Cancelled"
+        },
+        "receipt_notice": "✓ A printable payment receipt will be available once saved.",
+        "saving": "Saving...",
+        "create_btn": "Generate Invoice",
+        "update_btn": "Update Invoice"
+      }
+    }
+  },
+  "events": {
+    "modal": {
+      "edit_title": "Edit Event",
+      "new_title": "New Event",
+      "field_title": "Title *",
+      "field_description": "Description",
+      "field_start": "Start *",
+      "field_end": "End *",
+      "field_criticality": "Criticality Level",
+      "field_type": "Event Type",
+      "field_case": "Linked Case (Optional)",
+      "field_assignees": "Assigned Collaborators",
+      "none": "-- None --",
+      "criticality": {
+        "low": "🟢 Low",
+        "medium": "🔵 Medium",
+        "high": "🟠 High",
+        "urgent": "🔴 Urgent"
+      },
+      "types": {
+        "general": "General",
+        "audience": "Hearing",
+        "reunion": "Meeting",
+        "deadline": "Deadline",
+        "rdv_client": "Client Meeting",
+        "depot_document": "Document Filing"
+      },
+      "saving": "Saving...",
+      "save": "Save",
+      "notification_title": "New event assigned: {{title}}",
+      "notification_message": "{{date}} - You have been assigned to this event."
+    }
+  },
+  "clients": {
+    "modal": {
+      "edit_title": "Edit Client",
+      "new_title": "New Client",
+      "field_name": "Full Name *",
+      "field_company": "Company",
+      "field_phone": "Phone",
+      "field_email": "Email",
+      "field_address": "Address",
+      "field_notes": "Notes",
+      "placeholder_company": "Company name",
+      "placeholder_address": "Full address",
+      "saving": "Saving...",
+      "save": "Save"
+    }
+  },
+  "users": {
+    "list": {
+      "title": "Team Management",
+      "stats": "{{count}} / {{max}} users (Plan {{plan}})",
+      "add_btn": "Add a member",
+      "table": {
+        "name": "Name",
+        "email": "Email",
+        "role": "Role",
+        "actions": "Actions",
+        "empty": "No members"
+      },
+      "delete_confirm": "Delete this team member?",
+      "reset_pwd": {
+        "title": "Reset Password",
+        "subtitle": "Member: ",
+        "field_new": "New Password",
+        "placeholder": "Minimum 6 characters",
+        "error_min_length": "Password must be at least 6 characters",
+        "success": "✅ Password changed successfully",
+        "btn_confirm": "Confirm",
+        "loading": "Processing..."
+      },
+      "plan_limit_alert": "Your current plan ({{plan}}) is limited to {{max}} users. Please upgrade to a higher plan to add more members."
+    },
+    "modal": {
+      "edit_title": "Edit User",
+      "new_title": "New User",
+      "field_name": "Full Name",
+      "field_email": "Email",
+      "field_password": "Temporary Password",
+      "field_tenant": "Firm (Tenant)",
+      "field_role": "Role",
+      "tenant_none": "-- None (Root) --",
+      "error_create": "Error during creation via Edge Function (Has it been deployed?)",
+      "error_network": "Network error",
+      "saving": "Saving...",
+      "save": "Save"
+    }
   }
 }

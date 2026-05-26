@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from 'react-i18next';
 import { X, Users } from 'lucide-react';
+import { Portal } from '../common/Portal';
 
 interface EventModalProps {
   isOpen: boolean;
@@ -12,6 +14,7 @@ interface EventModalProps {
 }
 
 export const EventModal: React.FC<EventModalProps> = ({ isOpen, onClose, eventToEdit, onSuccess, defaultDate }) => {
+  const { t, i18n } = useTranslation();
   const { profile, user } = useAuthStore();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -44,7 +47,6 @@ export const EventModal: React.FC<EventModalProps> = ({ isOpen, onClose, eventTo
       setCriticality(eventToEdit.criticality || 'medium');
       setEventType(eventToEdit.event_type || 'general');
       
-      // Fetch existing assignments
       supabase.from('event_assignments').select('user_id').eq('event_id', eventToEdit.id)
         .then(({ data }) => {
           if (data) setAssignedUserIds(data.map(d => d.user_id));
@@ -90,20 +92,21 @@ export const EventModal: React.FC<EventModalProps> = ({ isOpen, onClose, eventTo
         if (err) throw err;
         eventId = data.id;
 
-        // Notifications
         if (profile?.tenant_id && assignedUserIds.length > 0) {
+          const lang = i18n.language || 'fr';
           const notifications = assignedUserIds.filter(id => id !== user?.id).map(userId => ({
             tenant_id: profile.tenant_id,
             user_id: userId,
-            title: `Nouvel événement assigné: ${title}`,
-            message: `${new Date(startTime).toLocaleDateString('fr-FR')} - Vous avez été assigné à cet événement.`,
+            title: t('events.modal.notification_title', { title }),
+            message: t('events.modal.notification_message', { 
+              date: new Date(startTime).toLocaleDateString(lang === 'ar' ? 'ar-SA' : lang === 'fr' ? 'fr-FR' : 'en-US') 
+            }),
             type: criticality === 'urgent' ? 'urgent' : 'info'
           }));
           if (notifications.length > 0) await supabase.from('notifications').insert(notifications);
         }
       }
 
-      // Update assignments
       if (eventId) {
         await supabase.from('event_assignments').delete().eq('event_id', eventId);
         if (assignedUserIds.length > 0) {
@@ -123,80 +126,82 @@ export const EventModal: React.FC<EventModalProps> = ({ isOpen, onClose, eventTo
   };
 
   return (
+    <Portal>
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '2rem 1rem' }}>
       <div className="glass-card animate-fade-in" style={{ padding: '2rem', width: '100%', maxWidth: '550px', position: 'relative', margin: 'auto 0' }}>
         <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'hsl(var(--text-muted))', cursor: 'pointer' }}><X size={24} /></button>
-        <h2 style={{ marginBottom: '1.5rem' }}>{eventToEdit ? 'Modifier Événement' : 'Nouvel Événement'}</h2>
+        <h2 style={{ marginBottom: '1.5rem' }}>{eventToEdit ? t('events.modal.edit_title') : t('events.modal.new_title')}</h2>
         {error && <div className="error-alert" style={{ marginBottom: '1rem' }}>{error}</div>}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div className="input-group">
-            <label className="input-label">Titre *</label>
+            <label className="input-label">{t('events.modal.field_title')}</label>
             <input type="text" className="input-field" value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
           <div className="input-group">
-            <label className="input-label">Description</label>
+            <label className="input-label">{t('events.modal.field_description')}</label>
             <textarea className="input-field" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} style={{ resize: 'vertical' }} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="input-group">
-              <label className="input-label">Début *</label>
+              <label className="input-label">{t('events.modal.field_start')}</label>
               <input type="datetime-local" className="input-field" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
             </div>
             <div className="input-group">
-              <label className="input-label">Fin *</label>
+              <label className="input-label">{t('events.modal.field_end')}</label>
               <input type="datetime-local" className="input-field" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="input-group">
-              <label className="input-label">Niveau de criticité</label>
+              <label className="input-label">{t('events.modal.field_criticality')}</label>
               <select className="input-field" value={criticality} onChange={(e) => setCriticality(e.target.value)}>
-                <option value="low">🟢 Faible</option>
-                <option value="medium">🔵 Moyen</option>
-                <option value="high">🟠 Élevé</option>
-                <option value="urgent">🔴 Urgent</option>
+                <option value="low">{t('events.modal.criticality.low')}</option>
+                <option value="medium">{t('events.modal.criticality.medium')}</option>
+                <option value="high">{t('events.modal.criticality.high')}</option>
+                <option value="urgent">{t('events.modal.criticality.urgent')}</option>
               </select>
             </div>
             <div className="input-group">
-              <label className="input-label">Type d'événement</label>
+              <label className="input-label">{t('events.modal.field_type')}</label>
               <select className="input-field" value={eventType} onChange={(e) => setEventType(e.target.value)}>
-                <option value="general">Général</option>
-                <option value="audience">Audience</option>
-                <option value="reunion">Réunion</option>
-                <option value="deadline">Échéance</option>
-                <option value="rdv_client">RDV Client</option>
-                <option value="depot_document">Dépôt de document</option>
+                <option value="general">{t('events.modal.types.general')}</option>
+                <option value="audience">{t('events.modal.types.audience')}</option>
+                <option value="reunion">{t('events.modal.types.reunion')}</option>
+                <option value="deadline">{t('events.modal.types.deadline')}</option>
+                <option value="rdv_client">{t('events.modal.types.rdv_client')}</option>
+                <option value="depot_document">{t('events.modal.types.depot_document')}</option>
               </select>
             </div>
           </div>
           <div className="input-group">
-            <label className="input-label">Dossier lié (optionnel)</label>
+            <label className="input-label">{t('events.modal.field_case')}</label>
             <select className="input-field" value={caseId} onChange={(e) => setCaseId(e.target.value)}>
-              <option value="">-- Aucun --</option>
+              <option value="">{t('events.modal.none')}</option>
               {cases.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
             </select>
           </div>
 
           <div className="input-group">
             <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Users size={16} /> Collaborateurs assignés
+              <Users size={16} /> {t('events.modal.field_assignees')}
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'hsla(var(--text-muted), 0.05)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
               {firmUsers.map(u => (
                 <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', cursor: 'pointer' }}>
                   <input type="checkbox" checked={assignedUserIds.includes(u.id)} onChange={() => toggleUserAssignment(u.id)} style={{ width: '16px', height: '16px', accentColor: 'hsl(var(--primary))' }} />
                   <span style={{ fontWeight: 500 }}>{u.full_name}</span>
-                  <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', background: 'hsla(var(--text-muted), 0.1)', padding: '0.1rem 0.4rem', borderRadius: 'var(--radius-full)' }}>{u.role.replace('_', ' ')}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', background: 'hsla(var(--text-muted), 0.1)', padding: '0.1rem 0.4rem', borderRadius: 'var(--radius-full)' }}>{t(`roles.${u.role}`)}</span>
                 </label>
               ))}
             </div>
           </div>
 
           <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }} disabled={loading}>
-            {loading ? 'Enregistrement...' : 'Enregistrer'}
+            {loading ? t('events.modal.saving') : t('events.modal.save')}
           </button>
         </form>
       </div>
     </div>
+    </Portal>
   );
 };

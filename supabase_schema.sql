@@ -11,6 +11,7 @@ CREATE TABLE tenants (
     logo_url TEXT,
     language TEXT DEFAULT 'fr',
     timezone TEXT DEFAULT 'Europe/Paris',
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -38,6 +39,7 @@ CREATE TABLE users (
     full_name TEXT NOT NULL,
     email TEXT NOT NULL,
     preferred_language TEXT DEFAULT 'fr',
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

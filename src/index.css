@@ -100,6 +100,16 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: 1.25rem;
 }
 
+@media (max-width: 768px) {
+  html {
+    font-size: 14px; /* Shrinks all rem-based sizes (fonts, padding, margins) by ~12.5% on mobile */
+  }
+  
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
 .input-label {
   font-size: 0.875rem;
   font-weight: 500;

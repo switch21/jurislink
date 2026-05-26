@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
+import { Portal } from '../common/Portal';
 
 interface InvoiceModalProps {
   isOpen: boolean;
@@ -11,6 +13,7 @@ interface InvoiceModalProps {
 }
 
 export const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, invoiceToEdit, onSuccess }) => {
+  const { t } = useTranslation();
   const { profile } = useAuthStore();
   const [clientId, setClientId] = useState('');
   const [caseId, setCaseId] = useState('');
@@ -25,12 +28,44 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, inv
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const tid = profile?.tenant_id;
-    if (tid) {
-      supabase.from('clients').select('id, full_name').eq('tenant_id', tid).then(({ data }) => { if (data) setClients(data); });
-      supabase.from('cases').select('id, title').eq('tenant_id', tid).then(({ data }) => { if (data) setCases(data); });
-    }
-    supabase.from('currencies').select('id, code, symbol').then(({ data }) => { if (data) setCurrencies(data); });
+    const fetchData = async () => {
+      const tid = profile?.tenant_id;
+      if (!tid || !isOpen) return;
+
+      try {
+        const { data: clientsData } = await supabase.from('clients').select('id, full_name').eq('tenant_id', tid);
+        if (clientsData) setClients(clientsData);
+
+        let query = supabase.from('cases').select('id, title');
+        if (profile.role === 'lawyer') {
+          const { data: assignments } = await supabase
+            .from('case_assignments')
+            .select('case_id')
+            .eq('user_id', profile.id)
+            .eq('tenant_id', tid);
+          
+          const assignedIds = assignments?.map(a => a.case_id) || [];
+          if (assignedIds.length > 0) {
+            query = query.in('id', assignedIds);
+          } else {
+            setCases([]);
+            return;
+          }
+        } else {
+          query = query.eq('tenant_id', tid);
+        }
+
+        const { data: casesData } = await query.order('created_at', { ascending: false });
+        if (casesData) setCases(casesData);
+
+        const { data: currenciesData } = await supabase.from('currencies').select('id, code, symbol');
+        if (currenciesData) setCurrencies(currenciesData);
+      } catch (err) {
+        console.error('Error fetching data for invoice modal:', err);
+      }
+    };
+
+    fetchData();
 
     if (invoiceToEdit) {
       setClientId(invoiceToEdit.client_id);
@@ -43,7 +78,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, inv
       setClientId(''); setCaseId(''); setAmount(''); setCurrencyId(''); setStatus('draft'); setDueDate('');
     }
     setError('');
-  }, [invoiceToEdit, profile]);
+  }, [invoiceToEdit, profile, isOpen]);
 
   if (!isOpen) return null;
 
@@ -68,60 +103,120 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, inv
   };
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '2rem 1rem' }}>
-      <div className="glass-card animate-fade-in" style={{ padding: '2rem', width: '100%', maxWidth: '500px', position: 'relative', margin: 'auto 0' }}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'hsl(var(--text-muted))', cursor: 'pointer' }}><X size={24} /></button>
-        <h2 style={{ marginBottom: '1.5rem' }}>{invoiceToEdit ? 'Modifier Facture' : 'Nouvelle Facture'}</h2>
-        {error && <div style={{ padding: '0.75rem', borderRadius: 'var(--radius-sm)', background: 'hsla(var(--danger), 0.1)', color: 'hsl(var(--danger))', marginBottom: '1rem', fontSize: '0.9rem' }}>{error}</div>}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="input-group">
-            <label className="input-label">Client</label>
-            <select className="input-field" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
-              <option value="">-- Sélectionner --</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-            </select>
-          </div>
-          <div className="input-group">
-            <label className="input-label">Dossier (optionnel)</label>
-            <select className="input-field" value={caseId} onChange={(e) => setCaseId(e.target.value)}>
-              <option value="">-- Aucun --</option>
-              {cases.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
-            <div className="input-group">
-              <label className="input-label">Montant</label>
-              <input type="number" step="0.01" className="input-field" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+    <Portal>
+    <div style={{ 
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+      backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, 
+      padding: '1rem' 
+    }}>
+      <div className="glass-card animate-fade-in" style={{ 
+        padding: '2.5rem', 
+        width: '100%', 
+        maxWidth: '600px', 
+        maxHeight: '90vh', 
+        overflowY: 'auto', 
+        position: 'relative',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+      }}>
+        <button onClick={onClose} style={{ 
+          position: 'absolute', top: '1.5rem', right: '1.5rem', 
+          background: 'hsla(var(--text-muted), 0.1)', border: 'none', 
+          color: 'hsl(var(--text-muted))', cursor: 'pointer',
+          width: '32px', height: '32px', borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }} className="hover-scale">
+          <X size={20} />
+        </button>
+
+        <div style={{ marginBottom: '2rem' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'hsl(var(--primary))' }}>
+            {invoiceToEdit ? t('cases.invoices.modal.edit_title') : t('cases.invoices.modal.new_title')}
+          </h2>
+          <p style={{ color: 'hsl(var(--text-muted))', fontSize: '0.9rem' }}>
+            {t('cases.invoices.modal.subtitle')}
+          </p>
+        </div>
+        
+        {error && <div style={{ padding: '1rem', borderRadius: 'var(--radius-md)', background: 'hsla(var(--danger), 0.1)', color: 'hsl(var(--danger))', marginBottom: '1.5rem', fontSize: '0.9rem', border: '1px solid hsla(var(--danger), 0.2)' }}>{error}</div>}
+        
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <section>
+            <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'hsl(var(--text-muted))', marginBottom: '1rem', borderBottom: '1px solid hsla(var(--text-muted), 0.1)', paddingBottom: '0.5rem' }}>
+              {t('cases.invoices.modal.section_id')}
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+              <div className="input-group">
+                <label className="input-label">{t('cases.invoices.modal.field_client')}</label>
+                <select className="input-field" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+                  <option value="">{t('cases.invoices.modal.select_prompt')}</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">{t('cases.invoices.modal.field_case')}</label>
+                <select className="input-field" value={caseId} onChange={(e) => setCaseId(e.target.value)}>
+                  <option value="">{t('cases.invoices.modal.none')}</option>
+                  {cases.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+              </div>
             </div>
-            <div className="input-group">
-              <label className="input-label">Devise</label>
-              <select className="input-field" value={currencyId} onChange={(e) => setCurrencyId(e.target.value)} required>
-                <option value="">--</option>
-                {currencies.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
-              </select>
+          </section>
+
+          <section>
+            <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'hsl(var(--text-muted))', marginBottom: '1rem', borderBottom: '1px solid hsla(var(--text-muted), 0.1)', paddingBottom: '0.5rem' }}>
+              {t('cases.invoices.modal.section_amount')}
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.25rem' }}>
+                <div className="input-group">
+                  <label className="input-label">{t('cases.invoices.modal.field_amount')}</label>
+                  <input type="number" step="0.01" className="input-field" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">{t('cases.invoices.modal.field_currency')}</label>
+                  <select className="input-field" value={currencyId} onChange={(e) => setCurrencyId(e.target.value)} required>
+                    <option value="">--</option>
+                    {currencies.map(c => <option key={c.id} value={c.id}>{c.code} ({c.symbol})</option>)}
+                  </select>
+                </div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                <div className="input-group">
+                  <label className="input-label">{t('cases.invoices.modal.field_status')}</label>
+                  <select className="input-field" value={status} onChange={(e) => setStatus(e.target.value)} style={{ fontWeight: 600 }}>
+                    <option value="draft">{t('cases.invoices.modal.status.draft')}</option>
+                    <option value="sent">{t('cases.invoices.modal.status.sent')}</option>
+                    <option value="paid">{t('cases.invoices.modal.status.paid')}</option>
+                    <option value="overdue">{t('cases.invoices.modal.status.overdue')}</option>
+                    <option value="cancelled">{t('cases.invoices.modal.status.cancelled')}</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label className="input-label">{t('cases.invoices.modal.field_due_date')}</label>
+                  <input type="date" className="input-field" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                </div>
+              </div>
+
+              {status === 'paid' && (
+                <div style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', background: 'hsla(var(--success), 0.1)', color: 'hsl(var(--success))', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span>✓</span>
+                  <span>{t('cases.invoices.modal.receipt_notice')}</span>
+                </div>
+              )}
             </div>
+          </section>
+
+          <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
+            <button type="button" onClick={onClose} className="btn" style={{ flex: 1 }}>{t('common.cancel')}</button>
+            <button type="submit" className="btn btn-primary" style={{ flex: 2 }} disabled={loading}>
+              {loading ? t('cases.invoices.modal.saving') : (invoiceToEdit ? t('cases.invoices.modal.update_btn') : t('cases.invoices.modal.create_btn'))}
+            </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="input-group">
-              <label className="input-label">Statut</label>
-              <select className="input-field" value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="draft">Brouillon</option>
-                <option value="sent">Envoyée</option>
-                <option value="paid">Payée</option>
-                <option value="overdue">En retard</option>
-                <option value="cancelled">Annulée</option>
-              </select>
-            </div>
-            <div className="input-group">
-              <label className="input-label">Échéance</label>
-              <input type="date" className="input-field" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </div>
-          </div>
-          <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }} disabled={loading}>
-            {loading ? 'Enregistrement...' : 'Enregistrer'}
-          </button>
         </form>
       </div>
     </div>
+    </Portal>
   );
 };

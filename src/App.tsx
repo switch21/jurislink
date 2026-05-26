@@ -18,6 +18,8 @@ import { DocumentsList } from './pages/firm/DocumentsList';
 import { InvoicesList } from './pages/firm/InvoicesList';
 import { MessagesPage } from './pages/firm/MessagesPage';
 
+import i18n from './i18n';
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useAuthStore();
   if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'hsl(var(--primary))' }}>Chargement...</div>;
@@ -27,7 +29,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 function App() {
   const { initialize } = useAuthStore();
-  useEffect(() => { initialize(); }, [initialize]);
+  
+  useEffect(() => { 
+    initialize(); 
+  }, [initialize]);
 
   return (
     <Router>

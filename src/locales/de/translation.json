@@ -7,12 +7,259 @@
     "loading": "Anmeldung läuft..."
   },
   "dashboard": {
-    "overview": "Überblick",
+    "overview": "Übersicht",
     "cases": "Fälle",
     "calendar": "Kalender",
     "documents": "Dokumente",
-    "invoices": "Abrechnung",
+    "invoices": "Rechnungsstellung",
     "messages": "Nachrichten",
-    "logout": "Abmelden"
+    "logout": "Abmelden",
+    "open_cases": "Offene Fälle",
+    "closed_cases": "Geschlossene Fälle",
+    "won_cases": "Gewonnene Fälle",
+    "lost_cases": "Verlorene Fälle",
+    "unpaid_invoices": "Unbezahlte Rechnungen",
+    "paid_invoices": "Bezahlte Rechnungen",
+    "clients": "Mandanten",
+    "upcoming_events": "Anstehende Termine",
+    "recent_cases": "Aktuelle Fälle",
+    "case_status": "Fallstatus",
+    "case_outcome": "Fallergebnis",
+    "case_payments": "Fallzahlungen",
+    "ongoing": "Laufend",
+    "won": "Gewonnen",
+    "lost": "Verloren",
+    "settled": "Geregelt",
+    "no_cases": "Keine Fälle gefunden",
+    "no_events": "Keine anstehenden Termine",
+    "pending": "Ausstehend",
+    "closed": "Geschlossen",
+    "archived": "Archiviert",
+    "partial": "Teilweise",
+    "paid": "Bezahlt"
+  },
+  "sidebar": {
+    "tenants": "Kanzleien",
+    "users": "Benutzer",
+    "currencies": "Währungen",
+    "audit_logs": "Audit-Protokoll",
+    "team": "Team",
+    "clients": "Mandanten",
+    "history": "Verlauf"
+  },
+  "roles": {
+    "root_admin": "Systemadministrator (Root)",
+    "firm_admin": "Kanzlei-Administrator",
+    "firm_admin_simple": "Administrator",
+    "lawyer": "Rechtsanwalt",
+    "secretary": "Sekretär/in",
+    "client": "Mandant"
+  },
+  "common": {
+    "loading": "Laden...",
+    "no_data": "Keine Daten gefunden",
+    "actions": "Aktionen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "search": "Suchen...",
+    "all": "Alle",
+    "status": "Status",
+    "date": "Datum",
+    "amount": "Betrag",
+    "confirm_delete": "Sind Sie sicher, dass Sie dies löschen möchten?"
+  },
+  "cases": {
+    "title": "Fallverwaltung",
+    "new_case": "Neuer Fall",
+    "search_placeholder": "Fall suchen...",
+    "client": "Mandant",
+    "created_on": "Erstellt am",
+    "notes": "Notizen",
+    "assigned": "Zugewiesen",
+    "secret": "Geheim",
+    "annotations": "Fallanmerkungen",
+    "no_notes": "Noch keine Notizen.",
+    "add_annotation": "Anmerkung hinzufügen...",
+    "delete_confirm": "Diesen Fall löschen?",
+    "modal": {
+      "edit_title": "Fall bearbeiten",
+      "new_title": "Neuer Fall",
+      "subtitle": "Verwalten Sie rechtliche Details und Teamzugriffe.",
+      "section_details": "Falldetails",
+      "section_state": "Status & Finanzen",
+      "section_team": "Teamzuordnung",
+      "field_secret": "Eingeschränkte Vertraulichkeit (Geheimer Fall)",
+      "field_title": "Falltitel *",
+      "field_client": "Zugehöriger Mandant *",
+      "field_description": "Beschreibung / Sachverhaltsdarstellung",
+      "field_status": "Status",
+      "field_outcome": "Urteil/Ergebnis",
+      "field_payment": "Zahlung",
+      "team_help": "Mitarbeiter, die zur Bearbeitung dieses Falls berechtigt sind",
+      "no_collaborators": "Keine Mitarbeiter gefunden",
+      "secret_warning": "⚠️ Geheimer Fall: Nur die oben ausgewählten Mitarbeiter können auf diesen Fall zugreifen.",
+      "select_client_prompt": "-- Mandanten auswählen --",
+      "error_select_client": "Bitte wählen Sie einen Mandanten aus",
+      "processing": "Wird bearbeitet...",
+      "create_btn": "Fall erstellen",
+      "update_btn": "Fall aktualisieren",
+      "placeholder_title": "Z.B. Doe gegen Staat"
+    },
+    "status": {
+      "open": "Offen",
+      "closed": "Geschlossen",
+      "pending": "Ausstehend",
+      "archived": "Archiviert"
+    },
+    "outcome": {
+      "ongoing": "Laufend",
+      "won": "Gewonnen",
+      "lost": "Verloren",
+      "settled": "Geregelt",
+      "dismissed": "Abgewiesen"
+    },
+    "payment": {
+      "pending": "Ausstehend",
+      "partial": "Teilweise",
+      "paid": "Bezahlt"
+    },
+    "documents": {
+      "modal": {
+        "edit_title": "Dokument bearbeiten",
+        "new_title": "Neues Dokument",
+        "field_file": "Datei *",
+        "field_file_replace": "Datei ersetzen (optional)",
+        "file_help": "Maximale Größe: 3 MB. Akzeptierte Formate: PDF, DOC, Excel, Bilder.",
+        "field_name": "Dateiname",
+        "field_tags": "Tags (kommagetrennt)",
+        "placeholder_tags": "Vertrag, Rechnung, Beweisstück",
+        "field_case": "Zugehöriger Fall (optional)",
+        "none": "-- Keiner --",
+        "error_file_too_large": "Die Datei darf 3 MB nicht überschreiten.",
+        "error_select_file": "Bitte wählen Sie eine Datei aus.",
+        "error_upload": "Fehler beim Hochladen der Datei: ",
+        "saving": "Wird gespeichert...",
+        "save": "Speichern"
+      }
+    },
+    "invoices": {
+      "modal": {
+        "edit_title": "Rechnung bearbeiten",
+        "new_title": "Neue Rechnung",
+        "subtitle": "Verwalten Sie Abrechnungsdetails und verfolgen Sie Zahlungen.",
+        "section_id": "Identifikation",
+        "section_amount": "Betrag & Zahlungsstatus",
+        "field_client": "Zugehöriger Mandant *",
+        "field_case": "Zugehöriger Fall (optional)",
+        "field_amount": "Gesamtbetrag *",
+        "field_currency": "Währung *",
+        "field_status": "Rechnungsstatus",
+        "field_due_date": "Fälligkeitsdatum",
+        "select_prompt": "-- Auswählen --",
+        "none": "-- Keiner --",
+        "status": {
+          "draft": "Entwurf",
+          "sent": "Gesendet",
+          "paid": "Bezahlt (Erzeugt Quittung)",
+          "overdue": "Überfällig",
+          "cancelled": "Storniert"
+        },
+        "receipt_notice": "✓ Eine druckbare Zahlungsquittung ist nach dem Speichern verfügbar.",
+        "saving": "Wird gespeichert...",
+        "create_btn": "Rechnung erstellen",
+        "update_btn": "Rechnung aktualisieren"
+      }
+    }
+  },
+  "events": {
+    "modal": {
+      "edit_title": "Ereignis bearbeiten",
+      "new_title": "Neues Ereignis",
+      "field_title": "Titel *",
+      "field_description": "Beschreibung",
+      "field_start": "Beginn *",
+      "field_end": "Ende *",
+      "field_criticality": "Kritikalitätsstufe",
+      "field_type": "Ereignistyp",
+      "field_case": "Zugehöriger Fall (optional)",
+      "field_assignees": "Zugewiesene Mitarbeiter",
+      "none": "-- Keiner --",
+      "criticality": {
+        "low": "🟢 Niedrig",
+        "medium": "🔵 Mittel",
+        "high": "🟠 Hoch",
+        "urgent": "🔴 Dringend"
+      },
+      "types": {
+        "general": "Allgemein",
+        "audience": "Anhörung",
+        "reunion": "Besprechung",
+        "deadline": "Frist",
+        "rdv_client": "Mandantentermin",
+        "depot_document": "Einreichung von Dokumenten"
+      },
+      "saving": "Wird gespeichert...",
+      "save": "Speichern",
+      "notification_title": "Neues Ereignis zugewiesen: {{title}}",
+      "notification_message": "{{date}} - Sie wurden diesem Ereignis zugewiesen."
+    }
+  },
+  "clients": {
+    "modal": {
+      "edit_title": "Mandant bearbeiten",
+      "new_title": "Neuer Mandant",
+      "field_name": "Vollständiger Name *",
+      "field_company": "Unternehmen",
+      "field_phone": "Telefon",
+      "field_email": "E-Mail",
+      "field_address": "Adresse",
+      "field_notes": "Notizen",
+      "placeholder_company": "Name des Unternehmens",
+      "placeholder_address": "Vollständige Adresse",
+      "saving": "Wird gespeichert...",
+      "save": "Speichern"
+    }
+  },
+  "users": {
+    "list": {
+      "title": "Teamverwaltung",
+      "stats": "{{count}} / {{max}} Benutzer (Tarif {{plan}})",
+      "add_btn": "Mitglied hinzufügen",
+      "table": {
+        "name": "Name",
+        "email": "E-Mail",
+        "role": "Rolle",
+        "actions": "Aktionen",
+        "empty": "Keine Mitglieder"
+      },
+      "delete_confirm": "Dieses Teammitglied löschen?",
+      "reset_pwd": {
+        "title": "Passwort zurücksetzen",
+        "subtitle": "Mitglied: ",
+        "field_new": "Neues Passwort",
+        "placeholder": "Mindestens 6 Zeichen",
+        "error_min_length": "Das Passwort muss mindestens 6 Zeichen lang sein",
+        "success": "✅ Passwort erfolgreich geändert",
+        "btn_confirm": "Bestätigen",
+        "loading": "Wird verarbeitet..."
+      },
+      "plan_limit_alert": "Ihr aktueller Tarif ({{plan}}) ist auf {{max}} Benutzer begrenzt. Bitte führen Sie ein Upgrade auf einen höheren Tarif durch, um weitere Mitglieder hinzuzufügen."
+    },
+    "modal": {
+      "edit_title": "Benutzer bearbeiten",
+      "new_title": "Neuer Benutzer",
+      "field_name": "Vollständiger Name",
+      "field_email": "E-Mail",
+      "field_password": "Vorläufiges Passwort",
+      "field_tenant": "Kanzlei (Tenant)",
+      "field_role": "Rolle",
+      "tenant_none": "-- Keine (Root) --",
+      "error_create": "Fehler bei der Erstellung über Edge Function (Wurde sie bereitgestellt?)",
+      "error_network": "Netzwerkfehler",
+      "saving": "Wird gespeichert...",
+      "save": "Speichern"
+    }
   }
 }

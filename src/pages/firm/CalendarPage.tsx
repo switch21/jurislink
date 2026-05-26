@@ -28,25 +28,39 @@ export const CalendarPage = () => {
     const fetchEnd = end || new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
 
     try {
-      const { data, error } = await supabase.from('events').select(`
-        *, 
-        case:cases(title),
-        assignments:event_assignments(user:users!event_assignments_user_id_fkey(full_name))
-      `)
+      const isLawyer = profile?.role === 'lawyer';
+      
+      let query;
+      if (isLawyer) {
+        // Lawyer sees only assigned events (inner join)
+        query = supabase.from('events').select(`
+          *, 
+          case:cases(title),
+          assignments:event_assignments!inner(user_id, user:users!event_assignments_user_id_fkey(full_name))
+        `)
+        .eq('event_assignments.user_id', profile.id);
+      } else {
+        // Admin/Secretary sees all events (left join)
+        query = supabase.from('events').select(`
+          *, 
+          case:cases(title),
+          assignments:event_assignments(user:users!event_assignments_user_id_fkey(full_name))
+        `);
+      }
+
+      const { data, error } = await query
         .eq('tenant_id', profile.tenant_id)
-        .gte('start_time', fetchStart.toISOString()).lte('start_time', fetchEnd.toISOString())
+        .gte('start_time', fetchStart.toISOString())
+        .lte('start_time', fetchEnd.toISOString())
         .order('start_time', { ascending: true });
         
-      if (error) {
-        console.error("Erreur lors de la récupération des événements :", error);
-      } else if (data) {
-        setEvents(data);
-      }
+      if (error) throw error;
+      if (data) setEvents(data);
     } catch (err) {
-      console.error("Exception lors de la récupération des événements :", err);
+      console.error("Erreur lors de la récupération des événements :", err);
     }
     setLoading(false);
-  }, [profile?.tenant_id, currentMonth]);
+  }, [profile?.id, profile?.tenant_id, profile?.role, currentMonth]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Supprimer cet événement ?")) {

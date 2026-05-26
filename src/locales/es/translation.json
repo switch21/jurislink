@@ -13,6 +13,253 @@
     "documents": "Documentos",
     "invoices": "Facturación",
     "messages": "Mensajes",
-    "logout": "Cerrar Sesión"
+    "logout": "Cerrar Sesión",
+    "open_cases": "Casos Abiertos",
+    "closed_cases": "Casos Cerrados",
+    "won_cases": "Casos Ganados",
+    "lost_cases": "Casos Perdidos",
+    "unpaid_invoices": "Facturas Impagadas",
+    "paid_invoices": "Facturas Pagadas",
+    "clients": "Clientes",
+    "upcoming_events": "Próximos Eventos",
+    "recent_cases": "Casos Recientes",
+    "case_status": "Estado de los Casos",
+    "case_outcome": "Resultado de los Casos",
+    "case_payments": "Pagos de los Casos",
+    "ongoing": "En curso",
+    "won": "Ganado",
+    "lost": "Perdido",
+    "settled": "Resuelto",
+    "no_cases": "No se encontraron casos",
+    "no_events": "No hay próximos eventos",
+    "pending": "Pendiente",
+    "closed": "Cerrado",
+    "archived": "Archivado",
+    "partial": "Parcial",
+    "paid": "Pagado"
+  },
+  "sidebar": {
+    "tenants": "Bufetes",
+    "users": "Usuarios",
+    "currencies": "Monedas",
+    "audit_logs": "Registro de auditoría",
+    "team": "Equipo",
+    "clients": "Clientes",
+    "history": "Historial"
+  },
+  "roles": {
+    "root_admin": "Administrador del Sistema (Root)",
+    "firm_admin": "Administrador de la Firma",
+    "firm_admin_simple": "Administrador",
+    "lawyer": "Abogado",
+    "secretary": "Secretario/a",
+    "client": "Cliente"
+  },
+  "common": {
+    "loading": "Cargando...",
+    "no_data": "No se encontraron datos",
+    "actions": "Acciones",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "search": "Buscar...",
+    "all": "Todos",
+    "status": "Estado",
+    "date": "Fecha",
+    "amount": "Monto",
+    "confirm_delete": "¿Estás seguro de que deseas eliminar esto?"
+  },
+  "cases": {
+    "title": "Gestión de Casos",
+    "new_case": "Nuevo Caso",
+    "search_placeholder": "Buscar un caso...",
+    "client": "Cliente",
+    "created_on": "Creado el",
+    "notes": "Notas",
+    "assigned": "Asignados",
+    "secret": "Secreto",
+    "annotations": "Anotaciones del caso",
+    "no_notes": "No hay notas todavía.",
+    "add_annotation": "Añadir una anotación...",
+    "delete_confirm": "¿Eliminar este caso?",
+    "modal": {
+      "edit_title": "Editar Caso",
+      "new_title": "Nuevo Caso",
+      "subtitle": "Gestione los detalles legales y el acceso del equipo.",
+      "section_details": "Detalles del Caso",
+      "section_state": "Estado y Finanzas",
+      "section_team": "Asignación del Equipo",
+      "field_secret": "Confidencialidad Restringida (Caso Secreto)",
+      "field_title": "Título del Caso *",
+      "field_client": "Cliente Asociado *",
+      "field_description": "Descripción / Resumen de los Hechos",
+      "field_status": "Estado",
+      "field_outcome": "Veredicto/Resultado",
+      "field_payment": "Pago",
+      "team_help": "Colaboradores autorizados para trabajar en este caso",
+      "no_collaborators": "No se encontraron colaboradores",
+      "secret_warning": "⚠️ Caso Secreto: Solo los colaboradores seleccionados anteriormente podrán acceder a este caso.",
+      "select_client_prompt": "-- Seleccionar un cliente --",
+      "error_select_client": "Por favor, seleccione un cliente",
+      "processing": "Procesando...",
+      "create_btn": "Crear Caso",
+      "update_btn": "Actualizar Caso",
+      "placeholder_title": "Ej: Doe vs Estado"
+    },
+    "status": {
+      "open": "Abierto",
+      "closed": "Cerrado",
+      "pending": "Pendiente",
+      "archived": "Archivado"
+    },
+    "outcome": {
+      "ongoing": "En curso",
+      "won": "Ganado",
+      "lost": "Perdido",
+      "settled": "Resuelto",
+      "dismissed": "Desestimado"
+    },
+    "payment": {
+      "pending": "Pendiente",
+      "partial": "Parcial",
+      "paid": "Pagado"
+    },
+    "documents": {
+      "modal": {
+        "edit_title": "Editar Documento",
+        "new_title": "Nuevo Documento",
+        "field_file": "Archivo *",
+        "field_file_replace": "Reemplazar archivo (opcional)",
+        "file_help": "Tamaño máximo: 3 MB. Formatos aceptados: PDF, DOC, Excel, Imágenes.",
+        "field_name": "Nombre del archivo",
+        "field_tags": "Etiquetas (separadas por comas)",
+        "placeholder_tags": "contrato, factura, prueba",
+        "field_case": "Caso vinculado (opcional)",
+        "none": "-- Ninguno --",
+        "error_file_too_large": "El archivo no debe exceder los 3 MB.",
+        "error_select_file": "Por favor, seleccione un archivo.",
+        "error_upload": "Error al subir el archivo: ",
+        "saving": "Guardando...",
+        "save": "Guardar"
+      }
+    },
+    "invoices": {
+      "modal": {
+        "edit_title": "Editar Factura",
+        "new_title": "Nueva Factura",
+        "subtitle": "Gestione los detalles de facturación y realice un seguimiento de los pagos.",
+        "section_id": "Identificación",
+        "section_amount": "Monto y Estado del Pago",
+        "field_client": "Cliente asociado *",
+        "field_case": "Caso vinculado (opcional)",
+        "field_amount": "Monto total *",
+        "field_currency": "Moneda *",
+        "field_status": "Estado de la factura",
+        "field_due_date": "Fecha de vencimiento",
+        "select_prompt": "-- Seleccionar --",
+        "none": "-- Ninguno --",
+        "status": {
+          "draft": "Borrador",
+          "sent": "Enviada",
+          "paid": "Pagada (Genera recibo)",
+          "overdue": "Vencida",
+          "cancelled": "Cancelada"
+        },
+        "receipt_notice": "✓ Un recibo de pago imprimible estará disponible una vez guardado.",
+        "saving": "Guardando...",
+        "create_btn": "Generar factura",
+        "update_btn": "Actualizar factura"
+      }
+    }
+  },
+  "events": {
+    "modal": {
+      "edit_title": "Editar Evento",
+      "new_title": "Nuevo Evento",
+      "field_title": "Título *",
+      "field_description": "Descripción",
+      "field_start": "Inicio *",
+      "field_end": "Fin *",
+      "field_criticality": "Nivel de criticidad",
+      "field_type": "Tipo de evento",
+      "field_case": "Caso vinculado (opcional)",
+      "field_assignees": "Colaboradores asignados",
+      "none": "-- Ninguno --",
+      "criticality": {
+        "low": "🟢 Baja",
+        "medium": "🔵 Media",
+        "high": "🟠 Alta",
+        "urgent": "🔴 Urgente"
+      },
+      "types": {
+        "general": "General",
+        "audience": "Audiencia",
+        "reunion": "Reunión",
+        "deadline": "Fecha límite",
+        "rdv_client": "Cita con cliente",
+        "depot_document": "Presentación de documento"
+      },
+      "saving": "Guardando...",
+      "save": "Guardar",
+      "notification_title": "Nuevo evento asignado: {{title}}",
+      "notification_message": "{{date}} - Se le ha asignado este evento."
+    }
+  },
+  "clients": {
+    "modal": {
+      "edit_title": "Editar Cliente",
+      "new_title": "Nuevo Cliente",
+      "field_name": "Nombre Completo *",
+      "field_company": "Empresa",
+      "field_phone": "Teléfono",
+      "field_email": "Correo electrónico",
+      "field_address": "Dirección",
+      "field_notes": "Notas",
+      "placeholder_company": "Nombre de la empresa",
+      "placeholder_address": "Dirección completa",
+      "saving": "Guardando...",
+      "save": "Guardar"
+    }
+  },
+  "users": {
+    "list": {
+      "title": "Gestión del equipo",
+      "stats": "{{count}} / {{max}} usuarios (Plan {{plan}})",
+      "add_btn": "Añadir un miembro",
+      "table": {
+        "name": "Nombre",
+        "email": "Correo electrónico",
+        "role": "Rol",
+        "actions": "Acciones",
+        "empty": "No hay miembros"
+      },
+      "delete_confirm": "¿Eliminar a este miembro del equipo?",
+      "reset_pwd": {
+        "title": "Restablecer contraseña",
+        "subtitle": "Miembro: ",
+        "field_new": "Nueva contraseña",
+        "placeholder": "Mínimo 6 caracteres",
+        "error_min_length": "La contraseña debe tener al menos 6 caracteres",
+        "success": "✅ Contraseña cambiada con éxito",
+        "btn_confirm": "Confirmar",
+        "loading": "Procesando..."
+      },
+      "plan_limit_alert": "Su plan actual ({{plan}}) está limitado a {{max}} usuarios. Actualice a un plan superior para añadir más miembros."
+    },
+    "modal": {
+      "edit_title": "Editar Usuario",
+      "new_title": "Nuevo Usuario",
+      "field_name": "Nombre Completo",
+      "field_email": "Correo electrónico",
+      "field_password": "Contraseña temporal",
+      "field_tenant": "Firma (Tenant)",
+      "field_role": "Rol",
+      "tenant_none": "-- Ninguno (Root) --",
+      "error_create": "Error durante la creación mediante Edge Function (¿Se ha desplegado?)",
+      "error_network": "Error de red",
+      "saving": "Guardando...",
+      "save": "Guardar"
+    }
   }
 }

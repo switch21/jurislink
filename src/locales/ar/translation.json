@@ -1,0 +1,265 @@
+{
+  "login": {
+    "welcome": "مرحبًا بك في بوابة مكتبك",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "signIn": "تسجيل الدخول",
+    "loading": "جاري تسجيل الدخول..."
+  },
+  "dashboard": {
+    "overview": "نظرة عامة",
+    "cases": "القضايا",
+    "calendar": "التقويم",
+    "documents": "المستندات",
+    "invoices": "الفواتير والتحصيل",
+    "messages": "الرسائل",
+    "logout": "تسجيل الخروج",
+    "open_cases": "قضايا مفتوحة",
+    "closed_cases": "قضايا مغلقة",
+    "won_cases": "قضايا رابحة",
+    "lost_cases": "قضايا خاسرة",
+    "unpaid_invoices": "فواتير غير مدفوعة",
+    "paid_invoices": "فواتير مدفوعة",
+    "clients": "العملاء",
+    "upcoming_events": "الأحداث القادمة",
+    "recent_cases": "أحدث القضايا",
+    "case_status": "حالة القضية",
+    "case_outcome": "نتيجة القضية",
+    "case_payments": "مدفوعات القضايا",
+    "ongoing": "قيد التنفيذ",
+    "won": "ربح",
+    "lost": "خسارة",
+    "settled": "تمت التسوية",
+    "no_cases": "لم يتم العثور على قضايا",
+    "no_events": "لا توجد أحداث قادمة",
+    "pending": "قيد الانتظار",
+    "closed": "مغلق",
+    "archived": "مؤرشف",
+    "partial": "جزئي",
+    "paid": "مدفوع"
+  },
+  "sidebar": {
+    "tenants": "المكاتب",
+    "users": "المستخدمين",
+    "currencies": "العملات",
+    "audit_logs": "سجل التدقيق",
+    "team": "الفريق",
+    "clients": "العملاء",
+    "history": "السجل"
+  },
+  "roles": {
+    "root_admin": "مدير النظام (جذر)",
+    "firm_admin": "مدير المكتب",
+    "firm_admin_simple": "مدير",
+    "lawyer": "محامي",
+    "secretary": "سكرتير/ة",
+    "client": "عميل"
+  },
+  "common": {
+    "loading": "جاري التحميل...",
+    "no_data": "لا توجد بيانات",
+    "actions": "الإجراءات",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "edit": "تعديل",
+    "delete": "حذف",
+    "search": "بحث...",
+    "all": "الكل",
+    "status": "الحالة",
+    "date": "التاريخ",
+    "amount": "المبلغ",
+    "confirm_delete": "هل أنت متأكد أنك تريد حذف هذا؟"
+  },
+  "cases": {
+    "title": "إدارة القضايا",
+    "new_case": "قضية جديدة",
+    "search_placeholder": "البحث عن قضية...",
+    "client": "العميل",
+    "created_on": "أنشئت في",
+    "notes": "ملاحظات",
+    "assigned": "المكلفون",
+    "secret": "سري",
+    "annotations": "تعليقات القضية",
+    "no_notes": "لا توجد ملاحظات بعد.",
+    "add_annotation": "إضافة تعليق...",
+    "delete_confirm": "حذف هذه القضية؟",
+    "modal": {
+      "edit_title": "تعديل القضية",
+      "new_title": "قضية جديدة",
+      "subtitle": "إدارة التفاصيل القانونية وصلاحيات الفريق.",
+      "section_details": "تفاصيل القضية",
+      "section_state": "الحالة والمالية",
+      "section_team": "تكليف الفريق",
+      "field_secret": "سرية مقيدة (قضية سرية)",
+      "field_title": "عنوان القضية *",
+      "field_client": "العميل المرتبط *",
+      "field_description": "الوصف / ملخص الوقائع",
+      "field_status": "الحالة",
+      "field_outcome": "الحكم / النتيجة",
+      "field_payment": "الدفع",
+      "team_help": "المتعاونون المصرح لهم بالعمل في هذه القضية",
+      "no_collaborators": "لم يتم العثور على متعاونين",
+      "secret_warning": "⚠️ قضية سرية: فقط المتعاونون المختارون أعلاه سيتمكنون من الوصول إلى هذه القضية.",
+      "select_client_prompt": "-- اختر عميل --",
+      "error_select_client": "يرجى اختيار عميل",
+      "processing": "جاري المعالجة...",
+      "create_btn": "إنشاء قضية",
+      "update_btn": "تحديث القضية",
+      "placeholder_title": "مثال: فلان ضد الدولة"
+    },
+    "status": {
+      "open": "مفتوح",
+      "closed": "مغلق",
+      "pending": "قيد الانتظار",
+      "archived": "مؤرشف"
+    },
+    "outcome": {
+      "ongoing": "قيد التنفيذ",
+      "won": "ربح",
+      "lost": "خسارة",
+      "settled": "تمت التسوية",
+      "dismissed": "تم رفضها"
+    },
+    "payment": {
+      "pending": "قيد الانتظار",
+      "partial": "جزئي",
+      "paid": "مدفوع"
+    },
+    "documents": {
+      "modal": {
+        "edit_title": "تعديل المستند",
+        "new_title": "مستند جديد",
+        "field_file": "الملف *",
+        "field_file_replace": "استبدال الملف (اختياري)",
+        "file_help": "الحد الأقصى للحجم: 3 ميجابايت. التنسيقات المقبولة: PDF، DOC، Excel، الصور.",
+        "field_name": "اسم الملف",
+        "field_tags": "الوسوم (مفصولة بفاصلة)",
+        "placeholder_tags": "عقد، فاتورة، دليل",
+        "field_case": "القضية المرتبطة (اختياري)",
+        "none": "-- لا يوجد --",
+        "error_file_too_large": "يجب ألا يتجاوز حجم الملف 3 ميجابايت.",
+        "error_select_file": "يرجى اختيار ملف.",
+        "error_upload": "خطأ أثناء تحميل الملف: ",
+        "saving": "جاري الحفظ...",
+        "save": "حفظ"
+      }
+    },
+    "invoices": {
+      "modal": {
+        "edit_title": "تعديل الفاتورة",
+        "new_title": "فاتورة جديدة",
+        "subtitle": "إدارة تفاصيل الفواتير وتتبع المدفوعات.",
+        "section_id": "التعريف",
+        "section_amount": "المبلغ وحالة الدفع",
+        "field_client": "العميل المرتبط *",
+        "field_case": "القضية المرتبطة (اختياري)",
+        "field_amount": "المبلغ الإجمالي *",
+        "field_currency": "العملة *",
+        "field_status": "حالة الفاتورة",
+        "field_due_date": "تاريخ الاستحقاق",
+        "select_prompt": "-- اختر --",
+        "none": "-- لا يوجد --",
+        "status": {
+          "draft": "مسودة",
+          "sent": "تم الإرسال",
+          "paid": "مدفوعة (تولد إيصالاً)",
+          "overdue": "متأخرة",
+          "cancelled": "ملغاة"
+        },
+        "receipt_notice": "✓ سيتوفر إيصال دفع قابل للطباعة بمجرد الحفظ.",
+        "saving": "جاري الحفظ...",
+        "create_btn": "إنشاء فاتورة",
+        "update_btn": "تحديث الفاتورة"
+      }
+    }
+  },
+  "events": {
+    "modal": {
+      "edit_title": "تعديل الحدث",
+      "new_title": "حدث جديد",
+      "field_title": "العنوان *",
+      "field_description": "الوصف",
+      "field_start": "البداية *",
+      "field_end": "النهاية *",
+      "field_criticality": "مستوى الأهمية",
+      "field_type": "نوع الحدث",
+      "field_case": "القضية المرتبطة (اختياري)",
+      "field_assignees": "المتعاونون المعينون",
+      "none": "-- لا يوجد --",
+      "criticality": {
+        "low": "🟢 منخفض",
+        "medium": "🔵 متوسط",
+        "high": "🟠 مرتفع",
+        "urgent": "🔴 عاجل"
+      },
+      "types": {
+        "general": "عام",
+        "audience": "جلسة استماع",
+        "reunion": "اجتماع",
+        "deadline": "موعد نهائي",
+        "rdv_client": "موعد مع عميل",
+        "depot_document": "إيداع مستند"
+      },
+      "saving": "جاري الحفظ...",
+      "save": "حفظ",
+      "notification_title": "تم تعيين حدث جديد: {{title}}",
+      "notification_message": "{{date}} - تم تعيينك لهذا الحدث."
+    }
+  },
+  "clients": {
+    "modal": {
+      "edit_title": "تعديل العميل",
+      "new_title": "عميل جديد",
+      "field_name": "الاسم الكامل *",
+      "field_company": "الشركة",
+      "field_phone": "الهاتف",
+      "field_email": "البريد الإلكتروني",
+      "field_address": "العنوان",
+      "field_notes": "ملاحظات",
+      "placeholder_company": "اسم الشركة",
+      "placeholder_address": "العنوان الكامل",
+      "saving": "جاري الحفظ...",
+      "save": "حفظ"
+    }
+  },
+  "users": {
+    "list": {
+      "title": "إدارة الفريق",
+      "stats": "{{count}} / {{max}} مستخدمين (خطة {{plan}})",
+      "add_btn": "إضافة عضو",
+      "table": {
+        "name": "الاسم",
+        "email": "البريد الإلكتروني",
+        "role": "الدور",
+        "actions": "الإجراءات",
+        "empty": "لا يوجد أعضاء"
+      },
+      "delete_confirm": "هل تريد حذف هذا العضو من الفريق؟",
+      "reset_pwd": {
+        "title": "إعادة تعيين كلمة المرور",
+        "subtitle": "العضو: ",
+        "field_new": "كلمة المرور الجديدة",
+        "placeholder": "6 أحرف على الأقل",
+        "error_min_length": "يجب أن تتكون كلمة المرور من 6 أحرف على الأقل",
+        "success": "✅ تم تغيير كلمة المرور بنجاح",
+        "btn_confirm": "تأكيد",
+        "loading": "جاري المعالجة..."
+      },
+      "plan_limit_alert": "خطتك الحالية ({{plan}}) تقتصر على {{max}} مستخدمين. يرجى الترقية إلى خطة أعلى لإضافة المزيد من الأعضاء."
+    },
+    "modal": {
+      "edit_title": "تعديل المستخدم",
+      "new_title": "مستخدم جديد",
+      "field_name": "الاسم الكامل",
+      "field_email": "البريد الإلكتروني",
+      "field_password": "كلمة المرور المؤقتة",
+      "field_tenant": "المكتب (المستأجر)",
+      "field_role": "الدور",
+      "tenant_none": "-- لا يوجد (جذر) --",
+      "error_create": "خطأ أثناء الإنشاء عبر Edge Function (هل تم نشرها؟)",
+      "error_network": "خطأ في الشبكة",
+      "saving": "جاري الحفظ...",
+      "save": "حفظ"
+    }
+  }
+}

@@ -1,0 +1,265 @@
+{
+  "login": {
+    "welcome": "Karibu kwenye tovuti ya kampuni yako",
+    "email": "Barua Pepe",
+    "password": "Nenosiri",
+    "signIn": "Ingia",
+    "loading": "Inaingia..."
+  },
+  "dashboard": {
+    "overview": "Muhtasari",
+    "cases": "Kesi",
+    "calendar": "Kalenda",
+    "documents": "Nyaraka",
+    "invoices": "Utoaji wa Ankara",
+    "messages": "Ujumbe",
+    "logout": "Ondoka",
+    "open_cases": "Kesi za Wazi",
+    "closed_cases": "Kesi Zilizoingwa",
+    "won_cases": "Kesi Zilizoshindwa",
+    "lost_cases": "Kesi Zilizopotea",
+    "unpaid_invoices": "Ankara Zisizolipwa",
+    "paid_invoices": "Ankara Zilizolipwa",
+    "clients": "Wateja",
+    "upcoming_events": "Matukio Yajayo",
+    "recent_cases": "Kesi za Hivi Karibuni",
+    "case_status": "Hali ya Kesi",
+    "case_outcome": "Matokeo ya Kesi",
+    "case_payments": "Malipo ya Kesi",
+    "ongoing": "Inaendelea",
+    "won": "Imeshindwa",
+    "lost": "Imepotea",
+    "settled": "Imetatuliwa",
+    "no_cases": "Hakuna kesi zilizopatikana",
+    "no_events": "Hakuna matukio yajayo",
+    "pending": "Inasubiri",
+    "closed": "Imefungwa",
+    "archived": "Imehifadhiwa",
+    "partial": "Sehemu",
+    "paid": "Imelipwa"
+  },
+  "sidebar": {
+    "tenants": "Makampuni",
+    "users": "Watumiaji",
+    "currencies": "Sarafu",
+    "audit_logs": "Kumbukumbu za Ukaguzi",
+    "team": "Timu",
+    "clients": "Wateja",
+    "history": "Historia"
+  },
+  "roles": {
+    "root_admin": "Msimamizi wa Mfumo (Root)",
+    "firm_admin": "Msimamizi wa Kampuni",
+    "firm_admin_simple": "Msimamizi",
+    "lawyer": "Wakili",
+    "secretary": "Katibu",
+    "client": "Mteja"
+  },
+  "common": {
+    "loading": "Inapakia...",
+    "no_data": "Hakuna data iliyopatikana",
+    "actions": "Vitendo",
+    "save": "Hifadhi",
+    "cancel": "Ghairi",
+    "edit": "Hariri",
+    "delete": "Futa",
+    "search": "Tafuta...",
+    "all": "Zote",
+    "status": "Hali",
+    "date": "Tarehe",
+    "amount": "Kiasi",
+    "confirm_delete": "Je, una uhakika unataka kufuta hii?"
+  },
+  "cases": {
+    "title": "Usimamizi wa Kesi",
+    "new_case": "Kesi Mpya",
+    "search_placeholder": "Tafuta kesi...",
+    "client": "Mteja",
+    "created_on": "Iliundwa mnamo",
+    "notes": "Vidokezo",
+    "assigned": "Iliyogawiwa",
+    "secret": "Siri",
+    "annotations": "Maelezo ya Kesi",
+    "no_notes": "Hakuna vidokezo bado.",
+    "add_annotation": "Ongeza maelezo...",
+    "delete_confirm": "Futa kesi hii?",
+    "modal": {
+      "edit_title": "Hariri Kesi",
+      "new_title": "Kesi Mpya",
+      "subtitle": "Simamia maelezo ya kisheria na ufikiaji wa timu.",
+      "section_details": "Maelezo ya Kesi",
+      "section_state": "Hali na Fedha",
+      "section_team": "Ugawaji wa Timu",
+      "field_secret": "Usiri Uliozuiliwa (Kesi ya Siri)",
+      "field_title": "Kichwa cha Kesi *",
+      "field_client": "Mteja Anayehusika *",
+      "field_description": "Maelezo / Muhtasari wa Ukweli",
+      "field_status": "Hali",
+      "field_outcome": "Uamuzi/Matokeo",
+      "field_payment": "Malipo",
+      "team_help": "Wafanyakazi walioruhusiwa kufanya kazi kwenye kesi hii",
+      "no_collaborators": "Hakuna wafanyakazi waliopatikana",
+      "secret_warning": "⚠️ Kesi ya Siri: Wafanyakazi waliochaguliwa hapo juu tu ndio wataweza kufikia kesi hii.",
+      "select_client_prompt": "-- Chagua mteja --",
+      "error_select_client": "Tafadhali chagua mteja",
+      "processing": "Inashughulikiwa...",
+      "create_btn": "Unda Kesi",
+      "update_btn": "Sasisha Kesi",
+      "placeholder_title": "Mfano: Doe dhidi ya Serikali"
+    },
+    "status": {
+      "open": "Wazi",
+      "closed": "Imefungwa",
+      "pending": "Inasubiri",
+      "archived": "Imehifadhiwa"
+    },
+    "outcome": {
+      "ongoing": "Inaendelea",
+      "won": "Imeshindwa",
+      "lost": "Imepotea",
+      "settled": "Imetatuliwa",
+      "dismissed": "Imefutwa"
+    },
+    "payment": {
+      "pending": "Inasubiri",
+      "partial": "Sehemu",
+      "paid": "Imelipwa"
+    },
+    "documents": {
+      "modal": {
+        "edit_title": "Hariri Nyaraka",
+        "new_title": "Nyaraka Mpya",
+        "field_file": "Faili *",
+        "field_file_replace": "Badilisha faili (hiari)",
+        "file_help": "Ukubwa wa juu: MB 3. Fomati zinazokubalika: PDF, DOC, Excel, Picha.",
+        "field_name": "Jina la Faili",
+        "field_tags": "Lebo (zilizotenganishwa na koma)",
+        "placeholder_tags": "mkataba, ankara, ushahidi",
+        "field_case": "Kesi Iliyounganishwa (hiari)",
+        "none": "-- Hakuna --",
+        "error_file_too_large": "Faili haipaswi kuzidi MB 3.",
+        "error_select_file": "Tafadhali chagua faili.",
+        "error_upload": "Hitilafu wakati wa kupakia faili: ",
+        "saving": "Inahifadhi...",
+        "save": "Hifadhi"
+      }
+    },
+    "invoices": {
+      "modal": {
+        "edit_title": "Hariri Ankara",
+        "new_title": "Ankara Mpya",
+        "subtitle": "Simamia maelezo ya utoaji wa ankara na ufuatilie malipo.",
+        "section_id": "Utambulisho",
+        "section_amount": "Kiasi na Hali ya Malipo",
+        "field_client": "Mteja anayehusika *",
+        "field_case": "Kesi iliyounganishwa (Hiari)",
+        "field_amount": "Kiasi Kamili *",
+        "field_currency": "Sarafu *",
+        "field_status": "Hali ya Ankara",
+        "field_due_date": "Tarehe ya mwisho",
+        "select_prompt": "-- Chagua --",
+        "none": "-- Hakuna --",
+        "status": {
+          "draft": "Rasimu",
+          "sent": "Imetumwa",
+          "paid": "Imelipwa (Inazalisha risiti)",
+          "overdue": "Imechelewa",
+          "cancelled": "Imeghairiwa"
+        },
+        "receipt_notice": "✓ Risiti ya malipo inayoweza kuchapishwa itapatikana mara tu itakapohifadhiwa.",
+        "saving": "Inahifadhi...",
+        "create_btn": "Zalisha Ankara",
+        "update_btn": "Sasisha Ankara"
+      }
+    }
+  },
+  "events": {
+    "modal": {
+      "edit_title": "Hariri Tukio",
+      "new_title": "Tukio Mpya",
+      "field_title": "Kichwa *",
+      "field_description": "Maelezo",
+      "field_start": "Kuanza *",
+      "field_end": "Kumaliza *",
+      "field_criticality": "Kiwango cha umuhimu",
+      "field_type": "Aina ya tukio",
+      "field_case": "Kesi iliyounganishwa (Hiari)",
+      "field_assignees": "Washirika waliopangiwa",
+      "none": "-- Hakuna --",
+      "criticality": {
+        "low": "🟢 Chini",
+        "medium": "🔵 Kati",
+        "high": "🟠 Juu",
+        "urgent": "🔴 Haraka"
+      },
+      "types": {
+        "general": "Jumla",
+        "audience": "Usikilizaji",
+        "reunion": "Mkutano",
+        "deadline": "Tarehe ya mwisho",
+        "rdv_client": "Mkutano wa Mteja",
+        "depot_document": "Uwasilishaji wa hati"
+      },
+      "saving": "Inahifadhi...",
+      "save": "Hifadhi",
+      "notification_title": "Tukio jipya limepangwa: {{title}}",
+      "notification_message": "{{date}} - Umepangiwa tukio hili."
+    }
+  },
+  "clients": {
+    "modal": {
+      "edit_title": "Hariri Mteja",
+      "new_title": "Mteja Mpya",
+      "field_name": "Jina Kamili *",
+      "field_company": "Kampuni",
+      "field_phone": "Simu",
+      "field_email": "Barua pepe",
+      "field_address": "Anwani",
+      "field_notes": "Maelezo",
+      "placeholder_company": "Jina la kampuni",
+      "placeholder_address": "Anwani kamili",
+      "saving": "Inahifadhi...",
+      "save": "Hifadhi"
+    }
+  },
+  "users": {
+    "list": {
+      "title": "Usimamizi wa Timu",
+      "stats": "Watumiaji {{count}} / {{max}} (Mpango {{plan}})",
+      "add_btn": "Ongeza mwanachama",
+      "table": {
+        "name": "Jina",
+        "email": "Barua pepe",
+        "role": "Wajibu",
+        "actions": "Vitendo",
+        "empty": "Hakuna wanachama"
+      },
+      "delete_confirm": "Futa mwanachama huyu wa timu?",
+      "reset_pwd": {
+        "title": "Rudisha Nywila",
+        "subtitle": "Mwanachama: ",
+        "field_new": "Nywila Mpya",
+        "placeholder": "Kiwango cha chini cha herufi 6",
+        "error_min_length": "Nywila lazima iwe na angalau herufi 6",
+        "success": "✅ Nywila imebadilishwa kwa mafanikio",
+        "btn_confirm": "Thibitisha",
+        "loading": "Inachakata..."
+      },
+      "plan_limit_alert": "Mpango wako wa sasa ({{plan}}) una kikomo cha watumiaji {{max}}. Tafadhali pata mpango wa juu zaidi ili kuongeza wanachama zaidi."
+    },
+    "modal": {
+      "edit_title": "Hariri Mtumiaji",
+      "new_title": "Mtumiaji Mpya",
+      "field_name": "Jina Kamili",
+      "field_email": "Barua pepe",
+      "field_password": "Nywila ya muda",
+      "field_tenant": "Kampuni (Tenant)",
+      "field_role": "Wajibu",
+      "tenant_none": "-- Hakuna (Root) --",
+      "error_create": "Hitilafu wakati wa kuunda kupitia Edge Function (Je, imetumwa?)",
+      "error_network": "Hitilafu ya mtandao",
+      "saving": "Inahifadhi...",
+      "save": "Hifadhi"
+    }
+  }
+}

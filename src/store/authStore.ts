@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
+import i18n from '../i18n';
 
 export interface UserProfile {
   id: string;
@@ -9,6 +10,20 @@ export interface UserProfile {
   full_name: string;
   email: string;
   preferred_language: string;
+  is_active?: boolean;
+  tenant?: {
+    plan: string;
+    max_users: number;
+    max_storage_gb: number;
+    name: string;
+    logo_url: string;
+    address: string;
+    phone: string;
+    email: string;
+    niu: string;
+    language: string;
+    is_active?: boolean;
+  };
 }
 
 interface AuthState {
@@ -19,6 +34,13 @@ interface AuthState {
   signOut: () => Promise<void>;
 }
 
+const updateAppLanguage = (lang: string) => {
+  const cleanLang = lang.split('-')[0].toLowerCase();
+  i18n.changeLanguage(cleanLang);
+  document.documentElement.dir = cleanLang === 'ar' ? 'rtl' : 'ltr';
+  document.documentElement.lang = cleanLang;
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   profile: null,
@@ -26,17 +48,26 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initialize: async () => {
     const { user, isLoading } = useAuthStore.getState();
-    if (user && !isLoading) return; // Already initialized with a user
+    if (user && !isLoading) return; 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
         const { data: profile } = await supabase
           .from('users')
-          .select('*')
+          .select('*, tenant:tenants(*)')
           .eq('id', session.user.id)
           .single();
           
+        if (profile) {
+          if (profile.is_active === false || (profile.tenant && profile.tenant.is_active === false)) {
+            await supabase.auth.signOut();
+            set({ user: null, profile: null, isLoading: false });
+            return;
+          }
+          updateAppLanguage(profile.preferred_language || profile.tenant?.language || 'fr');
+        }
+
         set({ user: session.user, profile, isLoading: false });
       } else {
         set({ user: null, profile: null, isLoading: false });
@@ -46,9 +77,19 @@ export const useAuthStore = create<AuthState>((set) => ({
         if (session?.user) {
           const { data: profile } = await supabase
             .from('users')
-            .select('*')
+            .select('*, tenant:tenants(*)')
             .eq('id', session.user.id)
             .single();
+          
+          if (profile) {
+            if (profile.is_active === false || (profile.tenant && profile.tenant.is_active === false)) {
+              await supabase.auth.signOut();
+              set({ user: null, profile: null, isLoading: false });
+              return;
+            }
+            updateAppLanguage(profile.preferred_language || profile.tenant?.language || 'fr');
+          }
+
           set({ user: session.user, profile, isLoading: false });
         } else {
           set({ user: null, profile: null, isLoading: false });

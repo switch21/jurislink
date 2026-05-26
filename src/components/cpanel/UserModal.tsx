@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from 'react-i18next';
+import { Portal } from '../common/Portal';
 
 interface UserModalProps {
   isOpen: boolean;
@@ -11,6 +13,7 @@ interface UserModalProps {
 }
 
 export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdit, onSuccess }) => {
+  const { t } = useTranslation();
   const { profile } = useAuthStore();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -75,13 +78,13 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
         });
 
         if (error) {
-          setError(error.message || 'Erreur lors de la création via Edge Function (A-t-elle été déployée ?)');
+          setError(error.message || t('users.modal.error_create'));
         } else {
           onSuccess();
           onClose();
         }
       } catch (err: any) {
-        setError(err.message || 'Erreur réseau');
+        setError(err.message || t('users.modal.error_network'));
       }
     }
     
@@ -89,6 +92,7 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
   };
 
   return (
+    <Portal>
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000,
@@ -98,33 +102,33 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
         <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'hsl(var(--text-muted))', cursor: 'pointer' }}>
           <X size={24} />
         </button>
-        <h2 style={{ marginBottom: '1.5rem' }}>{userToEdit ? 'Modifier Utilisateur' : 'Nouvel Utilisateur'}</h2>
+        <h2 style={{ marginBottom: '1.5rem' }}>{userToEdit ? t('users.modal.edit_title') : t('users.modal.new_title')}</h2>
         
         {error && <div className="error-alert" style={{marginBottom: '1rem'}}>{error}</div>}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div className="input-group">
-            <label className="input-label">Nom Complet</label>
+            <label className="input-label">{t('users.modal.field_name')}</label>
             <input type="text" className="input-field" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
           </div>
           
           <div className="input-group">
-            <label className="input-label">Email</label>
+            <label className="input-label">{t('users.modal.field_email')}</label>
             <input type="email" className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={!!userToEdit} />
           </div>
 
           {!userToEdit && (
             <div className="input-group">
-              <label className="input-label">Mot de passe provisoire</label>
+              <label className="input-label">{t('users.modal.field_password')}</label>
               <input type="text" className="input-field" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
             </div>
           )}
 
           {isRoot && (
             <div className="input-group">
-              <label className="input-label">Cabinet (Tenant)</label>
+              <label className="input-label">{t('users.modal.field_tenant')}</label>
               <select className="input-field" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
-                <option value="">-- Aucun (Root) --</option>
+                <option value="">{t('users.modal.tenant_none')}</option>
                 {tenants.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
@@ -133,22 +137,23 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
           )}
 
           <div className="input-group">
-            <label className="input-label">Rôle</label>
+            <label className="input-label">{t('users.modal.field_role')}</label>
             <select className="input-field" value={role} onChange={(e) => setRole(e.target.value)}>
-              {isRoot && <option value="root_admin">Administrateur Système (Root)</option>}
-              {isRoot && <option value="firm_admin">Administrateur Cabinet</option>}
-              {!isRoot && <option value="firm_admin">Administrateur</option>}
-              <option value="lawyer">Avocat</option>
-              <option value="secretary">Secrétaire</option>
-              <option value="client">Client</option>
+              {isRoot && <option value="root_admin">{t('roles.root_admin')}</option>}
+              {isRoot && <option value="firm_admin">{t('roles.firm_admin')}</option>}
+              {!isRoot && <option value="firm_admin">{t('roles.firm_admin_simple')}</option>}
+              <option value="lawyer">{t('roles.lawyer')}</option>
+              <option value="secretary">{t('roles.secretary')}</option>
+              <option value="client">{t('roles.client')}</option>
             </select>
           </div>
 
           <button type="submit" className="btn btn-primary" style={{ marginTop: '1rem' }} disabled={loading}>
-            {loading ? 'Enregistrement...' : 'Enregistrer'}
+            {loading ? t('users.modal.saving') : t('users.modal.save')}
           </button>
         </form>
       </div>
     </div>
+    </Portal>
   );
 };

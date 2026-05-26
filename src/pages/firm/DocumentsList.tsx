@@ -3,9 +3,13 @@ import { supabase } from '../../lib/supabase';
 import { Plus, Edit2, Trash2, FileText, Download } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { DocumentModal } from '../../components/firm/DocumentModal';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 export const DocumentsList = () => {
   const { profile } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const caseId = searchParams.get('case');
   const [docs, setDocs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -18,10 +22,16 @@ export const DocumentsList = () => {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('documents')
+      let query = supabase.from('documents')
         .select('*, uploader:users(full_name), case:cases(title)')
         .eq('tenant_id', profile?.tenant_id)
         .order('created_at', { ascending: false });
+      
+      if (caseId) {
+        query = query.eq('case_id', caseId);
+      }
+
+      const { data, error } = await query;
       
       if (error) throw error;
       if (data) setDocs(data);
@@ -34,7 +44,7 @@ export const DocumentsList = () => {
 
   useEffect(() => { 
     fetchDocs(); 
-  }, [fetchDocs]);
+  }, [fetchDocs, caseId]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Supprimer ce document ?")) {
@@ -74,14 +84,42 @@ export const DocumentsList = () => {
     }
   };
 
+  const totalStorage = docs.reduce((acc, d) => acc + (d.file_size || 0), 0);
+  const maxStorageGb = profile?.tenant?.max_storage_gb || 5;
+  const maxStorageBytes = maxStorageGb * 1024 * 1024 * 1024;
+  const storageUsagePercent = (totalStorage / maxStorageBytes) * 100;
+
+  const handleAddDocument = () => {
+    if (totalStorage >= maxStorageBytes) {
+      alert(`Limite de stockage atteinte (${maxStorageGb} GB). Veuillez passer au plan supérieur ou supprimer des documents.`);
+      return;
+    }
+    setEditingDoc(null);
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h3>Documents</h3>
-        <button className="btn btn-primary" onClick={() => { setEditingDoc(null); setIsModalOpen(true); }}>
+        <div>
+          <h3 style={{ marginBottom: '0.25rem' }}>Documents</h3>
+          <p style={{ fontSize: '0.85rem', color: 'hsl(var(--text-muted))' }}>
+            Stockage : {formatSize(totalStorage)} / {maxStorageGb} GB ({storageUsagePercent.toFixed(1)}%)
+          </p>
+        </div>
+        <button className="btn btn-primary" onClick={handleAddDocument}>
           <Plus size={18} /> Nouveau Document
         </button>
       </div>
+
+      {caseId && (
+        <div style={{ marginBottom: '1rem' }}>
+          <button className="btn btn-secondary" onClick={() => navigate('/dashboard/documents')} style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}>
+            &larr; Afficher tous les documents
+          </button>
+        </div>
+      )}
+
       <div className="glass-card" style={{ padding: '1.5rem' }}>
         {loading ? <p>Chargement...</p> : (
           <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>

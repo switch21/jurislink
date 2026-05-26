@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Printer } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { InvoiceModal } from '../../components/firm/InvoiceModal';
+import { printReceipt } from '../../utils/printReceipt';
 
 export const InvoicesList = () => {
   const { profile } = useAuthStore();
@@ -60,7 +61,7 @@ export const InvoicesList = () => {
               </tr>
             </thead>
             <tbody>
-              {invoices.map(inv => (
+              {invoices.map((inv, idx) => (
                 <tr key={inv.id} style={{ borderBottom: '1px solid hsla(var(--text-muted), 0.1)' }}>
                   <td style={{ padding: '1rem 0', fontWeight: '600' }}>{inv.client?.full_name || '-'}</td>
                   <td>{inv.case?.title || '-'}</td>
@@ -72,6 +73,15 @@ export const InvoicesList = () => {
                   </td>
                   <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('fr-FR') : '-'}</td>
                   <td style={{ textAlign: 'right' }}>
+                    {inv.status === 'paid' && (
+                      <button 
+                        onClick={() => profile && printReceipt(inv, profile, invoices.length - idx)} 
+                        style={{ background: 'none', border: 'none', color: 'hsl(var(--primary))', cursor: 'pointer', marginRight: '0.8rem' }}
+                        title="Imprimer le reçu"
+                      >
+                        <Printer size={18} />
+                      </button>
+                    )}
                     <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--text-muted))', cursor: 'pointer', marginRight: '0.5rem' }}><Edit2 size={18} /></button>
                     <button onClick={() => handleDelete(inv.id)} style={{ background: 'none', border: 'none', color: 'hsl(var(--danger))', cursor: 'pointer' }}><Trash2 size={18} /></button>
                   </td>

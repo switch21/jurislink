@@ -18,7 +18,7 @@ export const Login = () => {
     setLoading(true);
     setError('');
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -26,7 +26,20 @@ export const Login = () => {
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
+    } else if (data.session) {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*, tenant:tenants(*)')
+        .eq('id', data.session.user.id)
+        .single();
+        
+      if (profile && (profile.is_active === false || (profile.tenant && profile.tenant.is_active === false))) {
+        await supabase.auth.signOut();
+        setError(t('login.account_disabled', "Votre compte ou votre cabinet a été désactivé. Veuillez vous rapprocher de l'administrateur."));
+        setLoading(false);
+        return;
+      }
+      
       navigate('/dashboard');
     }
   };
@@ -37,8 +50,8 @@ export const Login = () => {
       
       <div className="login-wrapper animate-fade-in glass-card">
         <div className="login-header">
-          <div className="logo-container" style={{ background: 'transparent', boxShadow: 'none' }}>
-            <img src="/logo.png" alt="JurisLink Logo" style={{ height: '100px', objectFit: 'contain' }} />
+          <div className="logo-container" style={{ background: 'transparent', boxShadow: 'none', width: '100%', height: 'auto', margin: '0 auto 2rem auto' }}>
+            <img src="/logo-full.png" alt="JurisLink Logo" style={{ height: '120px', width: 'auto', objectFit: 'contain', maxWidth: '100%' }} />
           </div>
           <p>{t('login.welcome')}</p>
         </div>

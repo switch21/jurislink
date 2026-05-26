@@ -7,12 +7,259 @@
     "loading": "Connexion en cours..."
   },
   "dashboard": {
-    "overview": "Tableau de bord",
+    "overview": "Vue d'ensemble",
     "cases": "Dossiers",
-    "calendar": "Agenda",
+    "calendar": "Calendrier",
     "documents": "Documents",
     "invoices": "Facturation",
     "messages": "Messages",
-    "logout": "Déconnexion"
+    "logout": "Déconnexion",
+    "open_cases": "Dossiers ouverts",
+    "closed_cases": "Dossiers clôturés",
+    "won_cases": "Cas gagnés",
+    "lost_cases": "Cas perdus",
+    "unpaid_invoices": "Factures impayées",
+    "paid_invoices": "Factures payées",
+    "clients": "Clients",
+    "upcoming_events": "Événements à venir",
+    "recent_cases": "Dossiers récents",
+    "case_status": "Statut des dossiers",
+    "case_outcome": "Résultat des affaires",
+    "case_payments": "Paiements des dossiers",
+    "ongoing": "En cours",
+    "won": "Gagné",
+    "lost": "Perdu",
+    "settled": "Réglé",
+    "no_cases": "Aucun dossier trouvé",
+    "no_events": "Aucun événement à venir",
+    "pending": "En attente",
+    "closed": "Clôturé",
+    "archived": "Archivé",
+    "partial": "Partiel",
+    "paid": "Payé"
+  },
+  "sidebar": {
+    "tenants": "Cabinets",
+    "users": "Utilisateurs",
+    "currencies": "Devises",
+    "audit_logs": "Journal d'audit",
+    "team": "Équipe",
+    "clients": "Clients",
+    "history": "Historique"
+  },
+  "roles": {
+    "root_admin": "Administrateur Système (Root)",
+    "firm_admin": "Administrateur Cabinet",
+    "firm_admin_simple": "Administrateur",
+    "lawyer": "Avocat",
+    "secretary": "Secrétaire",
+    "client": "Client"
+  },
+  "common": {
+    "loading": "Chargement...",
+    "no_data": "Aucune donnée trouvée",
+    "actions": "Actions",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "search": "Rechercher...",
+    "all": "Tous",
+    "status": "Statut",
+    "date": "Date",
+    "amount": "Montant",
+    "confirm_delete": "Êtes-vous sûr de vouloir supprimer ceci ?"
+  },
+  "cases": {
+    "title": "Gestion des Dossiers",
+    "new_case": "Nouveau Dossier",
+    "search_placeholder": "Rechercher un dossier...",
+    "client": "Client",
+    "created_on": "Créé le",
+    "notes": "Notes",
+    "assigned": "Assignés",
+    "secret": "Secret",
+    "annotations": "Annotations du dossier",
+    "no_notes": "Aucune note pour le moment.",
+    "add_annotation": "Ajouter une annotation...",
+    "delete_confirm": "Supprimer ce dossier ?",
+    "status": {
+      "open": "Ouvert",
+      "closed": "Clôturé",
+      "pending": "En attente",
+      "archived": "Archivé"
+    },
+    "outcome": {
+      "ongoing": "En cours",
+      "won": "Gagné",
+      "lost": "Perdu",
+      "settled": "Réglé",
+      "dismissed": "Classé"
+    },
+    "payment": {
+      "pending": "En attente",
+      "partial": "Partiel",
+      "paid": "Payé"
+    },
+    "modal": {
+      "new_title": "Nouveau Dossier",
+      "edit_title": "Modifier le Dossier",
+      "subtitle": "Créez ou modifiez un dossier pour suivre vos affaires juridiques.",
+      "section_details": "Détails du dossier",
+      "section_state": "État du dossier",
+      "section_team": "Équipe assignée",
+      "field_title": "Titre du dossier *",
+      "placeholder_title": "Ex: Affaire Dupont c. Martin",
+      "field_client": "Client *",
+      "select_client_prompt": "-- Sélectionner un client --",
+      "field_description": "Description",
+      "field_status": "Statut",
+      "field_outcome": "Résultat",
+      "field_payment": "Paiement",
+      "field_secret": "Dossier Confidentiel",
+      "team_help": "Collaborateurs assignés à ce dossier",
+      "no_collaborators": "Aucun collaborateur disponible.",
+      "secret_warning": "Attention: Un dossier confidentiel n'est visible que par les administrateurs et les collaborateurs assignés.",
+      "error_select_client": "Veuillez sélectionner un client.",
+      "processing": "Traitement...",
+      "create_btn": "Créer le dossier",
+      "update_btn": "Mettre à jour"
+    },
+    "documents": {
+      "modal": {
+        "edit_title": "Modifier Document",
+        "new_title": "Nouveau Document",
+        "field_file": "Fichier *",
+        "field_file_replace": "Remplacer le fichier (optionnel)",
+        "file_help": "Taille maximale : 3 Mo. Formats acceptés : PDF, DOC, Excel, Images.",
+        "field_name": "Nom du fichier",
+        "field_tags": "Tags (séparés par des virgules)",
+        "placeholder_tags": "contrat, facture, pièce",
+        "field_case": "Dossier lié (optionnel)",
+        "none": "-- Aucun --",
+        "error_file_too_large": "Le fichier ne doit pas dépasser 3 Mo.",
+        "error_select_file": "Veuillez sélectionner un fichier.",
+        "error_upload": "Erreur lors de l'envoi du fichier: ",
+        "saving": "Enregistrement...",
+        "save": "Enregistrer"
+      }
+    },
+    "invoices": {
+      "modal": {
+        "edit_title": "Modifier la Facture",
+        "new_title": "Nouvelle Facture",
+        "subtitle": "Gérez les détails de facturation et suivez les paiements.",
+        "section_id": "Identification",
+        "section_amount": "Montant & État du Paiement",
+        "field_client": "Client associé *",
+        "field_case": "Dossier lié (Optionnel)",
+        "field_amount": "Montant Total *",
+        "field_currency": "Devise *",
+        "field_status": "Statut de la facture",
+        "field_due_date": "Date d'échéance",
+        "select_prompt": "-- Sélectionner --",
+        "none": "-- Aucun --",
+        "status": {
+          "draft": "Brouillon",
+          "sent": "Envoyée",
+          "paid": "Payée (Génère un reçu)",
+          "overdue": "En retard",
+          "cancelled": "Annulée"
+        },
+        "receipt_notice": "Un reçu de paiement imprimable sera disponible une fois enregistré.",
+        "saving": "Enregistrement...",
+        "create_btn": "Générer la facture",
+        "update_btn": "Mettre à jour"
+      }
+    }
+  },
+  "events": {
+    "modal": {
+      "edit_title": "Modifier Événement",
+      "new_title": "Nouvel Événement",
+      "field_title": "Titre *",
+      "field_description": "Description",
+      "field_start": "Début *",
+      "field_end": "Fin *",
+      "field_criticality": "Niveau de criticité",
+      "field_type": "Type d'événement",
+      "field_case": "Dossier lié (optionnel)",
+      "field_assignees": "Collaborateurs assignés",
+      "none": "-- Aucun --",
+      "criticality": {
+        "low": "🟢 Faible",
+        "medium": "🔵 Moyen",
+        "high": "🟠 Élevé",
+        "urgent": "🔴 Urgent"
+      },
+      "types": {
+        "general": "Général",
+        "audience": "Audience",
+        "reunion": "Réunion",
+        "deadline": "Échéance",
+        "rdv_client": "RDV Client",
+        "depot_document": "Dépôt de document"
+      },
+      "saving": "Enregistrement...",
+      "save": "Enregistrer",
+      "notification_title": "Nouvel événement assigné: {{title}}",
+      "notification_message": "{{date}} - Vous avez été assigné à cet événement."
+    }
+  },
+  "clients": {
+    "modal": {
+      "edit_title": "Modifier Client",
+      "new_title": "Nouveau Client",
+      "field_name": "Nom Complet *",
+      "field_company": "Société",
+      "field_phone": "Téléphone",
+      "field_email": "Email",
+      "field_address": "Adresse",
+      "field_notes": "Notes",
+      "placeholder_company": "Nom de la société",
+      "placeholder_address": "Adresse complète",
+      "saving": "Enregistrement...",
+      "save": "Enregistrer"
+    }
+  },
+  "users": {
+    "list": {
+      "title": "Gestion de l'équipe",
+      "stats": "{{count}} / {{max}} utilisateurs (Plan {{plan}})",
+      "add_btn": "Ajouter un membre",
+      "table": {
+        "name": "Nom",
+        "email": "Email",
+        "role": "Rôle",
+        "actions": "Actions",
+        "empty": "Aucun membre"
+      },
+      "delete_confirm": "Supprimer ce membre de l'équipe ?",
+      "reset_pwd": {
+        "title": "Réinitialiser le mot de passe",
+        "subtitle": "Membre: ",
+        "field_new": "Nouveau mot de passe",
+        "placeholder": "Minimum 6 caractères",
+        "error_min_length": "Le mot de passe doit contenir au moins 6 caractères",
+        "success": "✅ Mot de passe modifié avec succès",
+        "btn_confirm": "Confirmer",
+        "loading": "En cours..."
+      },
+      "plan_limit_alert": "Votre plan actuel ({{plan}}) est limité à {{max}} utilisateurs. Veuillez passer au plan supérieur pour ajouter plus de membres."
+    },
+    "modal": {
+      "edit_title": "Modifier Utilisateur",
+      "new_title": "Nouvel Utilisateur",
+      "field_name": "Nom Complet",
+      "field_email": "Email",
+      "field_password": "Mot de passe provisoire",
+      "field_tenant": "Cabinet (Tenant)",
+      "field_role": "Rôle",
+      "tenant_none": "-- Aucun (Root) --",
+      "error_create": "Erreur lors de la création via Edge Function (A-t-elle été déployée ?)",
+      "error_network": "Erreur réseau",
+      "saving": "Enregistrement...",
+      "save": "Enregistrer"
+    }
   }
 }
