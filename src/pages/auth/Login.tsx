@@ -15,14 +15,16 @@ export const Login = () => {
   const [loading, setLoading] = useState(false);
   const [mfaStep, setMfaStep] = useState<'login' | 'challenge' | 'setup'>('login');
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const handleMfaSuccess = async (userId: string) => {
-    // Log audit - dans un try/catch pour ne jamais bloquer la navigation
-    try {
-      const { data: userRow } = await supabase.from('users').select('tenant_id').eq('id', userId).single();
+  const handleMfaSuccess = (userId: string) => {
+    // Naviguer immédiatement sans await
+    navigate('/dashboard');
+    // Log audit en arrière-plan (fire and forget)
+    supabase.from('users').select('tenant_id').eq('id', userId).single().then(({ data: userRow }) => {
       if (userRow?.tenant_id) {
-        await supabase.from('audit_logs').insert([{
+        supabase.from('audit_logs').insert([{
           tenant_id: userRow.tenant_id,
           user_id: userId,
           action: 'LOGIN_SUCCESS',
@@ -30,10 +32,7 @@ export const Login = () => {
           entity_id: userId
         }]);
       }
-    } catch (e) {
-      console.warn('Audit log failed (non-blocking):', e);
-    }
-    navigate('/dashboard');
+    }).catch(() => {});
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -70,11 +69,13 @@ export const Login = () => {
 
       if (totpFactor) {
         setMfaFactorId(totpFactor.id);
+        setLoggedUserId(data.session.user.id);
         setMfaStep('challenge');
       } else if (isAdmin) {
+        setLoggedUserId(data.session.user.id);
         setMfaStep('setup');
       } else {
-        await handleMfaSuccess(data.session.user.id);
+        handleMfaSuccess(data.session.user.id);
       }
       setLoading(false);
     }
@@ -150,9 +151,8 @@ export const Login = () => {
 
         {mfaStep === 'setup' && (
           <MfaSetup 
-            onSetupComplete={async () => {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session?.user) await handleMfaSuccess(session.user.id);
+            onSetupComplete={() => {
+              if (loggedUserId) handleMfaSuccess(loggedUserId);
             }} 
           />
         )}
@@ -160,9 +160,8 @@ export const Login = () => {
         {mfaStep === 'challenge' && mfaFactorId && (
           <MfaChallenge 
             factorId={mfaFactorId}
-            onVerificationComplete={async () => {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session?.user) await handleMfaSuccess(session.user.id);
+            onVerificationComplete={() => {
+              if (loggedUserId) handleMfaSuccess(loggedUserId);
             }}
             onCancel={handleCancelMfa}
           />
