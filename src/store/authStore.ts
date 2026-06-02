@@ -102,7 +102,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
-    set({ user: null, profile: null, isLoading: false });
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (e) {
+      console.error('Supabase signout error, forcing local clear:', e);
+    } finally {
+      localStorage.removeItem('supabase.auth.token');
+      set({ user: null, profile: null, isLoading: false });
+    }
   }
 }));
