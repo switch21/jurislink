@@ -22,6 +22,13 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
 
   const setupMfa = async () => {
     try {
+      // Nettoyer les tentatives précédentes non validées
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const unverifiedFactors = factorsData?.totp?.filter(f => f.status === 'unverified') || [];
+      for (const f of unverifiedFactors) {
+        await supabase.auth.mfa.unenroll({ factorId: f.id });
+      }
+
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
       });
@@ -32,7 +39,7 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
       setFactorId(data.id);
     } catch (err: any) {
       console.error('MFA setup error:', err);
-      setError("Erreur lors de la configuration du 2FA. Veuillez réessayer.");
+      setError(`Erreur d'enrôlement 2FA: ${err.message || 'Veuillez réessayer.'}`);
     } finally {
       setLoading(false);
     }
