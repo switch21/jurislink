@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useTranslation } from 'react-i18next';
+import { ActivityTracker } from '../common/ActivityTracker';
 import { 
   Scale, LayoutDashboard, Briefcase, Calendar, FileText, CreditCard,
   MessageSquare, LogOut, Menu, X, Users, FolderOpen, Clock, History
@@ -85,6 +86,8 @@ export const DashboardLayout = () => {
   };
 
   return (
+    <>
+    <ActivityTracker />
     <div className="dashboard-container">
       <div className="mobile-header" style={{ height: 'auto', padding: '0.5rem 1rem' }}>
         <div className="logo-container-small" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -145,5 +148,6 @@ export const DashboardLayout = () => {
       
       {isMobileMenuOpen && <div className="mobile-overlay" onClick={() => setIsMobileMenuOpen(false)}></div>}
     </div>
+    </>
   );
 };

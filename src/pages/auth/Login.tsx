@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Scale, Lock, Mail, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useTranslation } from 'react-i18next';
+import { MfaSetup } from '../../components/auth/MfaSetup';
+import { MfaChallenge } from '../../components/auth/MfaChallenge';
 import './Login.css';
 
 export const Login = () => {
@@ -11,7 +13,21 @@ export const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mfaStep, setMfaStep] = useState<'login' | 'challenge' | 'setup'>('login');
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  const handleMfaSuccess = async (userId: string) => {
+    // Log audit
+    await supabase.from('audit_logs').insert([{
+      tenant_id: (await supabase.from('users').select('tenant_id').eq('id', userId).single()).data?.tenant_id,
+      user_id: userId,
+      action: 'LOGIN_SUCCESS',
+      entity: 'auth',
+      entity_id: userId
+    }]);
+    navigate('/dashboard');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,8 +56,27 @@ export const Login = () => {
         return;
       }
       
-      navigate('/dashboard');
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const totpFactor = factorsData?.totp?.find(f => f.status === 'verified');
+      
+      const isAdmin = profile?.role === 'root_admin' || profile?.role === 'firm_admin' || profile?.role === 'firm_admin_simple';
+
+      if (totpFactor) {
+        setMfaFactorId(totpFactor.id);
+        setMfaStep('challenge');
+      } else if (isAdmin) {
+        setMfaStep('setup');
+      } else {
+        await handleMfaSuccess(data.session.user.id);
+      }
+      setLoading(false);
     }
+  };
+
+  const handleCancelMfa = async () => {
+    await supabase.auth.signOut();
+    setMfaStep('login');
+    setMfaFactorId(null);
   };
 
   return (
@@ -62,47 +97,69 @@ export const Login = () => {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="login-form">
-          <div className="input-group">
-            <label className="input-label" htmlFor="email">{t('login.email')}</label>
-            <div className="input-with-icon">
-              <Mail size={18} className="input-icon" />
-              <input 
-                id="email"
-                type="email" 
-                className="input-field" 
-                placeholder="avocat@cabinet.fr"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+        {mfaStep === 'login' && (
+          <form onSubmit={handleLogin} className="login-form">
+            <div className="input-group">
+              <label className="input-label" htmlFor="email">{t('login.email')}</label>
+              <div className="input-with-icon">
+                <Mail size={18} className="input-icon" />
+                <input 
+                  id="email"
+                  type="email" 
+                  className="input-field" 
+                  placeholder="avocat@cabinet.fr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="input-group">
-            <label className="input-label" htmlFor="password">{t('login.password')}</label>
-            <div className="input-with-icon">
-              <Lock size={18} className="input-icon" />
-              <input 
-                id="password"
-                type="password" 
-                className="input-field" 
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+            <div className="input-group">
+              <label className="input-label" htmlFor="password">{t('login.password')}</label>
+              <div className="input-with-icon">
+                <Lock size={18} className="input-icon" />
+                <input 
+                  id="password"
+                  type="password" 
+                  className="input-field" 
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
-            {loading ? t('login.loading') : (
-              <>
-                {t('login.signIn')} <ArrowRight size={18} />
-              </>
-            )}
-          </button>
-        </form>
+            <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
+              {loading ? t('login.loading') : (
+                <>
+                  {t('login.signIn')} <ArrowRight size={18} />
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {mfaStep === 'setup' && (
+          <MfaSetup 
+            onSetupComplete={async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) await handleMfaSuccess(session.user.id);
+            }} 
+          />
+        )}
+
+        {mfaStep === 'challenge' && mfaFactorId && (
+          <MfaChallenge 
+            factorId={mfaFactorId}
+            onVerificationComplete={async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) await handleMfaSuccess(session.user.id);
+            }}
+            onCancel={handleCancelMfa}
+          />
+        )}
       </div>
     </div>
   );
