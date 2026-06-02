@@ -18,14 +18,21 @@ export const Login = () => {
   const navigate = useNavigate();
 
   const handleMfaSuccess = async (userId: string) => {
-    // Log audit
-    await supabase.from('audit_logs').insert([{
-      tenant_id: (await supabase.from('users').select('tenant_id').eq('id', userId).single()).data?.tenant_id,
-      user_id: userId,
-      action: 'LOGIN_SUCCESS',
-      entity: 'auth',
-      entity_id: userId
-    }]);
+    // Log audit - dans un try/catch pour ne jamais bloquer la navigation
+    try {
+      const { data: userRow } = await supabase.from('users').select('tenant_id').eq('id', userId).single();
+      if (userRow?.tenant_id) {
+        await supabase.from('audit_logs').insert([{
+          tenant_id: userRow.tenant_id,
+          user_id: userId,
+          action: 'LOGIN_SUCCESS',
+          entity: 'auth',
+          entity_id: userId
+        }]);
+      }
+    } catch (e) {
+      console.warn('Audit log failed (non-blocking):', e);
+    }
     navigate('/dashboard');
   };
 
