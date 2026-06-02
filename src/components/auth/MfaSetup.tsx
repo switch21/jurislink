@@ -31,6 +31,7 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
 
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
+        friendlyName: `JurisLink-${Date.now()}`
       });
 
       if (error) throw error;
