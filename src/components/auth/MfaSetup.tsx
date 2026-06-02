@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { useTranslation } from 'react-i18next';
-import { QRCodeSVG } from 'qrcode.react';
 
 interface MfaSetupProps {
   onSetupComplete: () => void;
 }
 
 export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
-  const { t } = useTranslation();
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState('');
@@ -87,8 +84,8 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
       </p>
       
       {qrCodeUrl && (
-        <div style={{ background: '#fff', padding: '1rem', display: 'inline-block', borderRadius: '8px', marginBottom: '1.5rem' }}>
-          <QRCodeSVG value={qrCodeUrl} size={180} />
+        <div style={{ background: '#fff', padding: '1rem', display: 'inline-block', borderRadius: '8px', marginBottom: '1.5rem', border: '1px solid #eee' }}>
+          <img src={qrCodeUrl} alt="QR Code 2FA" style={{ width: '180px', height: '180px', display: 'block' }} />
         </div>
       )}
 
