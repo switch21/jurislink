@@ -40,16 +40,23 @@ export const MessagesPage = () => {
   const fetchMessages = React.useCallback(async (contactId: string) => {
     if (!profile?.tenant_id || !user?.id) return;
     try {
-      const { data } = await supabase.from('messages').select('*')
+      const { data, error } = await supabase.from('messages').select('*')
         .eq('tenant_id', profile?.tenant_id)
         .or(`and(sender_id.eq.${user?.id},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${user?.id})`)
         .order('created_at', { ascending: true });
-      if (data) setMessages(data);
+      
+      if (error) {
+        console.error('Fetch messages error:', error);
+      } else if (data) {
+        console.log('Fetched messages:', data.length);
+        setMessages(data);
+      }
+
       // Mark as read
       await supabase.from('messages').update({ read_status: true })
         .eq('receiver_id', user?.id).eq('sender_id', contactId).eq('read_status', false);
     } catch (err) {
-      console.error('Error fetching messages:', err);
+      console.error('Error in fetchMessages:', err);
     }
   }, [profile?.tenant_id, user?.id]);
 
@@ -62,12 +69,24 @@ export const MessagesPage = () => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedContact) return;
     setSending(true);
-    await supabase.from('messages').insert({
-      tenant_id: profile?.tenant_id,
-      sender_id: user?.id,
-      receiver_id: selectedContact.id,
-      content: newMessage.trim()
-    });
+    try {
+      const { data, error } = await supabase.from('messages').insert({
+        tenant_id: profile?.tenant_id,
+        sender_id: user?.id,
+        receiver_id: selectedContact.id,
+        content: newMessage.trim()
+      }).select('*');
+      
+      if (error) {
+        console.error('Error sending message:', error);
+        alert('Erreur: ' + error.message);
+      } else {
+        console.log('Message inserted:', data);
+      }
+    } catch (err: any) {
+      console.error('Exception sending message:', err);
+    }
+    
     setNewMessage('');
     fetchMessages(selectedContact.id);
     setSending(false);
