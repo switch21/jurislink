@@ -12,48 +12,32 @@ export const ActivityTracker = () => {
   const { t } = useTranslation();
   const [showWarning, setShowWarning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(WARNING_BEFORE_MS / 1000);
+  const [expiresAt, setExpiresAt] = useState(Date.now() + TIMEOUT_MS);
   
-  const timeoutRef = useRef<NodeJS.Timeout>();
-  const warningRef = useRef<NodeJS.Timeout>();
-  const countdownRef = useRef<NodeJS.Timeout>();
-
   const resetTimers = useCallback(() => {
-    if (showWarning) return; // Ne pas reset si l'avertissement est déjà affiché (l'utilisateur doit cliquer explicitement)
-
-    clearTimeout(timeoutRef.current);
-    clearTimeout(warningRef.current);
-    clearInterval(countdownRef.current);
-
-    // Démarrer le timer d'avertissement
-    warningRef.current = setTimeout(() => {
-      setShowWarning(true);
-      setTimeLeft(WARNING_BEFORE_MS / 1000);
-      
-      // Démarrer le compte à rebours visuel
-      countdownRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }, TIMEOUT_MS - WARNING_BEFORE_MS);
-
-    // Démarrer le timer de déconnexion stricte
-    timeoutRef.current = setTimeout(() => {
-      handleForceLogout();
-    }, TIMEOUT_MS);
+    if (showWarning) return;
+    setExpiresAt(Date.now() + TIMEOUT_MS);
   }, [showWarning]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const left = expiresAt - now;
+
+      if (left <= 0) {
+        clearInterval(interval);
+        handleForceLogout();
+      } else if (left <= WARNING_BEFORE_MS) {
+        if (!showWarning) setShowWarning(true);
+        setTimeLeft(Math.max(0, Math.ceil(left / 1000)));
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [expiresAt, showWarning]);
+
   const handleForceLogout = async () => {
-    clearTimeout(timeoutRef.current);
-    clearTimeout(warningRef.current);
-    clearInterval(countdownRef.current);
     setShowWarning(false);
-    
-    // On utilise signOut de authStore qui est robuste (cf notre fix précédent)
     await signOut();
   };
 
@@ -81,9 +65,6 @@ export const ActivityTracker = () => {
 
     return () => {
       events.forEach(event => document.removeEventListener(event, handleActivity));
-      clearTimeout(timeoutRef.current);
-      clearTimeout(warningRef.current);
-      clearInterval(countdownRef.current);
       if (throttleTimeout) clearTimeout(throttleTimeout);
     };
   }, [resetTimers]);

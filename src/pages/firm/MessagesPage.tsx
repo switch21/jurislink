@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Send, Check, CheckCheck } from 'lucide-react';
+import { Send, Check, CheckCheck, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
 export const MessagesPage = () => {
@@ -11,6 +11,13 @@ export const MessagesPage = () => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const fetchContacts = React.useCallback(async () => {
     if (!profile?.tenant_id) return;
@@ -66,11 +73,15 @@ export const MessagesPage = () => {
     setSending(false);
   };
 
+  const showContacts = !isMobile || !selectedContact;
+  const showChat = !isMobile || !!selectedContact;
+
   return (
     <div className="animate-fade-in" style={{ display: 'flex', gap: '1rem', height: 'calc(100vh - 180px)' }}>
       {/* Contacts List */}
-      <div className="glass-card" style={{ width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '1rem', borderBottom: '1px solid hsla(var(--text-muted), 0.1)', fontWeight: 600 }}>Contacts</div>
+      {showContacts && (
+        <div className="glass-card" style={{ width: isMobile ? '100%' : 280, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '1rem', borderBottom: '1px solid hsla(var(--text-muted), 0.1)', fontWeight: 600 }}>Contacts</div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? <p style={{ padding: '1rem' }}>Chargement...</p> : contacts.map(c => (
             <button key={c.id} onClick={() => selectContact(c)}
@@ -91,14 +102,21 @@ export const MessagesPage = () => {
           {contacts.length === 0 && !loading && <p style={{ padding: '1rem', color: 'hsl(var(--text-muted))', fontSize: '0.9rem' }}>Aucun contact</p>}
         </div>
       </div>
+      )}
 
       {/* Chat Area */}
-      <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {selectedContact ? (
-          <>
-            <div style={{ padding: '1rem', borderBottom: '1px solid hsla(var(--text-muted), 0.1)', fontWeight: 600 }}>
-              {selectedContact.full_name}
-            </div>
+      {showChat && (
+        <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', width: isMobile ? '100%' : 'auto' }}>
+          {selectedContact ? (
+            <>
+              <div style={{ padding: '1rem', borderBottom: '1px solid hsla(var(--text-muted), 0.1)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {isMobile && (
+                  <button onClick={() => setSelectedContact(null)} style={{ background: 'none', border: 'none', padding: '0.25rem', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'hsl(var(--text-main))' }}>
+                    <ArrowLeft size={20} />
+                  </button>
+                )}
+                {selectedContact.full_name}
+              </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {messages.map(m => {
                 const isMine = m.sender_id === user?.id;
@@ -133,6 +151,7 @@ export const MessagesPage = () => {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };
