@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 interface MfaChallengeProps {
@@ -8,20 +7,23 @@ interface MfaChallengeProps {
 }
 
 export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel }) => {
-  const navigate = useNavigate();
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState('');
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     
     setLoading(true);
     setError(null);
+    
     try {
+      setDebugInfo('Étape 1: Création du challenge...');
       const challenge = await supabase.auth.mfa.challenge({ factorId });
       if (challenge.error) throw challenge.error;
       
+      setDebugInfo('Étape 2: Vérification du code...');
       const verify = await supabase.auth.mfa.verify({
         factorId,
         challengeId: challenge.data.id,
@@ -30,10 +32,13 @@ export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel }
       
       if (verify.error) throw verify.error;
       
-      // Navigation directe et immédiate
-      navigate('/dashboard');
+      setDebugInfo('Étape 3: Code validé ! Redirection...');
+      
+      // Redirection dure - impossible à bloquer par React
+      window.location.href = '/dashboard';
     } catch (err: any) {
       console.error('MFA verify error:', err);
+      setDebugInfo('');
       setError(`Erreur: ${err.message || 'Code invalide ou expiré. Veuillez réessayer.'}`);
       setLoading(false);
     }
@@ -49,6 +54,7 @@ export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel }
       </p>
 
       {error && <div className="error-alert">{error}</div>}
+      {debugInfo && <div style={{ color: 'hsl(var(--primary))', fontSize: '0.85rem', marginBottom: '0.5rem', fontStyle: 'italic' }}>{debugInfo}</div>}
 
       <form onSubmit={handleVerify}>
         <div className="input-group">

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 interface MfaSetupProps {
@@ -7,13 +6,13 @@ interface MfaSetupProps {
 }
 
 export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
-  const navigate = useNavigate();
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [debugInfo, setDebugInfo] = useState('');
 
   useEffect(() => {
     setupMfa();
@@ -21,13 +20,14 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
 
   const setupMfa = async () => {
     try {
-      // Nettoyer les tentatives précédentes non validées
+      setDebugInfo('Nettoyage des anciens facteurs...');
       const { data: factorsData } = await supabase.auth.mfa.listFactors();
       const unverifiedFactors = factorsData?.totp?.filter(f => f.status === 'unverified') || [];
       for (const f of unverifiedFactors) {
         await supabase.auth.mfa.unenroll({ factorId: f.id });
       }
 
+      setDebugInfo('Création du facteur TOTP...');
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
         friendlyName: `JurisLink-${Date.now()}`
@@ -37,6 +37,7 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
       
       setQrCodeUrl(data.totp.qr_code);
       setFactorId(data.id);
+      setDebugInfo('');
     } catch (err: any) {
       console.error('MFA setup error:', err);
       setError(`Erreur d'enrôlement 2FA: ${err.message || 'Veuillez réessayer.'}`);
@@ -51,10 +52,13 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
     
     setVerifying(true);
     setError(null);
+    
     try {
+      setDebugInfo('Étape 1: Création du challenge...');
       const challenge = await supabase.auth.mfa.challenge({ factorId });
       if (challenge.error) throw challenge.error;
       
+      setDebugInfo('Étape 2: Vérification du code...');
       const verify = await supabase.auth.mfa.verify({
         factorId,
         challengeId: challenge.data.id,
@@ -63,11 +67,14 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
       
       if (verify.error) throw verify.error;
       
-      // Navigation directe et immédiate - ne pas attendre le callback parent
-      navigate('/dashboard');
+      setDebugInfo('Étape 3: Code validé ! Redirection...');
+      
+      // Redirection dure - impossible à bloquer par React
+      window.location.href = '/dashboard';
     } catch (err: any) {
       console.error('MFA verify error:', err);
-      setError(`Erreur de vérification: ${err.message || 'Code invalide. Veuillez réessayer.'}`);
+      setDebugInfo('');
+      setError(`Erreur: ${err.message || 'Code invalide. Veuillez réessayer.'}`);
       setVerifying(false);
     }
   };
@@ -92,6 +99,7 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
       )}
 
       {error && <div className="error-alert">{error}</div>}
+      {debugInfo && <div style={{ color: 'hsl(var(--primary))', fontSize: '0.85rem', marginBottom: '0.5rem', fontStyle: 'italic' }}>{debugInfo}</div>}
 
       <form onSubmit={handleVerify}>
         <div className="input-group">
