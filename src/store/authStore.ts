@@ -73,24 +73,31 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ user: null, profile: null, isLoading: false });
       }
 
-      supabase.auth.onAuthStateChange(async (_event, session) => {
+      supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
-          const { data: profile } = await supabase
+          // Lancement de la requête de profil en arrière-plan sans bloquer onAuthStateChange
+          supabase
             .from('users')
             .select('*, tenant:tenants(*)')
             .eq('id', session.user.id)
-            .single();
-          
-          if (profile) {
-            if (profile.is_active === false || (profile.tenant && profile.tenant.is_active === false)) {
-              await supabase.auth.signOut();
-              set({ user: null, profile: null, isLoading: false });
-              return;
-            }
-            updateAppLanguage(profile.preferred_language || profile.tenant?.language || 'fr');
-          }
-
-          set({ user: session.user, profile, isLoading: false });
+            .single()
+            .then(({ data: profile }) => {
+              if (profile) {
+                if (profile.is_active === false || (profile.tenant && profile.tenant.is_active === false)) {
+                  supabase.auth.signOut().then(() => {
+                    set({ user: null, profile: null, isLoading: false });
+                  });
+                  return;
+                }
+                updateAppLanguage(profile.preferred_language || profile.tenant?.language || 'fr');
+              }
+              set({ user: session.user, profile, isLoading: false });
+            })
+            .catch(err => {
+              console.error('Error fetching profile in onAuthStateChange:', err);
+              // Fallback: on définit l'utilisateur même si le profil échoue pour éviter le blocage
+              set({ user: session.user, profile: null, isLoading: false });
+            });
         } else {
           set({ user: null, profile: null, isLoading: false });
         }
