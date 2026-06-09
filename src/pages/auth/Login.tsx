@@ -151,18 +151,13 @@ export const Login = () => {
 
         {mfaStep === 'setup' && (
           <MfaSetup 
-            onSetupComplete={() => {
-              if (loggedUserId) handleMfaSuccess(loggedUserId);
-            }} 
+            onSetupComplete={() => navigate('/dashboard')} 
           />
         )}
 
         {mfaStep === 'challenge' && mfaFactorId && (
           <MfaChallenge 
             factorId={mfaFactorId}
-            onVerificationComplete={() => {
-              if (loggedUserId) handleMfaSuccess(loggedUserId);
-            }}
             onCancel={handleCancelMfa}
           />
         )}

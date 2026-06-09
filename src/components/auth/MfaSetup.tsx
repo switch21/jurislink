@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 interface MfaSetupProps {
@@ -6,6 +7,7 @@ interface MfaSetupProps {
 }
 
 export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
+  const navigate = useNavigate();
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState('');
@@ -61,17 +63,17 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
       
       if (verify.error) throw verify.error;
       
-      onSetupComplete();
+      // Navigation directe et immédiate - ne pas attendre le callback parent
+      navigate('/dashboard');
     } catch (err: any) {
       console.error('MFA verify error:', err);
-      setError("Code invalide. Veuillez réessayer.");
-    } finally {
+      setError(`Erreur de vérification: ${err.message || 'Code invalide. Veuillez réessayer.'}`);
       setVerifying(false);
     }
   };
 
   if (loading) {
-    return <div style={{ textAlign: 'center' }}>Génération du QR Code...</div>;
+    return <div style={{ textAlign: 'center', padding: '2rem' }}>Génération du QR Code...</div>;
   }
 
   return (
@@ -101,6 +103,7 @@ export const MfaSetup: React.FC<MfaSetupProps> = ({ onSetupComplete }) => {
             onChange={(e) => setVerifyCode(e.target.value)}
             maxLength={6}
             required
+            autoFocus
             style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '2px' }}
           />
         </div>

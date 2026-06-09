@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useTranslation } from 'react-i18next';
 
 interface MfaChallengeProps {
   factorId: string;
-  onVerificationComplete: () => void;
   onCancel: () => void;
 }
 
-export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onVerificationComplete, onCancel }) => {
-  const { t } = useTranslation();
+export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel }) => {
+  const navigate = useNavigate();
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,11 +30,11 @@ export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onVerifica
       
       if (verify.error) throw verify.error;
       
-      onVerificationComplete();
+      // Navigation directe et immédiate
+      navigate('/dashboard');
     } catch (err: any) {
       console.error('MFA verify error:', err);
-      setError("Code invalide ou expiré. Veuillez réessayer.");
-    } finally {
+      setError(`Erreur: ${err.message || 'Code invalide ou expiré. Veuillez réessayer.'}`);
       setLoading(false);
     }
   };
