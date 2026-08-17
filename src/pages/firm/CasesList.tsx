@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2, Search, MessageSquare, Send, Lock, Users, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, MessageSquare, Send, Lock, Users, FileText, Download } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useTranslation } from 'react-i18next';
 import { CaseModal } from '../../components/firm/CaseModal';
@@ -15,6 +15,7 @@ export const CasesList = () => {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [caseNotes, setCaseNotes] = useState<Record<string, any[]>>({});
+  const [caseDocs, setCaseDocs] = useState<Record<string, any[]>>({});
   const [newNote, setNewNote] = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
   const { profile, user } = useAuthStore();
@@ -43,6 +44,17 @@ export const CasesList = () => {
         notes.forEach(n => { if (!grouped[n.case_id]) grouped[n.case_id] = []; grouped[n.case_id].push(n); });
         setCaseNotes(grouped);
       }
+
+      const { data: docs } = await supabase.from('documents')
+        .select('*, uploader:users(full_name)')
+        .eq('tenant_id', profile?.tenant_id)
+        .order('created_at', { ascending: false });
+
+      if (docs) {
+        const groupedDocs: Record<string, any[]> = {};
+        docs.forEach(d => { if (!groupedDocs[d.case_id]) groupedDocs[d.case_id] = []; groupedDocs[d.case_id].push(d); });
+        setCaseDocs(groupedDocs);
+      }
     } catch (err) {
       console.error('Error fetching cases:', err);
     } finally {
@@ -56,6 +68,22 @@ export const CasesList = () => {
     if (window.confirm(t('cases.delete_confirm'))) {
       await supabase.from('cases').delete().eq('id', id);
       fetchCases();
+    }
+  };
+
+  const handleDownloadDoc = async (filePath: string, fileName: string) => {
+    try {
+      const { data, error } = await supabase.storage.from('documents').download(filePath);
+      if (error) throw error;
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download error:', err);
+      alert('Erreur lors du téléchargement');
     }
   };
 
@@ -125,6 +153,7 @@ export const CasesList = () => {
           {filtered.map(c => {
             const isExpanded = expandedId === c.id;
             const notes = caseNotes[c.id] || [];
+            const docsForCase = caseDocs[c.id] || [];
             
             return (
               <div key={c.id} className="glass-card" style={{ padding: '1.25rem', transition: 'var(--transition)', borderLeft: c.is_secret ? '3px solid hsl(var(--danger))' : 'none' }}>
@@ -163,6 +192,34 @@ export const CasesList = () => {
 
                 {isExpanded && (
                   <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid hsla(var(--text-muted), 0.1)' }}>
+                    <h5 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <FileText size={16} /> Documents liés
+                    </h5>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                      {docsForCase.length === 0 ? (
+                        <p style={{ fontSize: '0.85rem', color: 'hsl(var(--text-muted))', fontStyle: 'italic' }}>Aucun document lié</p>
+                      ) : (
+                        docsForCase.map(d => (
+                          <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'hsla(var(--text-muted), 0.05)', borderRadius: 'var(--radius-sm)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <FileText size={16} style={{ color: 'hsl(var(--primary))' }} />
+                              <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{d.file_name}</span>
+                              <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))' }}>
+                                ({(d.file_size / 1024).toFixed(1)} Ko)
+                              </span>
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); handleDownloadDoc(d.file_path, d.file_name); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--primary))', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}>
+                              <Download size={14} /> <span className="hide-on-mobile">Télécharger</span>
+                            </button>
+                          </div>
+                        ))
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/documents?case=${c.id}`); }} className="btn btn-secondary" style={{ alignSelf: 'flex-start', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                        Gérer les documents
+                      </button>
+                    </div>
+
                     <h5 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <MessageSquare size={16} /> {t('cases.annotations')}
                     </h5>

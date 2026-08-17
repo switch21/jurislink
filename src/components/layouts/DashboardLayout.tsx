@@ -47,13 +47,13 @@ export const DashboardLayout = () => {
       case 'firm_admin':
         items = [
           { path: '/dashboard', label: t('dashboard.overview'), icon: <LayoutDashboard size={20} /> },
-          { path: '/dashboard/users', label: t('sidebar.team', 'Équipe'), icon: <Users size={20} /> },
           { path: '/dashboard/clients', label: t('sidebar.clients', 'Clients'), icon: <Briefcase size={20} /> },
           { path: '/dashboard/cases', label: t('dashboard.cases'), icon: <FolderOpen size={20} /> },
           { path: '/dashboard/calendar', label: t('dashboard.calendar'), icon: <Calendar size={20} />, restricted: plan === 'starter' },
-          { path: '/dashboard/event-history', label: t('sidebar.history', 'Historique'), icon: <Clock size={20} /> },
           { path: '/dashboard/documents', label: t('dashboard.documents'), icon: <FileText size={20} /> },
           { path: '/dashboard/invoices', label: t('dashboard.invoices'), icon: <CreditCard size={20} />, restricted: plan === 'starter' },
+          { path: '/dashboard/users', label: t('sidebar.team', 'Équipe'), icon: <Users size={20} /> },
+          { path: '/dashboard/event-history', label: t('sidebar.history', 'Historique'), icon: <Clock size={20} /> },
           { path: '/dashboard/messages', label: t('dashboard.messages'), icon: <MessageSquare size={20} />, restricted: plan === 'starter' },
         ];
         break;
@@ -64,9 +64,9 @@ export const DashboardLayout = () => {
           { path: '/dashboard/clients', label: t('sidebar.clients', 'Clients'), icon: <Briefcase size={20} /> },
           { path: '/dashboard/cases', label: t('dashboard.cases'), icon: <FolderOpen size={20} /> },
           { path: '/dashboard/calendar', label: t('dashboard.calendar'), icon: <Calendar size={20} />, restricted: plan === 'starter' },
-          { path: '/dashboard/event-history', label: t('sidebar.history', 'Historique'), icon: <Clock size={20} /> },
           { path: '/dashboard/documents', label: t('dashboard.documents'), icon: <FileText size={20} /> },
           { path: '/dashboard/invoices', label: t('dashboard.invoices'), icon: <CreditCard size={20} />, restricted: plan === 'starter' },
+          { path: '/dashboard/event-history', label: t('sidebar.history', 'Historique'), icon: <Clock size={20} /> },
           { path: '/dashboard/messages', label: t('dashboard.messages'), icon: <MessageSquare size={20} />, restricted: plan === 'starter' },
         ];
         break;
