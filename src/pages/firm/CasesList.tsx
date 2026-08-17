@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2, Search, MessageSquare, Send, Lock, Users, FileText, Download } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, MessageSquare, Send, Lock, Users, FileText, Download, Archive, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useTranslation } from 'react-i18next';
 import { CaseModal } from '../../components/firm/CaseModal';
@@ -21,6 +21,10 @@ export const CasesList = () => {
   const { profile, user } = useAuthStore();
   const navigate = useNavigate();
 
+  // Closure/Archive workflow state
+  const [closureModal, setClosureModal] = useState<{ caseId: string; outcome: string } | null>(null);
+  const [archiveModal, setArchiveModal] = useState<string | null>(null);
+
   const fetchCases = React.useCallback(async () => {
     if (!profile?.tenant_id) {
       setLoading(false);
@@ -31,6 +35,7 @@ export const CasesList = () => {
       const { data } = await supabase.from('cases')
         .select('*, client:clients(full_name), assignments:case_assignments(user:users(full_name))')
         .eq('tenant_id', profile?.tenant_id)
+        .neq('status', 'archived')
         .order('created_at', { ascending: false });
       if (data) setCases(data);
 
@@ -63,6 +68,32 @@ export const CasesList = () => {
   }, [profile?.tenant_id]);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
+
+  // Check for closure reminders on load
+  useEffect(() => {
+    if (cases.length === 0) return;
+    const now = new Date();
+    const reminders = cases.filter(c => 
+      c.next_closure_reminder && new Date(c.next_closure_reminder) <= now && c.status === 'open'
+    );
+    if (reminders.length > 0) {
+      reminders.forEach(c => {
+        setTimeout(() => {
+          const shouldClose = window.confirm(
+            `Rappel : Le dossier "${c.title}" (${c.outcome === 'won' ? 'Gagné' : 'Perdu'}) n'est pas encore clôturé.\nVoulez-vous le clôturer maintenant ?`
+          );
+          if (shouldClose) {
+            handleClosureConfirm(c.id);
+          } else {
+            // Snooze 3 more days
+            const nextReminder = new Date();
+            nextReminder.setDate(nextReminder.getDate() + 3);
+            supabase.from('cases').update({ next_closure_reminder: nextReminder.toISOString() }).eq('id', c.id).then(() => {});
+          }
+        }, 500);
+      });
+    }
+  }, [cases]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm(t('cases.delete_confirm'))) {
@@ -103,6 +134,64 @@ export const CasesList = () => {
     setNoteLoading(false);
   };
 
+  // Quick inline update for status/outcome/payment
+  const handleQuickUpdate = async (caseId: string, field: string, value: string) => {
+    const updateData: any = { [field]: value };
+    
+    // If outcome changes to won/lost/settled/dismissed, trigger closure workflow
+    if (field === 'outcome' && ['won', 'lost', 'settled', 'dismissed'].includes(value)) {
+      setClosureModal({ caseId, outcome: value });
+      // Still update the outcome immediately
+      await supabase.from('cases').update(updateData).eq('id', caseId);
+      fetchCases();
+      return;
+    }
+
+    await supabase.from('cases').update(updateData).eq('id', caseId);
+    fetchCases();
+  };
+
+  const handleClosureConfirm = async (caseId: string) => {
+    // Close the case
+    await supabase.from('cases').update({ 
+      status: 'closed',
+      next_closure_reminder: null 
+    }).eq('id', caseId);
+    setClosureModal(null);
+    // Ask about archiving
+    setArchiveModal(caseId);
+  };
+
+  const handleClosureDecline = async (caseId: string) => {
+    // Set reminder in 3 days
+    const nextReminder = new Date();
+    nextReminder.setDate(nextReminder.getDate() + 3);
+    await supabase.from('cases').update({ 
+      next_closure_reminder: nextReminder.toISOString() 
+    }).eq('id', caseId);
+    setClosureModal(null);
+    fetchCases();
+  };
+
+  const handleArchiveSchedule = async (caseId: string) => {
+    // Set archivable_after to 1 month from now
+    const archiveDate = new Date();
+    archiveDate.setMonth(archiveDate.getMonth() + 1);
+    await supabase.from('cases').update({ 
+      archivable_after: archiveDate.toISOString() 
+    }).eq('id', caseId);
+    setArchiveModal(null);
+    fetchCases();
+  };
+
+  const handleArchiveNow = async (caseId: string) => {
+    await supabase.from('cases').update({ 
+      status: 'archived',
+      archivable_after: null 
+    }).eq('id', caseId);
+    fetchCases();
+  };
+
   const statusLabels: Record<string, string> = { 
     open: t('cases.status.open'), 
     closed: t('cases.status.closed'), 
@@ -129,8 +218,32 @@ export const CasesList = () => {
 
   const filtered = cases.filter(c => !search || c.title.toLowerCase().includes(search.toLowerCase()));
 
-  const Badge = ({ label, color }: { label: string; color: string }) => (
-    <span style={{ padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', fontSize: '0.75rem', background: `hsla(${color}, 0.1)`, color: `hsl(${color})` }}>{label}</span>
+  const SelectBadge = ({ value, options, labels, colors, onChange }: { value: string; options: string[]; labels: Record<string, string>; colors: Record<string, string>; onChange: (val: string) => void }) => (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <select
+        value={value}
+        onChange={(e) => { e.stopPropagation(); onChange(e.target.value); }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          appearance: 'none',
+          WebkitAppearance: 'none',
+          padding: '0.15rem 1.2rem 0.15rem 0.5rem',
+          borderRadius: 'var(--radius-full)',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          background: `hsla(${colors[value] || 'var(--text-muted)'}, 0.1)`,
+          color: `hsl(${colors[value] || 'var(--text-muted)'})`,
+          border: `1px solid hsla(${colors[value] || 'var(--text-muted)'}, 0.3)`,
+          cursor: 'pointer',
+          outline: 'none',
+        }}
+      >
+        {options.map(opt => (
+          <option key={opt} value={opt}>{labels[opt] || opt}</option>
+        ))}
+      </select>
+      <ChevronDown size={10} style={{ position: 'absolute', right: '0.35rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: `hsl(${colors[value] || 'var(--text-muted)'})` }} />
+    </div>
   );
 
   const locale = i18n.language === 'fr' ? 'fr-FR' : 'en-US';
@@ -154,6 +267,7 @@ export const CasesList = () => {
             const isExpanded = expandedId === c.id;
             const notes = caseNotes[c.id] || [];
             const docsForCase = caseDocs[c.id] || [];
+            const canArchive = c.status === 'closed' && c.archivable_after && new Date(c.archivable_after) <= new Date();
             
             return (
               <div key={c.id} className="glass-card" style={{ padding: '1.25rem', transition: 'var(--transition)', borderLeft: c.is_secret ? '3px solid hsl(var(--danger))' : 'none' }}>
@@ -168,9 +282,27 @@ export const CasesList = () => {
                     </div>
                     
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <Badge label={statusLabels[c.status] || c.status} color={statusColors[c.status] || 'var(--text-muted)'} />
-                      <Badge label={outcomeLabels[c.outcome] || c.outcome || '-'} color={outcomeColors[c.outcome] || 'var(--text-muted)'} />
-                      <Badge label={payLabels[c.payment_status] || c.payment_status || '-'} color={payColors[c.payment_status] || 'var(--text-muted)'} />
+                      <SelectBadge
+                        value={c.status}
+                        options={['open', 'pending', 'closed']}
+                        labels={statusLabels}
+                        colors={statusColors}
+                        onChange={(val) => handleQuickUpdate(c.id, 'status', val)}
+                      />
+                      <SelectBadge
+                        value={c.outcome || 'ongoing'}
+                        options={['ongoing', 'won', 'lost', 'settled', 'dismissed']}
+                        labels={outcomeLabels}
+                        colors={outcomeColors}
+                        onChange={(val) => handleQuickUpdate(c.id, 'outcome', val)}
+                      />
+                      <SelectBadge
+                        value={c.payment_status || 'pending'}
+                        options={['pending', 'partial', 'paid']}
+                        labels={payLabels}
+                        colors={payColors}
+                        onChange={(val) => handleQuickUpdate(c.id, 'payment_status', val)}
+                      />
                       <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.5rem' }}>
                         <MessageSquare size={14} /> {notes.length} {t('cases.notes')}
                       </span>
@@ -178,6 +310,14 @@ export const CasesList = () => {
                         <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.5rem' }}>
                           <Users size={14} /> {c.assignments.length} {t('cases.assigned')}
                         </span>
+                      )}
+                      {canArchive && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleArchiveNow(c.id); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-full)', fontSize: '0.75rem', fontWeight: 600, background: 'hsla(var(--warning), 0.15)', color: 'hsl(var(--warning))', border: '1px solid hsla(var(--warning), 0.3)', cursor: 'pointer' }}
+                        >
+                          <Archive size={12} /> Archiver
+                        </button>
                       )}
                     </div>
                   </div>
@@ -265,6 +405,46 @@ export const CasesList = () => {
       )}
       
       {isModalOpen && <CaseModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} caseToEdit={editingCase} onSuccess={fetchCases} />}
+
+      {/* Closure confirmation modal */}
+      {closureModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setClosureModal(null)}>
+          <div className="glass-card" style={{ padding: '2rem', maxWidth: '450px', width: '90%' }} onClick={(e) => e.stopPropagation()}>
+            <h4 style={{ marginBottom: '1rem' }}>Clôturer le dossier ?</h4>
+            <p style={{ fontSize: '0.9rem', color: 'hsl(var(--text-muted))', marginBottom: '1.5rem' }}>
+              L'issue du dossier a été mise à jour ({outcomeLabels[closureModal.outcome]}). Voulez-vous clôturer ce dossier maintenant ?
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => handleClosureDecline(closureModal.caseId)}>
+                Non, plus tard
+              </button>
+              <button className="btn btn-primary" onClick={() => handleClosureConfirm(closureModal.caseId)}>
+                Oui, clôturer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive scheduling modal */}
+      {archiveModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => { setArchiveModal(null); fetchCases(); }}>
+          <div className="glass-card" style={{ padding: '2rem', maxWidth: '450px', width: '90%' }} onClick={(e) => e.stopPropagation()}>
+            <h4 style={{ marginBottom: '1rem' }}>Archiver le dossier ?</h4>
+            <p style={{ fontSize: '0.9rem', color: 'hsl(var(--text-muted))', marginBottom: '1.5rem' }}>
+              Le dossier a été clôturé. Souhaitez-vous planifier son archivage ? Un bouton "Archiver" apparaîtra automatiquement dans 1 mois.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => { setArchiveModal(null); fetchCases(); }}>
+                Non merci
+              </button>
+              <button className="btn btn-primary" onClick={() => handleArchiveSchedule(archiveModal)}>
+                Oui, planifier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

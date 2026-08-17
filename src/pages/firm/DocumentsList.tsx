@@ -1,9 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2, FileText, Download } from 'lucide-react';
+import { Plus, Edit2, Trash2, FileText, Download, ChevronDown, ChevronRight, FolderOpen, User } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { DocumentModal } from '../../components/firm/DocumentModal';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+
+interface GroupedClient {
+  clientName: string;
+  cases: {
+    caseId: string;
+    caseTitle: string;
+    docs: any[];
+  }[];
+}
 
 export const DocumentsList = () => {
   const { profile } = useAuthStore();
@@ -14,6 +23,8 @@ export const DocumentsList = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<any>(null);
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [expandedCases, setExpandedCases] = useState<Set<string>>(new Set());
 
   const fetchDocs = React.useCallback(async () => {
     if (!profile?.tenant_id) {
@@ -23,7 +34,7 @@ export const DocumentsList = () => {
     setLoading(true);
     try {
       let query = supabase.from('documents')
-        .select('*, uploader:users(full_name), case:cases(title)')
+        .select('*, uploader:users(full_name), case:cases(title, client_id, client:clients(full_name))')
         .eq('tenant_id', profile?.tenant_id)
         .order('created_at', { ascending: false });
       
@@ -34,7 +45,21 @@ export const DocumentsList = () => {
       const { data, error } = await query;
       
       if (error) throw error;
-      if (data) setDocs(data);
+      if (data) {
+        setDocs(data);
+        // Auto-expand all groups when first loaded
+        if (!caseId) {
+          const clientNames = new Set<string>();
+          const caseIds = new Set<string>();
+          data.forEach(d => {
+            const clientName = d.case?.client?.full_name || 'Autres documents';
+            clientNames.add(clientName);
+            if (d.case_id) caseIds.add(d.case_id);
+          });
+          setExpandedClients(clientNames);
+          setExpandedCases(caseIds);
+        }
+      }
     } catch (err) {
       console.error('Error fetching documents:', err);
     } finally {
@@ -69,7 +94,6 @@ export const DocumentsList = () => {
       const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 3600);
       if (error) throw error;
       if (data?.signedUrl) {
-        // Create an invisible A element and click it to download
         const a = document.createElement('a');
         a.href = data.signedUrl;
         a.download = name;
@@ -98,6 +122,75 @@ export const DocumentsList = () => {
     setIsModalOpen(true);
   };
 
+  const toggleClient = (name: string) => {
+    setExpandedClients(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
+  const toggleCase = (id: string) => {
+    setExpandedCases(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // Group documents by client > case
+  const groupedData = React.useMemo((): GroupedClient[] => {
+    const clientMap = new Map<string, Map<string, { caseTitle: string; docs: any[] }>>();
+    
+    docs.forEach(d => {
+      const clientName = d.case?.client?.full_name || 'Autres documents';
+      const cId = d.case_id || '__none__';
+      const cTitle = d.case?.title || 'Sans dossier';
+
+      if (!clientMap.has(clientName)) clientMap.set(clientName, new Map());
+      const casesMap = clientMap.get(clientName)!;
+      if (!casesMap.has(cId)) casesMap.set(cId, { caseTitle: cTitle, docs: [] });
+      casesMap.get(cId)!.docs.push(d);
+    });
+
+    const result: GroupedClient[] = [];
+    // Sort: real clients first, "Autres documents" last
+    const sortedClients = Array.from(clientMap.keys()).sort((a, b) => {
+      if (a === 'Autres documents') return 1;
+      if (b === 'Autres documents') return -1;
+      return a.localeCompare(b);
+    });
+
+    sortedClients.forEach(clientName => {
+      const casesMap = clientMap.get(clientName)!;
+      const cases: GroupedClient['cases'] = [];
+      casesMap.forEach((val, caseId) => {
+        cases.push({ caseId, caseTitle: val.caseTitle, docs: val.docs });
+      });
+      result.push({ clientName, cases });
+    });
+
+    return result;
+  }, [docs]);
+
+  const DocRow = ({ d }: { d: any }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', borderBottom: '1px solid hsla(var(--text-muted), 0.06)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+        <FileText size={16} style={{ color: 'hsl(var(--primary))', flexShrink: 0 }} />
+        <span style={{ fontWeight: 500, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.file_name}</span>
+        <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', flexShrink: 0 }}>{formatSize(d.file_size)}</span>
+        {d.tags?.map((tag: string, i: number) => (
+          <span key={i} style={{ padding: '0.1rem 0.4rem', borderRadius: 'var(--radius-full)', fontSize: '0.65rem', background: 'hsla(var(--primary), 0.1)', color: 'hsl(var(--primary))', flexShrink: 0 }}>{tag}</span>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+        <button onClick={() => handleDownload(d.file_path, d.file_name)} title="Télécharger" style={{ background: 'none', border: 'none', color: 'hsl(var(--primary))', cursor: 'pointer', padding: '0.35rem' }}><Download size={16} /></button>
+        <button onClick={() => { setEditingDoc(d); setIsModalOpen(true); }} title="Modifier" style={{ background: 'none', border: 'none', color: 'hsl(var(--text-muted))', cursor: 'pointer', padding: '0.35rem' }}><Edit2 size={16} /></button>
+        <button onClick={() => handleDelete(d.id)} title="Supprimer" style={{ background: 'none', border: 'none', color: 'hsl(var(--danger))', cursor: 'pointer', padding: '0.35rem' }}><Trash2 size={16} /></button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -114,14 +207,17 @@ export const DocumentsList = () => {
 
       {caseId && (
         <div style={{ marginBottom: '1rem' }}>
-          <button className="btn btn-secondary" onClick={() => navigate('/dashboard/documents')} style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}>
-            &larr; Afficher tous les documents
+          <button className="btn btn-secondary" onClick={() => navigate('/dashboard/cases')} style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}>
+            &larr; Retour aux dossiers
           </button>
         </div>
       )}
 
-      <div className="glass-card" style={{ padding: '1.5rem' }}>
-        {loading ? <p>Chargement...</p> : (
+      {loading ? (
+        <div className="glass-card" style={{ padding: '2rem', textAlign: 'center' }}>Chargement...</div>
+      ) : caseId ? (
+        /* Flat list when filtering by case */
+        <div className="glass-card" style={{ padding: '1.5rem' }}>
           <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid hsla(var(--text-muted), 0.2)' }}>
@@ -155,8 +251,63 @@ export const DocumentsList = () => {
               )}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      ) : (
+        /* Grouped view: Client > Case > Documents */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {docs.length === 0 && (
+            <div className="glass-card" style={{ padding: '2rem', textAlign: 'center', color: 'hsl(var(--text-muted))' }}>Aucun document</div>
+          )}
+          {groupedData.map(group => {
+            const isClientOpen = expandedClients.has(group.clientName);
+            const totalDocs = group.cases.reduce((acc, c) => acc + c.docs.length, 0);
+
+            return (
+              <div key={group.clientName} className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+                {/* Client header */}
+                <div
+                  onClick={() => toggleClient(group.clientName)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.25rem', cursor: 'pointer', background: 'hsla(var(--primary), 0.03)', borderBottom: isClientOpen ? '1px solid hsla(var(--text-muted), 0.1)' : 'none' }}
+                >
+                  {isClientOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                  <User size={18} style={{ color: 'hsl(var(--primary))' }} />
+                  <span style={{ fontWeight: 600, fontSize: '1rem' }}>{group.clientName}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'hsl(var(--text-muted))', marginLeft: 'auto' }}>
+                    {group.cases.length} dossier{group.cases.length > 1 ? 's' : ''} • {totalDocs} document{totalDocs > 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {isClientOpen && group.cases.map(caseGroup => {
+                  const isCaseOpen = expandedCases.has(caseGroup.caseId);
+                  return (
+                    <div key={caseGroup.caseId}>
+                      {/* Case header */}
+                      <div
+                        onClick={() => toggleCase(caseGroup.caseId)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem 0.75rem 2.5rem', cursor: 'pointer', background: 'hsla(var(--text-muted), 0.02)', borderBottom: '1px solid hsla(var(--text-muted), 0.06)' }}
+                      >
+                        {isCaseOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        <FolderOpen size={16} style={{ color: 'hsl(var(--warning))' }} />
+                        <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{caseGroup.caseTitle}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'hsl(var(--text-muted))', marginLeft: 'auto' }}>
+                          {caseGroup.docs.length} document{caseGroup.docs.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+
+                      {isCaseOpen && (
+                        <div style={{ paddingLeft: '3.5rem' }}>
+                          {caseGroup.docs.map(d => <DocRow key={d.id} d={d} />)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {isModalOpen && (
         <DocumentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} docToEdit={editingDoc} onSuccess={fetchDocs} />
       )}

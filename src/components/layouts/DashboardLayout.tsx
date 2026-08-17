@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ActivityTracker } from '../common/ActivityTracker';
 import { 
   Scale, LayoutDashboard, Briefcase, Calendar, FileText, CreditCard,
-  MessageSquare, LogOut, Menu, X, Users, FolderOpen, Clock, History
+  MessageSquare, LogOut, Menu, X, Users, FolderOpen, Clock, History, Archive
 } from 'lucide-react';
 import { NotificationBell } from '../firm/NotificationBell';
 import { LanguageSelector } from '../firm/LanguageSelector';
@@ -55,6 +55,7 @@ export const DashboardLayout = () => {
           { path: '/dashboard/users', label: t('sidebar.team', 'Équipe'), icon: <Users size={20} /> },
           { path: '/dashboard/event-history', label: t('sidebar.history', 'Historique'), icon: <Clock size={20} /> },
           { path: '/dashboard/messages', label: t('dashboard.messages'), icon: <MessageSquare size={20} />, restricted: plan === 'starter' },
+          { path: '/dashboard/archives', label: 'Archives', icon: <Archive size={20} /> },
         ];
         break;
       case 'lawyer':
@@ -68,6 +69,7 @@ export const DashboardLayout = () => {
           { path: '/dashboard/invoices', label: t('dashboard.invoices'), icon: <CreditCard size={20} />, restricted: plan === 'starter' },
           { path: '/dashboard/event-history', label: t('sidebar.history', 'Historique'), icon: <Clock size={20} /> },
           { path: '/dashboard/messages', label: t('dashboard.messages'), icon: <MessageSquare size={20} />, restricted: plan === 'starter' },
+          { path: '/dashboard/archives', label: 'Archives', icon: <Archive size={20} /> },
         ];
         break;
       default:

@@ -17,6 +17,7 @@ import { EventHistory } from './pages/firm/EventHistory';
 import { DocumentsList } from './pages/firm/DocumentsList';
 import { InvoicesList } from './pages/firm/InvoicesList';
 import { MessagesPage } from './pages/firm/MessagesPage';
+import { ArchivesList } from './pages/firm/ArchivesList';
 
 import i18n from './i18n';
 
@@ -52,6 +53,7 @@ function App() {
           <Route path="documents" element={<DocumentsList />} />
           <Route path="invoices" element={<InvoicesList />} />
           <Route path="messages" element={<MessagesPage />} />
+          <Route path="archives" element={<ArchivesList />} />
         </Route>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
