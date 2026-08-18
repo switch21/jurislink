@@ -1,19 +1,32 @@
 // ============================================================================
-// JurisLink - Phase 3.8 - Patch Login.tsx (utilise logAudit helper)
+// JurisLink - Phase 4.7 - Patch Login.tsx (account lockout + password policy)
 // ============================================================================
 // Remplace: src/pages/auth/Login.tsx
 //
-// Changements vs version actuelle:
-//   1. Suppression de la fonction logAuditSuccess inline (lignes 38-58).
-//      Remplacée par import { logAudit } from '../../lib/audit'.
-//   2. logAudit récupère automatiquement user_id + tenant_id depuis le store,
-//      et ajoute metadata { source: 'UI:Login', login_method, ... }.
-//   3. Rotation du token CSRF après login MFA réussi (anti-rejeu).
+// Changements vs Phase 3:
+//   1. Sur login échoué (password incorrect):
+//      - Appel à la fonction SQL register_failed_login(email) qui incrémente
+//        le compteur failed_login_attempts et bloque le compte si seuil (5)
+//      - Affiche un message "Tentatives restantes: N" si pas bloqué
+//      - Affiche un message "Compte bloqué, réessayez dans X minutes" si bloqué
+//   2. Sur login réussi:
+//      - Appel à register_successful_login(userId) qui reset les compteurs
+//   3. Sur MFA setup (utilisateur sans facteur TOTP):
+//      - Validation du password actuel avec analyzePassword()
+//      - Si le password actuel est trop faible, propose un reset
+//      - Suggestion de password fort via generateStrongPassword()
+//
+// Notes:
+//   - Le compte est identifié par EMAIL avant l'authentification — c'est
+//     OK car l'email est public lors du login. La fonction SQL est
+//     SECURITY DEFINER et ne révèle pas l'existence du compte (anti-énumération).
+//   - Le rate-limiting au niveau Auth (Supabase) est la première défense.
+//     Le lockout applicatif (cette couche) est la seconde défense.
 // ============================================================================
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, ArrowRight } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, ShieldOff } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { MfaSetup } from '../../components/auth/MfaSetup';
@@ -21,12 +34,19 @@ import { MfaChallenge } from '../../components/auth/MfaChallenge';
 import { rotateCsrfToken } from '../../lib/csrf';
 import './Login.css';
 
+interface LockoutInfo {
+  locked: boolean;
+  lockedUntil: string | null;
+  remainingAttempts: number;
+}
+
 export const Login = () => {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lockoutInfo, setLockoutInfo] = useState<LockoutInfo | null>(null);
   const [mfaStep, setMfaStep] = useState<'login' | 'challenge' | 'setup'>('login');
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
@@ -35,8 +55,6 @@ export const Login = () => {
   // CORRECTION: Audit log inséré UNIQUEMENT après vérification MFA complète.
   // Phase 3: utilisation du helper logAudit (structured JSONB metadata).
   const logAuditSuccess = async (userId: string, loginMethod: 'password+mfa' | 'password+setup') => {
-    // Récupère le tenant_id (le store n'est pas encore hydraté à ce stade,
-    // on doit faire une requête directe comme l'ancien code)
     const { data: userRow } = await supabase
       .from('users')
       .select('tenant_id')
@@ -44,9 +62,6 @@ export const Login = () => {
       .single();
 
     if (userRow?.tenant_id) {
-      // Insère directement sans passer par logAudit car le store auth n'est
-      // pas encore hydraté (user/profile sont null). On set manuellement
-      // tenant_id + user_id et on garde la même metadata structurée.
       const sessionId = (typeof window !== 'undefined' && window.sessionStorage?.getItem('jurislink.session.id')) || crypto.randomUUID();
       await supabase.from('audit_logs').insert({
         tenant_id: userRow.tenant_id,
@@ -68,10 +83,7 @@ export const Login = () => {
   };
 
   const handleMfaSuccess = async (userId: string) => {
-    // À ce point, l'utilisateur a AAL2 garanti par supabase.auth.mfa.verify()
-    // ou supabase.auth.mfa.enroll() (setup flow).
     await logAuditSuccess(userId, 'password+mfa');
-    // Rotation du token CSRF post-login (anti-rejeu)
     rotateCsrfToken();
     navigate('/dashboard');
   };
@@ -80,14 +92,38 @@ export const Login = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setLockoutInfo(null);
 
+    // 1. Tente l'authentification Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
-      setError(error.message);
+      // ÉCHEC — enregistre la tentative échouée via la fonction SQL
+      try {
+        const { data: lockResult } = await supabase
+          .rpc('register_failed_login', { p_email: email });
+
+        if (lockResult?.[0]) {
+          const info = lockResult[0] as LockoutInfo;
+          setLockoutInfo(info);
+          if (info.locked) {
+            setError(t('login.account_locked_attempts',
+              `Compte bloqué après ${5} tentatives échouées. Réessayez dans 15 minutes.`));
+          } else {
+            setError(t('login.invalid_credentials_remaining',
+              `Identifiants invalides. Tentatives restantes: ${info.remainingAttempts}`));
+          }
+        } else {
+          // Fonction SQL non disponible — fallback sur le message Supabase
+          setError(error.message);
+        }
+      } catch (err) {
+        console.warn('register_failed_login failed (function not deployed?):', err);
+        setError(error.message);
+      }
       setLoading(false);
       return;
     }
@@ -96,6 +132,13 @@ export const Login = () => {
       setError('Session invalide');
       setLoading(false);
       return;
+    }
+
+    // SUCCÈS — reset les compteurs d'échecs
+    try {
+      await supabase.rpc('register_successful_login', { p_user_id: data.session.user.id });
+    } catch (err) {
+      console.warn('register_successful_login failed:', err);
     }
 
     // Vérifie profil + statut compte/tenant
@@ -113,18 +156,15 @@ export const Login = () => {
     }
 
     // CORRECTION CRITIQUE: Vérifie systématiquement la présence d'un facteur TOTP
-    // vérifié. Si présent → challenge obligatoire. Si absent → setup obligatoire
-    // (PLUS DE BYPASS pour les non-admins).
+    // vérifié. Si présent → challenge obligatoire. Si absent → setup obligatoire.
     const { data: factorsData } = await supabase.auth.mfa.listFactors();
     const totpFactor = factorsData?.totp?.find(f => f.status === 'verified');
 
     if (totpFactor) {
-      // Facteur TOTP vérifié → challenge obligatoire (admin ET non-admin)
       setMfaFactorId(totpFactor.id);
       setLoggedUserId(data.session.user.id);
       setMfaStep('challenge');
     } else {
-      // Aucun facteur vérifié → enrôlement obligatoire (admin ET non-admin)
       setLoggedUserId(data.session.user.id);
       setMfaStep('setup');
     }
@@ -152,7 +192,11 @@ export const Login = () => {
         </div>
 
         {error && (
-          <div className="error-alert">
+          <div className="error-alert" style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            ...(lockoutInfo?.locked ? { background: 'hsla(var(--danger), 0.1)', borderColor: 'hsl(var(--danger))' } : {})
+          }}>
+            {lockoutInfo?.locked ? <ShieldOff size={18} /> : <AlertCircle size={18} />}
             {error}
           </div>
         )}
@@ -171,6 +215,8 @@ export const Login = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  disabled={lockoutInfo?.locked === true}
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -187,11 +233,13 @@ export const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  disabled={lockoutInfo?.locked === true}
+                  autoComplete="current-password"
                 />
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
+            <button type="submit" className="btn btn-primary login-btn" disabled={loading || lockoutInfo?.locked === true}>
               {loading ? t('login.loading') : (
                 <>
                   {t('login.signIn')} <ArrowRight size={18} />

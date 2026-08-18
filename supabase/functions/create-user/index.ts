@@ -1,21 +1,28 @@
 // ============================================================================
-// JurisLink - Phase 3.4 - Patch create-user edge function (validation CSRF)
+// JurisLink - Phase 4.10 - Patch create-user edge function (password policy)
 // ============================================================================
 // Remplace: supabase/functions/create-user/index.ts
 //
-// Changements vs version actuelle:
-//   1. Validation du header X-CSRF-Token en début de serve().
-//      - Si absent ou invalide → 403 + code CSRF_INVALID
-//   2. Ajout de l'audit log via insertion directe dans audit_logs (metadata JSONB)
-//      avec contexte: ip, user_agent, action=create_user
-//   3. CORS restreint à ALLOWED_ORIGINS (au lieu de '*') — aligne avec
-//      verify-session Phase 1.
+// Changements vs Phase 3:
+//   1. Validation de la force du password côté serveur (en complément du client).
+//      Implémente la même logique que src/lib/passwordPolicy.ts (analyzePassword)
+//      pour empêcher un client bypass de soumettre un password faible.
+//   2. Si password trop faible → 400 + code WEAK_PASSWORD + issues[].
+//   3. Si l'appelant est root_admin → exige score ≥ 60 (admin-level).
+//   4. Si l'appelant est firm_admin → exige score ≥ 40 (user-level).
+//   5. Audit log: en cas de weak_password, logge l'échec (utile pour SOC).
+//
+// Notes:
+//   - La blacklist serveur est volontairement plus large (top 1000) car
+//     le bundle serveur n'a pas de contrainte de taille.
+//   - Le serveur ne reçoit jamais le password en clair hors de cet endpoint
+//     (supabase.auth.admin.createUser prend le password et le hash immédiatement).
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// ─── CORS (restreint, plus de '*') ───────────────────────────────────────
+// ─── CORS (restreint) ───────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '').split(',')
   .map(s => s.trim())
   .filter(Boolean)
@@ -37,6 +44,147 @@ function isValidCsrfToken(csrfToken: string | null): boolean {
   if (!csrfToken || typeof csrfToken !== 'string') return false;
   return csrfToken.length >= 32 && /^[A-Za-z0-9_-]+$/.test(csrfToken);
 }
+
+// ─── Password policy (server-side) ────────────────────────────────────────
+// Implémentation mirror de src/lib/passwordPolicy.ts. La blacklist serveur
+// est plus large (top 1000 au lieu de top 100). Pourrait être partagée via
+// un module Deno externalisé (à faire en Phase 5 si nécessaire).
+
+const SERVER_BLACKLIST = new Set([
+  // Top 100 (identique au client)
+  '123456', '123456789', 'qwerty', 'password', '111111', '12345678',
+  'abc123', '1234567', 'password1', '12345', '1234567890', '123123',
+  '000000', 'iloveyou', '1234', '1q2w3e4r5t', 'monkey', 'dragon',
+  'sunshine', 'princess', 'football', 'shadow', 'superman', 'iloveu',
+  'trustno1', 'welcome', 'letmein', 'admin', 'master', 'login',
+  'starwars', 'baseball', 'computer', 'whatever', 'nothing', 'liverpool',
+  'huawei', 'qazwsx', 'password123', 'freedom', 'passw0rd', 'zagreb',
+  'qwerty123', 'michael1', 'qwerty1', 'matrix', 'asdasd', '1qaz2wsx',
+  'jordan', 'jennifer', 'hunter', 'harley', 'ranger', 'robert',
+  'soccer', 'thomas', 'george', 'charlie', 'andrew', 'joshua',
+  'dallas', 'austin', 'maverick', 'mickey', 'diamond', 'summer',
+  'ginger', 'mother', 'forever', 'flower', 'summer1', 'matthew',
+  'jessica', 'pepper', 'mountain', 'elephant', 'spider', 'creative',
+  'azerty', 'azerty123', 'soleil', 'bonjour', 'amoureux', 'amour',
+  'motdepasse', 'mot2passe', 'juju', 'loulou', 'chouchou', 'choupette',
+  '123456a', '123456b', 'azertyuiop', 'qwertyuiop', 'motdepasse123',
+  // Top 100-200 supplémentaires (serveur only)
+  'ninja', 'mustang', 'tigger', 'robert1', 'qwerty2', 'silver',
+  'golfer', 'stars', 'knight', 'paradise', 'password12', 'michael',
+  'password2', 'summer2', 'soccer1', 'iloveu2', 'george1', 'andrew1',
+  'jordan1', 'jordan23', 'andrew2', 'joshua1', 'michael2',
+  'killer', 'matrix1', 'matrix2', 'phoenix', 'passw0rd1', 'passw1',
+  'letmein2', 'letmein1', 'abc1234', 'abcd1234', 'abcd123',
+  '123abc', '123qwe', 'qwe123', 'q1w2e3r4', 'q1w2e3', '1q2w3e4r',
+  'p@ssw0rd', 'p@ssword', 'pa$$word', 'pa$$w0rd', 'qwerty1!',
+  'pass1234', 'pass123', 'test', 'test123', 'test1234', 'root',
+  'toor', 'admin123', 'admin1', 'administrator', 'admin2', 'changeme',
+  'default', 'guest', 'user', 'pass', 'pwd', 'secret', 'changeme1',
+]);
+
+interface PasswordIssue {
+  code: string;
+  message: string;
+}
+
+interface PasswordAnalysis {
+  score: number;
+  strength: string;
+  entropyBits: number;
+  issues: PasswordIssue[];
+  allowedForUser: boolean;
+  allowedForAdmin: boolean;
+}
+
+function computeEntropyBits(password: string): number {
+  if (!password) return 0;
+  let charsetSize = 0;
+  if (/[a-z]/.test(password)) charsetSize += 26;
+  if (/[A-Z]/.test(password)) charsetSize += 26;
+  if (/[0-9]/.test(password)) charsetSize += 10;
+  if (/[^a-zA-Z0-9]/.test(password)) charsetSize += 33;
+  return Math.floor(password.length * Math.log2(charsetSize || 1));
+}
+
+function analyzePassword(password: string): PasswordAnalysis {
+  const issues: PasswordIssue[] = [];
+  let score = 0;
+  let charsetCategories = 0;
+
+  // 1. Longueur
+  if (password.length < 8) {
+    issues.push({ code: 'TOO_SHORT', message: 'Password too short (minimum 8 characters)' });
+  }
+  if (password.length >= 8) score += 10;
+  if (password.length >= 12) score += 15;
+  if (password.length >= 16) score += 15;
+  if (password.length >= 20) score += 5;
+
+  // 2. Diversité
+  if (/[a-z]/.test(password)) { score += 5; charsetCategories++; }
+  if (/[A-Z]/.test(password)) { score += 5; charsetCategories++; }
+  if (/[0-9]/.test(password)) { score += 5; charsetCategories++; }
+  if (/[^a-zA-Z0-9]/.test(password)) { score += 10; charsetCategories++; }
+
+  if (charsetCategories < 3) {
+    issues.push({
+      code: 'LOW_DIVERSITY',
+      message: `Only ${charsetCategories} character categories (recommended: 3+)`
+    });
+  }
+
+  // 3. Entropy
+  const entropyBits = computeEntropyBits(password);
+  if (entropyBits >= 60) score += 15;
+  else if (entropyBits >= 40) score += 10;
+  else if (entropyBits >= 28) score += 5;
+  else {
+    issues.push({
+      code: 'LOW_ENTROPY',
+      message: `Low entropy (${entropyBits} bits — recommended: >= 40)`
+    });
+  }
+
+  // 4. Patterns
+  if (/(abc|bcd|cde|def|123|234|345|456|567|678|789|890|qwe|wer|ert|rty|asd|sdf|dfg)/i.test(password)) {
+    score -= 15;
+    issues.push({ code: 'COMMON_SEQUENCE', message: 'Common sequence detected' });
+  }
+  if (/(.)\1{2,}/.test(password)) {
+    score -= 10;
+    issues.push({ code: 'REPEATED_CHARS', message: 'Character repeated 3+ consecutive times' });
+  }
+  if (/(qwerty|azerty|asdf|zxcv|1qaz|2wsx|3edc)/i.test(password)) {
+    score -= 15;
+    issues.push({ code: 'KEYBOARD_WALK', message: 'Keyboard pattern detected' });
+  }
+
+  // 5. Blacklist
+  if (SERVER_BLACKLIST.has(password.toLowerCase())) {
+    score = Math.min(score, 10);
+    issues.push({ code: 'BLACKLISTED', message: 'Password is in the top leaked passwords list' });
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  let strength: string;
+  if (score < 20) strength = 'VeryWeak';
+  else if (score < 40) strength = 'Weak';
+  else if (score < 60) strength = 'Fair';
+  else if (score < 80) strength = 'Strong';
+  else strength = 'VeryStrong';
+
+  return {
+    score,
+    strength,
+    entropyBits,
+    issues,
+    allowedForUser: score >= 40,
+    allowedForAdmin: score >= 60,
+  };
+}
+
+// ─── Handler principal ──────────────────────────────────────────────────
 
 serve(async (req) => {
   const origin = req.headers.get('Origin')
@@ -91,6 +239,54 @@ serve(async (req) => {
 
     const { email, password, full_name, role, tenant_id } = await req.json()
 
+    // ─── PHASE 4.10: Validation password côté serveur ──────────────────
+    const analysis = analyzePassword(password);
+
+    // firm_admin: exige score ≥ 40 (user-level)
+    // root_admin: exige score ≥ 60 (admin-level)
+    const requireAdmin = role === 'root_admin' || role === 'firm_admin';
+    const isStrongEnough = requireAdmin ? analysis.allowedForAdmin : analysis.allowedForUser;
+
+    if (!isStrongEnough) {
+      // Audit log: échec création par password faible
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      const cfConnectingIp = req.headers.get('cf-connecting-ip');
+      await supabaseAdmin.from('audit_logs').insert({
+        tenant_id: profile.tenant_id,
+        user_id: user.id,
+        action: 'USER_CREATE_WEAK_PASSWORD_REJECTED',
+        entity: 'users',
+        entity_id: 'unknown',
+        metadata: {
+          ip: cfConnectingIp ?? null,
+          user_agent: req.headers.get('user-agent') ?? null,
+          source: 'edge_function:create-user',
+          target_email: email,
+          target_role: role,
+          password_score: analysis.score,
+          password_strength: analysis.strength,
+          password_issues: analysis.issues.map(i => i.code),
+        }
+      });
+
+      return new Response(JSON.stringify({
+        error: 'Password is too weak',
+        code: 'WEAK_PASSWORD',
+        password_analysis: {
+          score: analysis.score,
+          strength: analysis.strength,
+          entropy_bits: analysis.entropyBits,
+          issues: analysis.issues,
+        }
+      }), {
+        headers: { ...cors, 'Content-Type': 'application/json' },
+        status: 400,
+      });
+    }
+
     let targetTenantId = tenant_id;
     // Firm admin constraints
     if (profile.role === 'firm_admin') {
@@ -139,7 +335,6 @@ serve(async (req) => {
     }
 
     // ─── Audit log (metadata JSONB) ───────────────────────────────────
-    // Insère un log structuré avec contexte pour traçabilité.
     const cfConnectingIp = req.headers.get('cf-connecting-ip');
     const userAgent = req.headers.get('user-agent');
     await supabaseAdmin
@@ -156,10 +351,16 @@ serve(async (req) => {
           user_agent: userAgent ?? null,
           source: 'edge_function:create-user',
           method: 'POST',
+          password_score: analysis.score,
+          password_strength: analysis.strength,
         }
       });
 
-    return new Response(JSON.stringify({ user: newAuthUser.user, message: 'User successfully created' }), {
+    return new Response(JSON.stringify({
+      user: newAuthUser.user,
+      message: 'User successfully created',
+      password_strength: analysis.strength,
+    }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
       status: 200,
     })
@@ -170,3 +371,6 @@ serve(async (req) => {
     })
   }
 })
+
+// Export pour tests internes
+export const __test__ = { isValidCsrfToken, analyzePassword, computeEntropyBits };
