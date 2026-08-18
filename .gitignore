@@ -33,3 +33,6 @@ yarn-error.log*
 android
 ios
 capacitor.config.ts.old
+
+# Phase 2 backup files
+*.bak
