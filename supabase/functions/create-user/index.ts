@@ -1,26 +1,29 @@
 // ============================================================================
-// JurisLink - Phase 4.10 - Patch create-user edge function (password policy)
+// JurisLink - Phase 5.6 - Patch create-user edge function (HIBP server check)
 // ============================================================================
-// Remplace: supabase/functions/create-user/index.ts
+// Remplace: supabase/functions/create-user/index.ts (version Phase 4)
 //
-// Changements vs Phase 3:
-//   1. Validation de la force du password côté serveur (en complément du client).
-//      Implémente la même logique que src/lib/passwordPolicy.ts (analyzePassword)
-//      pour empêcher un client bypass de soumettre un password faible.
-//   2. Si password trop faible → 400 + code WEAK_PASSWORD + issues[].
-//   3. Si l'appelant est root_admin → exige score ≥ 60 (admin-level).
-//   4. Si l'appelant est firm_admin → exige score ≥ 40 (user-level).
-//   5. Audit log: en cas de weak_password, logge l'échec (utile pour SOC).
+// Changements vs Phase 4:
+//   1. Vérification du password contre HaveIBeenPwned (k-anonymity, cöté serveur).
+//      Si breach count > 0 → 400 + code BREACHED_PASSWORD + breach_count.
+//      Implémente la même logique k-anonymity que le client (src/lib/hibp.ts).
+//   2. Application des en-têtes de sécurité via _shared/security-headers.ts.
+//   3. Audit log BREACHED_PASSWORD_REJECTED pour le SOC.
 //
 // Notes:
-//   - La blacklist serveur est volontairement plus large (top 1000) car
-//     le bundle serveur n'a pas de contrainte de taille.
-//   - Le serveur ne reçoit jamais le password en clair hors de cet endpoint
-//     (supabase.auth.admin.createUser prend le password et le hash immédiatement).
+//   - Le check HIBP est EN COMPLÉMENT de la blacklist top 1000 (Phase 4).
+//     La blacklist attrape les passwords triviaux. HIBP attrape les
+//     passwords compromis réellement utilisés (14+ milliards de hashes).
+//   - En cas d'indisponibilité HIBP (timeout, 429, etc.), on DEGRADE: on
+//     accepte le password si la policy locale (entropy + blacklist) est OK.
+//     Le risque accepté: un password compromis pourrait passer si HIBP down.
+//     Mitigation: ajouter un cron quotidien qui check rétrospectivement
+//     les passwords créés pendant la panne.
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { applySecurityHeaders } from '../_shared/security-headers.ts'
 
 // ─── CORS (restreint) ───────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '').split(',')
@@ -46,10 +49,7 @@ function isValidCsrfToken(csrfToken: string | null): boolean {
 }
 
 // ─── Password policy (server-side) ────────────────────────────────────────
-// Implémentation mirror de src/lib/passwordPolicy.ts. La blacklist serveur
-// est plus large (top 1000 au lieu de top 100). Pourrait être partagée via
-// un module Deno externalisé (à faire en Phase 5 si nécessaire).
-
+// Identique à Phase 4 (top 1000 blacklist + entropy + patterns).
 const SERVER_BLACKLIST = new Set([
   // Top 100 (identique au client)
   '123456', '123456789', 'qwerty', 'password', '111111', '12345678',
@@ -82,11 +82,7 @@ const SERVER_BLACKLIST = new Set([
   'default', 'guest', 'user', 'pass', 'pwd', 'secret', 'changeme1',
 ]);
 
-interface PasswordIssue {
-  code: string;
-  message: string;
-}
-
+interface PasswordIssue { code: string; message: string; }
 interface PasswordAnalysis {
   score: number;
   strength: string;
@@ -111,7 +107,6 @@ function analyzePassword(password: string): PasswordAnalysis {
   let score = 0;
   let charsetCategories = 0;
 
-  // 1. Longueur
   if (password.length < 8) {
     issues.push({ code: 'TOO_SHORT', message: 'Password too short (minimum 8 characters)' });
   }
@@ -120,32 +115,23 @@ function analyzePassword(password: string): PasswordAnalysis {
   if (password.length >= 16) score += 15;
   if (password.length >= 20) score += 5;
 
-  // 2. Diversité
   if (/[a-z]/.test(password)) { score += 5; charsetCategories++; }
   if (/[A-Z]/.test(password)) { score += 5; charsetCategories++; }
   if (/[0-9]/.test(password)) { score += 5; charsetCategories++; }
   if (/[^a-zA-Z0-9]/.test(password)) { score += 10; charsetCategories++; }
 
   if (charsetCategories < 3) {
-    issues.push({
-      code: 'LOW_DIVERSITY',
-      message: `Only ${charsetCategories} character categories (recommended: 3+)`
-    });
+    issues.push({ code: 'LOW_DIVERSITY', message: `Only ${charsetCategories} character categories (recommended: 3+)` });
   }
 
-  // 3. Entropy
   const entropyBits = computeEntropyBits(password);
   if (entropyBits >= 60) score += 15;
   else if (entropyBits >= 40) score += 10;
   else if (entropyBits >= 28) score += 5;
   else {
-    issues.push({
-      code: 'LOW_ENTROPY',
-      message: `Low entropy (${entropyBits} bits — recommended: >= 40)`
-    });
+    issues.push({ code: 'LOW_ENTROPY', message: `Low entropy (${entropyBits} bits — recommended: >= 40)` });
   }
 
-  // 4. Patterns
   if (/(abc|bcd|cde|def|123|234|345|456|567|678|789|890|qwe|wer|ert|rty|asd|sdf|dfg)/i.test(password)) {
     score -= 15;
     issues.push({ code: 'COMMON_SEQUENCE', message: 'Common sequence detected' });
@@ -159,7 +145,6 @@ function analyzePassword(password: string): PasswordAnalysis {
     issues.push({ code: 'KEYBOARD_WALK', message: 'Keyboard pattern detected' });
   }
 
-  // 5. Blacklist
   if (SERVER_BLACKLIST.has(password.toLowerCase())) {
     score = Math.min(score, 10);
     issues.push({ code: 'BLACKLISTED', message: 'Password is in the top leaked passwords list' });
@@ -175,13 +160,89 @@ function analyzePassword(password: string): PasswordAnalysis {
   else strength = 'VeryStrong';
 
   return {
-    score,
-    strength,
-    entropyBits,
-    issues,
+    score, strength, entropyBits, issues,
     allowedForUser: score >= 40,
     allowedForAdmin: score >= 60,
   };
+}
+
+// ─── PHASE 5.6: HIBP k-anonymity check (server-side) ───────────────────────
+
+const HIBP_RANGE_API = 'https://api.pwnedpasswords.com/range/';
+const HIBP_TIMEOUT_MS = 5000;
+const HIBP_BREACH_THRESHOLD = parseInt(
+  Deno.env.get('HIBP_BREACH_THRESHOLD') ?? '1',
+  10
+); // refuse si breach count >= threshold
+
+interface BreachCheckResult {
+  pwned: boolean;
+  count: number;
+  skipped: boolean;
+  error?: string;
+}
+
+/**
+ * Hash SHA1 d'une string en uppercase hex (40 chars).
+ * Utilise Deno builtin crypto (SubtleCrypto).
+ */
+async function sha1Hex(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  const bytes = new Uint8Array(hashBuffer);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i] ?? 0;
+    hex += b.toString(16).padStart(2, '0');
+  }
+  return hex.toUpperCase();
+}
+
+/**
+ * Vérifie un password contre HaveIBeenPwned (k-anonymity).
+ * Implémentation identique au client (src/lib/hibp.ts) mais côté serveur.
+ */
+async function checkPasswordBreach(password: string): Promise<BreachCheckResult> {
+  if (!password || password.length < 4) {
+    return { pwned: false, count: 0, skipped: true, error: 'Password too short' };
+  }
+  try {
+    const hash = await sha1Hex(password);
+    const prefix = hash.substring(0, 5);
+    const suffix = hash.substring(5);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HIBP_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${HIBP_RANGE_API}${prefix}`, {
+        method: 'GET',
+        headers: { 'User-Agent': 'JurisLink-Edge/1.0', 'Add-Padding': '0' },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        return { pwned: false, count: 0, skipped: true, error: `HIBP ${response.status}` };
+      }
+      const body = await response.text();
+      const lines = body.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const colonIndex = trimmed.indexOf(':');
+        if (colonIndex === -1) continue;
+        const lineSuffix = trimmed.substring(0, colonIndex).toUpperCase();
+        if (lineSuffix === suffix) {
+          const count = parseInt(trimmed.substring(colonIndex + 1), 10);
+          return { pwned: count > 0, count: isNaN(count) ? 0 : count, skipped: false };
+        }
+      }
+      return { pwned: false, count: 0, skipped: false };
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err) {
+    return { pwned: false, count: 0, skipped: true, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 // ─── Handler principal ──────────────────────────────────────────────────
@@ -191,7 +252,7 @@ serve(async (req) => {
   const cors = corsHeaders(origin)
 
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: cors })
+    return new Response('ok', { headers: applySecurityHeaders(cors) })
   }
 
   // ── CSRF validation (fail-fast) ────────────────────────────────────
@@ -202,7 +263,10 @@ serve(async (req) => {
         error: 'CSRF token missing or invalid',
         code: 'CSRF_INVALID',
       }),
-      { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
+      {
+        status: 403,
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+      }
     )
   }
 
@@ -218,7 +282,7 @@ serve(async (req) => {
 
     if (!user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        headers: { ...cors, 'Content-Type': 'application/json' },
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' }),
         status: 401,
       })
     }
@@ -232,7 +296,7 @@ serve(async (req) => {
 
     if (!profile || (profile.role !== 'root_admin' && profile.role !== 'firm_admin')) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), {
-        headers: { ...cors, 'Content-Type': 'application/json' },
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' }),
         status: 403,
       })
     }
@@ -247,13 +311,15 @@ serve(async (req) => {
     const requireAdmin = role === 'root_admin' || role === 'firm_admin';
     const isStrongEnough = requireAdmin ? analysis.allowedForAdmin : analysis.allowedForUser;
 
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    const cfConnectingIp = req.headers.get('cf-connecting-ip');
+    const userAgent = req.headers.get('user-agent');
+
     if (!isStrongEnough) {
       // Audit log: échec création par password faible
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
-      const cfConnectingIp = req.headers.get('cf-connecting-ip');
       await supabaseAdmin.from('audit_logs').insert({
         tenant_id: profile.tenant_id,
         user_id: user.id,
@@ -262,7 +328,7 @@ serve(async (req) => {
         entity_id: 'unknown',
         metadata: {
           ip: cfConnectingIp ?? null,
-          user_agent: req.headers.get('user-agent') ?? null,
+          user_agent: userAgent ?? null,
           source: 'edge_function:create-user',
           target_email: email,
           target_role: role,
@@ -282,9 +348,61 @@ serve(async (req) => {
           issues: analysis.issues,
         }
       }), {
-        headers: { ...cors, 'Content-Type': 'application/json' },
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' }),
         status: 400,
       });
+    }
+
+    // ─── PHASE 5.6: HIBP k-anonymity check ───────────────────────────
+    const breachCheck = await checkPasswordBreach(password);
+    if (breachCheck.pwned && breachCheck.count >= HIBP_BREACH_THRESHOLD) {
+      // Audit log: password compromis refusé
+      await supabaseAdmin.from('audit_logs').insert({
+        tenant_id: profile.tenant_id,
+        user_id: user.id,
+        action: 'BREACHED_PASSWORD_REJECTED',
+        entity: 'users',
+        entity_id: 'unknown',
+        metadata: {
+          ip: cfConnectingIp ?? null,
+          user_agent: userAgent ?? null,
+          source: 'edge_function:create-user',
+          target_email: email,
+          target_role: role,
+          breach_count: breachCheck.count,
+          hibp_skipped: false,
+        }
+      });
+
+      return new Response(JSON.stringify({
+        error: 'Password has been exposed in a data breach',
+        code: 'BREACHED_PASSWORD',
+        breach_count: breachCheck.count,
+        suggestion: 'Choose a unique password that has never appeared in any known breach.',
+      }), {
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' }),
+        status: 400,
+      });
+    }
+
+    // Si HIBP a été SKIPPÉ (offline), on accepte mais on logge pour review
+    if (breachCheck.skipped) {
+      await supabaseAdmin.from('audit_logs').insert({
+        tenant_id: profile.tenant_id,
+        user_id: user.id,
+        action: 'HIBP_CHECK_SKIPPED',
+        entity: 'users',
+        entity_id: 'unknown',
+        metadata: {
+          ip: cfConnectingIp ?? null,
+          user_agent: userAgent ?? null,
+          source: 'edge_function:create-user',
+          target_email: email,
+          target_role: role,
+          hibp_error: breachCheck.error ?? 'unknown',
+        }
+      });
+      // Pas de blocage — dégradation gracieuse
     }
 
     let targetTenantId = tenant_id;
@@ -293,18 +411,13 @@ serve(async (req) => {
       targetTenantId = profile.tenant_id;
       if (role === 'root_admin') {
         return new Response(JSON.stringify({ error: 'Firm admin cannot create root admin' }), {
-          headers: { ...cors, 'Content-Type': 'application/json' },
+          headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' }),
           status: 403,
         })
       }
     }
 
     // Create user securely with Service Role Key
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
     const { data: newAuthUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
@@ -335,8 +448,6 @@ serve(async (req) => {
     }
 
     // ─── Audit log (metadata JSONB) ───────────────────────────────────
-    const cfConnectingIp = req.headers.get('cf-connecting-ip');
-    const userAgent = req.headers.get('user-agent');
     await supabaseAdmin
       .from('audit_logs')
       .insert({
@@ -353,6 +464,8 @@ serve(async (req) => {
           method: 'POST',
           password_score: analysis.score,
           password_strength: analysis.strength,
+          hibp_breach_count: breachCheck.pwned ? breachCheck.count : 0,
+          hibp_checked: !breachCheck.skipped,
         }
       });
 
@@ -360,17 +473,25 @@ serve(async (req) => {
       user: newAuthUser.user,
       message: 'User successfully created',
       password_strength: analysis.strength,
+      hibp_checked: !breachCheck.skipped,
     }), {
-      headers: { ...cors, 'Content-Type': 'application/json' },
+      headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' }),
       status: 200,
     })
   } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...cors, 'Content-Type': 'application/json' },
+      headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' }),
       status: 400,
     })
   }
 })
 
 // Export pour tests internes
-export const __test__ = { isValidCsrfToken, analyzePassword, computeEntropyBits };
+export const __test__ = {
+  isValidCsrfToken,
+  analyzePassword,
+  computeEntropyBits,
+  sha1Hex,
+  checkPasswordBreach,
+  HIBP_BREACH_THRESHOLD,
+};

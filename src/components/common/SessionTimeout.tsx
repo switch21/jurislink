@@ -1,57 +1,51 @@
 // ============================================================================
-// JurisLink - Phase 4.6 - Component: SessionTimeout (inactivity auto-logout)
+// JurisLink - Phase 5.13 - Patch SessionTimeout.tsx (max duration check)
 // ============================================================================
-// Emplacement: src/components/common/SessionTimeout.tsx (nouveau fichier)
+// Remplace: src/components/common/SessionTimeout.tsx (version Phase 4)
 //
-// Stratégie:
-//   Auto-logout après période d'inactivité pour protéger les sessions
-//   laissées ouvertes (poste de travail non verrouillé, onglet oublié).
-//
-//   Timeouts par rôle (configurables via props):
-//     - root_admin:  15 min (données les plus sensibles)
-//     - firm_admin:  30 min
-//     - lawyer/secrétaire: 60 min (working sessions longues)
-//     - client: 120 min (consultation, peu d'actions)
-//
-//   Warning avant timeout: 60s avant, l'utilisateur peut prolonger la session.
-//
-// Implémentation:
-//   - Repose sur ActivityTracker existant (qui gérait déjà le timeout à 3min).
-//   - Ce composant remplace ActivityTracker avec:
-//     * timeouts par rôle
-//     * ActivityTracker conserve son UI warning (réutilisé)
-//     * Ajout: snap_to_warning_on_window_focus (si utilisateur revient après
-//       longue absence, force le warning immédiatement)
-//   - Les événements d'activité sont mousedown/move, keypress, scroll,
-//     touchstart, focus, visibilitychange.
+// Changements vs Phase 4:
+//   1. Check de la durée MAXIMALE de session (8h absolute cap) en PLUS du
+//      timeout d'inactivité par rôle. Si max duration dépassée → logout
+//      forcé avec reason='max_duration' (pas de warning, immédiat).
+//   2. Le warning d'inactivité affiche aussi le temps restant avant la
+//      durée max si elle approche (double info pour l'utilisateur).
+//   3. Audit log enrichi avec reason 'inactivity' ou 'max_duration'.
 //
 // Notes:
-//   - Le logout force aussi clearCsrfToken() (rotation après login suivant).
-//   - L'audit log "SESSION_TIMEOUT" est inséré (l'utilisateur n'a pas
-//     volontairement fermé sa session — info utile pour le SOC).
+//   - La durée max est lue depuis sessionManager.getMaxDurationRemaining()
+//     qui lit le timestamp dans localStorage (cf. sessionManager.ts).
+//   - Cette vérification est DOUBLÉE côté edge function (verify-session
+//     retourne 401 SESSION_MAX_DURATION_EXCEEDED si le JWT 'iat' > 8h).
+//     Le client est l'optimisation UX, le serveur reste l'arbitre final.
 // ============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Clock } from 'lucide-react';
+import { AlertTriangle, Clock, Hourglass } from 'lucide-react';
 import { Portal } from './Portal';
 import { clearCsrfToken } from '../../lib/csrf';
 import { supabase } from '../../lib/supabase';
+import {
+  getMaxDurationRemaining,
+  isMaxDurationExceeded,
+  clearSession,
+  DEFAULT_CONFIG,
+} from '../../lib/sessionManager';
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
 interface TimeoutConfig {
   timeoutMs: number;
-  warningBeforeMs: number; // afficher warning N ms avant timeout
+  warningBeforeMs: number;
 }
 
 const TIMEOUT_BY_ROLE: Record<string, TimeoutConfig> = {
   root_admin:    { timeoutMs: 15 * 60 * 1000, warningBeforeMs: 60_000 },
   firm_admin:    { timeoutMs: 30 * 60 * 1000, warningBeforeMs: 60_000 },
-  lawyer:       { timeoutMs: 60 * 60 * 1000, warningBeforeMs: 60_000 },
-  secretary:    { timeoutMs: 60 * 60 * 1000, warningBeforeMs: 60_000 },
-  client:       { timeoutMs: 120 * 60 * 1000, warningBeforeMs: 60_000 },
+  lawyer:        { timeoutMs: 60 * 60 * 1000, warningBeforeMs: 60_000 },
+  secretary:     { timeoutMs: 60 * 60 * 1000, warningBeforeMs: 60_000 },
+  client:         { timeoutMs: 120 * 60 * 1000, warningBeforeMs: 60_000 },
 };
 
 const DEFAULT_TIMEOUT: TimeoutConfig = { timeoutMs: 30 * 60 * 1000, warningBeforeMs: 60_000 };
@@ -64,15 +58,6 @@ function getTimeoutForRole(role: string | undefined): TimeoutConfig {
   if (!role) return DEFAULT_TIMEOUT;
   return TIMEOUT_BY_ROLE[role] ?? DEFAULT_TIMEOUT;
 }
-
-/**
- * Hook: retourne true si l'onglet est visible (pas caché).
- * Utilisé pour ne pas déclencher le timeout quand l'utilisateur est juste
- * sur un autre onglet (mais on compte le temps passé hors onglet).
- */
-// Hook conservé pour usage futur — actuellement inutilisé car le snap-to-warning
-// est géré via l'effet visibilitychange direct.
-// function useIsTabVisible(): boolean { ... }
 
 // ─── Composant ──────────────────────────────────────────────────────────────
 
@@ -94,6 +79,7 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
   const { t } = useTranslation();
   const [showWarning, setShowWarning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [maxDurationLeftMs, setMaxDurationLeftMs] = useState<number | null>(null);
   const expiresAtRef = useRef<number>(0);
   const lastActivityRef = useRef<number>(Date.now());
 
@@ -106,18 +92,18 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
     };
   })();
 
-  // Reset le timer
+  // Reset le timer d'inactivité
   const resetTimers = useCallback(() => {
-    if (showWarning) return; // Si warning affiché, ne reset pas (utilisateur doit choisir)
+    if (showWarning) return;
     expiresAtRef.current = Date.now() + config.timeoutMs;
     lastActivityRef.current = Date.now();
   }, [showWarning, config.timeoutMs]);
 
-  // Logout forcé
-  const handleForceLogout = useCallback(async () => {
+  // Logout forcé — reason: 'inactivity' ou 'max_duration'
+  const handleForceLogout = useCallback(async (reason: 'inactivity' | 'max_duration' = 'inactivity') => {
     setShowWarning(false);
 
-    // Audit log: session expirée par inactivité
+    // Audit log
     try {
       if (user?.id && profile?.tenant_id) {
         await supabase.from('audit_logs').insert({
@@ -130,9 +116,10 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
             ip: null,
             user_agent: navigator.userAgent,
             source: 'UI:SessionTimeout',
-            reason: 'inactivity',
+            reason,
             role: profile.role,
-            timeout_ms: config.timeoutMs,
+            timeout_ms: reason === 'inactivity' ? config.timeoutMs : DEFAULT_CONFIG.maxDurationMs,
+            max_duration_remaining_ms: reason === 'max_duration' ? 0 : getMaxDurationRemaining(),
           },
         });
       }
@@ -142,6 +129,7 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
 
     // Clear CSRF (rotation après prochain login)
     clearCsrfToken();
+    clearSession(); // Phase 5: nettoie le storage session start
 
     // Logout Supabase
     if (onTimeout) {
@@ -151,21 +139,27 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
     }
   }, [showWarning, user, profile, config.timeoutMs, onTimeout, signOut]);
 
-  // Bouton "Rester connecté"
-  const stayConnected = useCallback(() => {
-    setShowWarning(false);
-    resetTimers();
-  }, [resetTimers]);
-
-  // Tick: vérifie le timeout toutes les secondes
+  // Tick: vérifie timeout + max duration toutes les secondes
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
+
+      // 1. Check durée max de session (Phase 5) — prioritaire
+      if (isMaxDurationExceeded()) {
+        clearInterval(interval);
+        void handleForceLogout('max_duration');
+        return;
+      }
+      // Met à jour l'affichage du temps restant max duration (info)
+      const maxRemaining = getMaxDurationRemaining();
+      setMaxDurationLeftMs(maxRemaining > 0 ? maxRemaining : null);
+
+      // 2. Check timeout d'inactivité
       const left = expiresAtRef.current - now;
 
       if (left <= 0) {
         clearInterval(interval);
-        void handleForceLogout();
+        void handleForceLogout('inactivity');
       } else if (left <= config.warningBeforeMs) {
         if (!showWarning) setShowWarning(true);
         setTimeLeft(Math.max(0, Math.ceil(left / 1000)));
@@ -201,19 +195,15 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
   }, [resetTimers]);
 
   // Snap-to-warning: si l'utilisateur revient après une longue absence
-  // (visibilité reprend après > timeout), force le warning immédiatement
   useEffect(() => {
     let wasVisible = document.visibilityState === 'visible';
 
     const handleVisibilityChange = () => {
       const isVisible = document.visibilityState === 'visible';
       if (!wasVisible && isVisible) {
-        // Revenu d'un onglet caché
         const idleTime = Date.now() - lastActivityRef.current;
         if (idleTime >= config.timeoutMs - config.warningBeforeMs) {
-          // A été idle assez longtemps → force warning
           setShowWarning(true);
-          // Calcul le timeLeft comme si on était au bord du timeout
           const fakeExpiresAt = lastActivityRef.current + config.timeoutMs;
           expiresAtRef.current = fakeExpiresAt;
           setTimeLeft(Math.max(0, Math.ceil((fakeExpiresAt - Date.now()) / 1000)));
@@ -229,7 +219,16 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
   // Pas d'UI si pas de warning
   if (!showWarning) return null;
 
-  // UI de warning (similaire à ActivityTracker)
+  // Helper: format max duration restante en heures+minutes
+  const formatMaxDuration = (ms: number): string => {
+    const totalMin = Math.floor(ms / 60_000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h > 0) return `${h}h ${m}min`;
+    return `${m}min`;
+  };
+
+  // UI de warning
   return (
     <Portal>
       <div style={{
@@ -262,17 +261,23 @@ export const SessionTimeout: React.FC<SessionTimeoutProps> = ({
             </strong>
             .
           </p>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', alignItems: 'center', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'hsl(var(--text-muted))', fontSize: '0.85rem' }}>
               <Clock size={14} />
-              <span>{Math.floor(config.timeoutMs / 60_000)} min</span>
+              <span>{Math.floor(config.timeoutMs / 60_000)} min idle</span>
             </div>
+            {maxDurationLeftMs !== null && maxDurationLeftMs > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'hsl(var(--text-muted))', fontSize: '0.85rem' }}>
+                <Hourglass size={14} />
+                <span>{formatMaxDuration(maxDurationLeftMs)} max</span>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1.5rem' }}>
-            <button className="btn" onClick={handleForceLogout} style={{ flex: 1, background: 'hsla(var(--text-muted), 0.1)' }}>
+            <button className="btn" onClick={() => void handleForceLogout('inactivity')} style={{ flex: 1, background: 'hsla(var(--text-muted), 0.1)' }}>
               {t('session.logout_now', 'Se déconnecter')}
             </button>
-            <button className="btn btn-primary" onClick={stayConnected} style={{ flex: 1 }}>
+            <button className="btn btn-primary" onClick={() => { setShowWarning(false); resetTimers(); }} style={{ flex: 1 }}>
               {t('session.stay_connected', 'Rester connecté')}
             </button>
           </div>

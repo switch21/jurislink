@@ -6,6 +6,26 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>JurisLink</title>
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- Phase 5 — Security Headers (CSP + headers via <meta http-equiv>) -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- Notes:
+         - CSP en mode "enforce" (pas report-only) — un bug est réellement bloqué.
+         - En prod, VITE_SUPABASE_URL est injecté par le reverse proxy (Nginx/Cloudflare)
+           dans le connect-src. En dev, Vite HMR a besoin de ws://localhost:*.
+         - Pour le static hosting (Cloudflare Pages / Vercel), ajouter ces headers
+           au niveau du serveur (pas juste <meta>) pour couvrir HTTP responses.
+         - frame-ancestors 'none' = anti-clickjacking (X-Frame-Options: DENY équiv.)
+         - object-src 'none' = pas de Flash/Java plugins
+         - upgrade-insecure-requests = force HTTPS en production
+    -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.pwnedpasswords.com https://*.supabase.co wss://*.supabase.co ws://localhost:* ws://127.0.0.1:*; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'; media-src 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <!-- Permissions-Policy n'a pas de meta equivalent — à définir côté serveur -->
   </head>
   <body>
     <div id="root"></div>

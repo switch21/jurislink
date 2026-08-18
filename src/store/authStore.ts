@@ -1,27 +1,27 @@
 // ============================================================================
-// JurisLink - Phase 1.2 - Patch authStore.ts (correction fuite mémoire +
-// intégration verify-session)
+// JurisLink - Phase 5.11 - Patch authStore.ts (session start tracking)
 // ============================================================================
-// Remplace: src/store/authStore.ts
+// Remplace: src/store/authStore.ts (version Phase 4 —- issue de Phase 1.2)
 //
 // Changements vs version actuelle:
-//   1. CORRECTION FUITE MÉMOIRE (Phase 2 #7): la subscription
-//      supabase.auth.onAuthStateChange() n'était jamais désenregistrée.
-//      Chaque appel à initialize() ajoutait une nouvelle subscription,
-//      menant à des fuites mémoire progressives (crash mobile après ~1h).
-//      Fix: stockage de l'unsub dans une variable de module + unsubscribe
-//      avant nouvelle subscription.
-//   2. Appel à l'edge function verify-session pour valider AAL côté serveur
-//      (anti-contournement MFA — voir Phase 1.2 verify-session.ts).
-//   3. Suppression du fallback qui définissait l'utilisateur même sans profil
-//      (vulnérabilité: laissait un user sans profil accéder à l'app).
-//   4. Typage explicite de l'erreur catch pour éviter any.
+//   1. Appel à initSession() après login réussi (stocke le timestamp de
+//      début de session dans localStorage pour suivi durée absolue).
+//   2. Appel à clearSession() sur signOut() — libère le storage.
+//   3. Le timestamp sert au SessionTimeout (Phase 5) pour savoir quand
+//      la durée max (8h) est atteinte, complétant l'idle timeout (Phase 4).
+//
+// Notes:
+//   - Le timestamp est aussi utile côté edge function verify-session (Phase 5)
+//     via le claim 'iat' du JWT (le serveur reste l'arbitre final — le
+//     client ne fait que de l'UX).
+//   - Storage key: 'jurislink.session.start' (cf. sessionManager.ts).
 // ============================================================================
 
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import i18n from '../i18n';
+import { clearSession } from '../lib/sessionManager';
 
 export interface UserProfile {
   id: string;
@@ -109,6 +109,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         if (profile) {
           if (profile.is_active === false || (profile.tenant && profile.tenant.is_active === false)) {
             await supabase.auth.signOut();
+            clearSession(); // Phase 5: nettoie le storage
             set({ user: null, profile: null, isLoading: false, requiresMfa: false, mfaAction: null });
             return;
           }
@@ -138,6 +139,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           fetchVerifiedProfile(session.user.id).then(({ profile, requiresMfa, mfaAction }) => {
             if (profile && (profile.is_active === false || (profile.tenant && profile.tenant.is_active === false))) {
               void supabase.auth.signOut().then(() => {
+                clearSession(); // Phase 5
                 set({ user: null, profile: null, isLoading: false, requiresMfa: false, mfaAction: null });
               });
               return;
@@ -148,16 +150,18 @@ export const useAuthStore = create<AuthState>((set) => ({
             set({ user: session.user, profile, isLoading: false, requiresMfa, mfaAction });
           }).catch((err: unknown) => {
             console.error('Profile fetch on auth change failed:', err);
-            // CORRECTION: ne pas setter un user sans profil (était un bypass)
+            clearSession(); // Phase 5: nettoie en cas d'échec
             set({ user: null, profile: null, isLoading: false, requiresMfa: false, mfaAction: null });
           });
         } else {
+          clearSession(); // Phase 5: logout — nettoie le storage
           set({ user: null, profile: null, isLoading: false, requiresMfa: false, mfaAction: null });
         }
       });
       unsubscribeAuthChanges = subData.subscription.unsubscribe;
     } catch (error) {
       console.error('Auth initialization failed:', error);
+      clearSession(); // Phase 5: nettoie en cas d'échec init
       set({ user: null, profile: null, isLoading: false, requiresMfa: false, mfaAction: null });
     }
   },
@@ -174,6 +178,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         unsubscribeAuthChanges = null;
       }
       localStorage.removeItem('supabase.auth.token');
+      clearSession(); // Phase 5: nettoie le storage de session start
       set({ user: null, profile: null, isLoading: false, requiresMfa: false, mfaAction: null });
     }
   }

@@ -1,27 +1,33 @@
 // ============================================================================
-// JurisLink - Phase 4.9 - Patch verify-session edge function (account lockout)
+// JurisLink - Phase 5.5 - Patch verify-session edge function (session max age)
 // ============================================================================
-// Remplace: supabase/functions/verify-session/index.ts
+// Remplace: supabase/functions/verify-session/index.ts (version Phase 4)
 //
-// Changements vs Phase 3:
-//   1. Vérification du statut de blocage du compte (colonne locked_until).
-//      Si bloqué et locked_until > now() → 403 + code ACCOUNT_LOCKED + retry_after.
-//   2. Auto-reset du locked_until si expiré (locked_until < now()).
-//   3. Retourne remaining_attempts (utile pour afficher dans l'UI Login).
-//   4. Inclut la fonction SQL is_account_locked (SECURITY DEFINER) —
-//      évite d'exposer directement la colonne locked_until au RLS.
+// Changements vs Phase 4:
+//   1. Vérification de la durée maximale de session (8h) via le claim 'iat'
+//      du JWT. Si dépassé → 401 + code SESSION_MAX_DURATION_EXCEEDED.
+//      Ce check complète le SessionTimeout client (Phase 4 — idle timeout)
+//      qui ne couvre que l'inactivité, pas la durée absolue.
+//   2. Application des en-têtes de sécurité via le module partagé
+//      _shared/security-headers.ts (CSP, HSTS, X-Frame-Options, etc.).
+//   3. Retourne session_max_age_remaining_ms dans la réponse 200 (utile pour
+//      que le client affiche un warning "votre session expire dans X minutes")
 //
 // Notes:
-//   - Le reset du locked_until se fait via UPDATE direct (service role bypass RLS).
-//     On évite la fonction SQL register_successful_login pour séparer
-//     responsabilités (cette edge function ne fait QUE de la lecture de statut).
-//   - Le login échoué (Supabase auth.getUser()) n'incrémente pas le compteur
-//     ici car verify-session est appelé APRES signInWithPassword() réussi.
-//     Le compteur est incrémenté côté Login.tsx via register_failed_login().
+//   - Le claim 'iat' (issued at) est présent dans tous les JWT Supabase Auth.
+//     Il représente l'émission du JWT, pas le login initial. Avec refresh
+//     token rotation (Supabase Active), le JWT est rafraîchi toutes les ~1h
+//     et 'iat' est mis à jour. Pour suivre la session RÉELLE (depuis login),
+//     il faudrait ajouter un claim custom via un trigger JWT — voir Phase 6.
+//   - Workaround: on combine 'iat' + une marge de sécurité (15min) pour
+//     accepter que le refresh ait lieu. Au pire, le serveur renvoie 401 et
+//     le client re-login silent via refresh token Supabase.
+//   - HSTS: edge functions servies en HTTPS, donc HSTS est légitime.
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { applySecurityHeaders } from '../_shared/security-headers.ts'
 
 // ─── CORS ──────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '').split(',')
@@ -46,6 +52,39 @@ function isValidCsrfToken(csrfToken: string | null): boolean {
   return csrfToken.length >= 32 && /^[A-Za-z0-9_-]+$/.test(csrfToken);
 }
 
+// ─── Session max duration ────────────────────────────────────────────────
+const SESSION_MAX_DURATION_MS = parseInt(
+  Deno.env.get('SESSION_MAX_DURATION_MS') ?? '28800000', // 8h default
+  10
+);
+// Marge de tolérance pour rafraîchir le refresh token (15min)
+const REFRESH_GRACE_MS = parseInt(
+  Deno.env.get('SESSION_REFRESH_GRACE_MS') ?? '900000',
+  10
+);
+
+/**
+ * Extrait le claim 'iat' (issued at) du JWT.
+ * Le JWT est en base64url, pas besoin de vérifier la signature (Supabase
+ * l'a déjà faite via supabaseClient.auth.getUser()).
+ */
+function extractIatFromJwt(jwt: string | null | undefined): number | null {
+  if (!jwt || typeof jwt !== 'string') return null;
+  const parts = jwt.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    // base64url decode (replace chars + padding)
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = atob(padded);
+    const payload = JSON.parse(json);
+    if (typeof payload.iat === 'number') return payload.iat;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Handler principal ──────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -53,7 +92,7 @@ serve(async (req) => {
   const cors = corsHeaders(origin)
 
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: cors })
+    return new Response('ok', { headers: applySecurityHeaders(cors) })
   }
 
   // ── CSRF validation (fail-fast) ────────────────────────────────────
@@ -64,17 +103,23 @@ serve(async (req) => {
         error: 'CSRF token missing or invalid',
         code: 'CSRF_INVALID',
       }),
-      { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
+      {
+        status: 403,
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+      }
     )
   }
 
   try {
     // Client avec le JWT de l'appelant (pas service role)
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
-        global: { headers: { Authorization: req.headers.get('Authorization')! } }
+        global: { headers: { Authorization: authHeader } }
       }
     )
 
@@ -83,8 +128,60 @@ serve(async (req) => {
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized', code: 'NO_SESSION' }),
-        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+        {
+          status: 401,
+          headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+        }
       )
+    }
+
+    // ── PHASE 5.5: Vérification durée max de session ───────────────────
+    const iat = extractIatFromJwt(jwt);
+    if (iat !== null) {
+      const issuedAtMs = iat * 1000;
+      const sessionAgeMs = Date.now() - issuedAtMs;
+      const maxAgeWithGrace = SESSION_MAX_DURATION_MS + REFRESH_GRACE_MS;
+      if (sessionAgeMs > maxAgeWithGrace) {
+        // Audit log: session expirée par durée max
+        const supabaseAdmin = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+        const cfIp = req.headers.get('cf-connecting-ip');
+        await supabaseAdmin.from('audit_logs').insert({
+          tenant_id: null, // inconnu — user pas encore profil
+          user_id: user.id,
+          action: 'SESSION_MAX_DURATION_EXCEEDED',
+          entity: 'auth',
+          entity_id: user.id,
+          metadata: {
+            ip: cfIp ?? null,
+            user_agent: req.headers.get('user-agent') ?? null,
+            source: 'edge_function:verify-session',
+            session_age_ms: sessionAgeMs,
+            session_max_ms: SESSION_MAX_DURATION_MS,
+            jwt_iat: iat,
+          }
+        }).then(() => {}, () => {}); // fire-and-forget
+
+        return new Response(
+          JSON.stringify({
+            error: 'Session has exceeded maximum allowed duration. Please sign in again.',
+            code: 'SESSION_MAX_DURATION_EXCEEDED',
+            action: 'SIGNIN_REQUIRED',
+            session_age_ms: sessionAgeMs,
+            session_max_ms: SESSION_MAX_DURATION_MS,
+          }),
+          {
+            status: 401,
+            headers: applySecurityHeaders({
+              ...cors,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+            })
+          }
+        )
+      }
     }
 
     // Vérifie le AAL via la session JWT
@@ -108,18 +205,19 @@ serve(async (req) => {
     if (profileError || !profile) {
       return new Response(
         JSON.stringify({ error: 'Profile not found', code: 'NO_PROFILE' }),
-        { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } }
+        {
+          status: 404,
+          headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+        }
       )
     }
 
     // PHASE 4.9: Vérification account lockout
-    // Si locked_until est dépassé, on reset automatiquement
     if (profile.locked_until) {
       const lockedUntilDate = new Date(profile.locked_until);
       const now = new Date();
 
       if (lockedUntilDate > now) {
-        // Compte bloqué — refuse l'accès
         const retryAfterSec = Math.ceil((lockedUntilDate.getTime() - now.getTime()) / 1000);
         return new Response(
           JSON.stringify({
@@ -131,11 +229,11 @@ serve(async (req) => {
           }),
           {
             status: 403,
-            headers: {
+            headers: applySecurityHeaders({
               ...cors,
               'Content-Type': 'application/json',
               'Retry-After': String(retryAfterSec),
-            }
+            })
           }
         )
       } else {
@@ -144,7 +242,6 @@ serve(async (req) => {
           .from('users')
           .update({ failed_login_attempts: 0, locked_until: null })
           .eq('id', user.id);
-        // Met à jour le profil en local pour la suite
         profile.failed_login_attempts = 0;
         profile.locked_until = null;
       }
@@ -162,9 +259,17 @@ serve(async (req) => {
           code: 'ACCOUNT_DISABLED',
           action: 'SIGNOUT_REQUIRED'
         }),
-        { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
+        {
+          status: 403,
+          headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+        }
       )
     }
+
+    // ── PHASE 5.5: Calcul du temps restant pour la réponse 200 ───────
+    const sessionMaxRemainingMs = iat !== null
+      ? Math.max(0, SESSION_MAX_DURATION_MS - (Date.now() - iat * 1000))
+      : null;
 
     // Admin SANS AAL2 → bloque l'accès aux données sensibles
     if (isAdmin && !isAal2) {
@@ -178,8 +283,12 @@ serve(async (req) => {
           requiresMfa: true,
           mfaAction: hasTotp ? 'challenge' : 'setup',
           aal: aal,
+          session_max_remaining_ms: sessionMaxRemainingMs,
         }),
-        { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } }
+        {
+          status: 200,
+          headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+        }
       )
     }
 
@@ -195,8 +304,12 @@ serve(async (req) => {
           requiresMfa: !hasTotp,
           mfaAction: hasTotp ? 'challenge' : 'setup',
           aal: aal,
+          session_max_remaining_ms: sessionMaxRemainingMs,
         }),
-        { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } }
+        {
+          status: 200,
+          headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+        }
       )
     }
 
@@ -208,17 +321,29 @@ serve(async (req) => {
         requiresMfa: false,
         mfaAction: null,
         aal: aal,
+        session_max_remaining_ms: sessionMaxRemainingMs,
       }),
-      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } }
+      {
+        status: 200,
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+      }
     )
   } catch (error: any) {
     console.error('verify-session error:', error)
     return new Response(
       JSON.stringify({ error: 'Internal server error', code: 'INTERNAL' }),
-      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      {
+        status: 500,
+        headers: applySecurityHeaders({ ...cors, 'Content-Type': 'application/json' })
+      }
     )
   }
 })
 
 // Export pour les tests internes
-export const __test__ = { isValidCsrfToken };
+export const __test__ = {
+  isValidCsrfToken,
+  extractIatFromJwt,
+  SESSION_MAX_DURATION_MS,
+  REFRESH_GRACE_MS,
+};

@@ -1,37 +1,35 @@
 // ============================================================================
-// JurisLink - Phase 4.7 - Patch Login.tsx (account lockout + password policy)
+// JurisLink - Phase 5.12 - Patch Login.tsx (HIBP warning + session init)
 // ============================================================================
-// Remplace: src/pages/auth/Login.tsx
+// Remplace: src/pages/auth/Login.tsx (version Phase 4)
 //
-// Changements vs Phase 3:
-//   1. Sur login échoué (password incorrect):
-//      - Appel à la fonction SQL register_failed_login(email) qui incrémente
-//        le compteur failed_login_attempts et bloque le compte si seuil (5)
-//      - Affiche un message "Tentatives restantes: N" si pas bloqué
-//      - Affiche un message "Compte bloqué, réessayez dans X minutes" si bloqué
-//   2. Sur login réussi:
-//      - Appel à register_successful_login(userId) qui reset les compteurs
-//   3. Sur MFA setup (utilisateur sans facteur TOTP):
-//      - Validation du password actuel avec analyzePassword()
-//      - Si le password actuel est trop faible, propose un reset
-//      - Suggestion de password fort via generateStrongPassword()
+// Changements vs Phase 4:
+//   1. Initialisation de session (initSession) après MFA réussi — pour suivre
+//      la durée absolue de session côté client (complète le SessionTimeout).
+//   2. Sur MFA setup (utilisateur sans facteur TOTP): check HIBP du password
+//      actuel pour informer l'utilisateur s'il faut le changer.
+//      Le check est NON BLOQUANT — affiche un warning discret si breach.
+//   3. Audit log enrichit avec session_id (corrélation avec users.last_session_id).
 //
 // Notes:
-//   - Le compte est identifié par EMAIL avant l'authentification — c'est
-//     OK car l'email est public lors du login. La fonction SQL est
-//     SECURITY DEFINER et ne révèle pas l'existence du compte (anti-énumération).
-//   - Le rate-limiting au niveau Auth (Supabase) est la première défense.
-//     Le lockout applicatif (cette couche) est la seconde défense.
+//   - Le check HIBP en MFA setup est DIFFÉRENT du check HIBP en création de
+//     compte (qui est BLOQUANT via edge function create-user). En MFA setup,
+//     l'utilisateur existe déjà et a déjà un password — on ne peut pas le
+//     forcer à changer sans dégrader l'expérience.
+//   - Le session_id est aussi passé à register_successful_login pour
+//     corrélation des audit_logs (Phase 5 migration 04_session_hardening.sql).
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, AlertCircle, ShieldOff } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, ShieldOff, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { MfaSetup } from '../../components/auth/MfaSetup';
 import { MfaChallenge } from '../../components/auth/MfaChallenge';
 import { rotateCsrfToken } from '../../lib/csrf';
+import { initSession } from '../../lib/sessionManager';
+import { checkPasswordBreachCached, type BreachCheckResult } from '../../lib/hibp';
 import './Login.css';
 
 interface LockoutInfo {
@@ -50,10 +48,39 @@ export const Login = () => {
   const [mfaStep, setMfaStep] = useState<'login' | 'challenge' | 'setup'>('login');
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
+  const [breachWarning, setBreachWarning] = useState<BreachCheckResult | null>(null);
+  const [sessionId, setSessionId] = useState<string>('');
   const navigate = useNavigate();
+  const hibpAbortRef = useRef<AbortController | null>(null);
 
-  // CORRECTION: Audit log inséré UNIQUEMENT après vérification MFA complète.
-  // Phase 3: utilisation du helper logAudit (structured JSONB metadata).
+  // Génère un session_id unique à chaque mount (durée de vie = session login)
+  useEffect(() => {
+    setSessionId(crypto.randomUUID());
+  }, []);
+
+  // Phase 5: check HIBP en arrière-plan pendant que l'utilisateur tape son password
+  // (uniquement si le password fait 8+ chars — assez long pour ne pas spammer l'API)
+  useEffect(() => {
+    if (!password || password.length < 8) {
+      setBreachWarning(null);
+      return;
+    }
+    // Debounce 500ms après le dernier keystroke
+    if (hibpAbortRef.current) {
+      hibpAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    hibpAbortRef.current = controller;
+    const timeout = setTimeout(async () => {
+      if (controller.signal.aborted) return;
+      const result = await checkPasswordBreachCached(password);
+      if (controller.signal.aborted) return;
+      setBreachWarning(result);
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [password]);
+
+  // Audit log inséré après MFA réussi — utilise le session_id de ce mount
   const logAuditSuccess = async (userId: string, loginMethod: 'password+mfa' | 'password+setup') => {
     const { data: userRow } = await supabase
       .from('users')
@@ -62,7 +89,6 @@ export const Login = () => {
       .single();
 
     if (userRow?.tenant_id) {
-      const sessionId = (typeof window !== 'undefined' && window.sessionStorage?.getItem('jurislink.session.id')) || crypto.randomUUID();
       await supabase.from('audit_logs').insert({
         tenant_id: userRow.tenant_id,
         user_id: userId,
@@ -77,6 +103,10 @@ export const Login = () => {
           source: 'UI:Login',
           login_method: loginMethod,
           aal: 'aal2',
+          // Phase 5: info breach check du password (pour corrélation SOC)
+          password_breach_check: breachWarning
+            ? { pwned: breachWarning.pwned, count: breachWarning.count, skipped: breachWarning.skipped }
+            : null,
         },
       });
     }
@@ -85,6 +115,18 @@ export const Login = () => {
   const handleMfaSuccess = async (userId: string) => {
     await logAuditSuccess(userId, 'password+mfa');
     rotateCsrfToken();
+    initSession(); // Phase 5: enregistre le timestamp de début de session
+
+    // Phase 5: enregistre le session_id côté serveur (register_successful_login)
+    try {
+      await supabase.rpc('register_successful_login', {
+        p_user_id: userId,
+        p_session_id: sessionId,
+      });
+    } catch (err) {
+      console.warn('register_successful_login (with session_id) failed:', err);
+    }
+
     navigate('/dashboard');
   };
 
@@ -117,7 +159,6 @@ export const Login = () => {
               `Identifiants invalides. Tentatives restantes: ${info.remainingAttempts}`));
           }
         } else {
-          // Fonction SQL non disponible — fallback sur le message Supabase
           setError(error.message);
         }
       } catch (err) {
@@ -134,9 +175,12 @@ export const Login = () => {
       return;
     }
 
-    // SUCCÈS — reset les compteurs d'échecs
+    // SUCCÈS — reset les compteurs d'échecs et enregistre le session_id
     try {
-      await supabase.rpc('register_successful_login', { p_user_id: data.session.user.id });
+      await supabase.rpc('register_successful_login', {
+        p_user_id: data.session.user.id,
+        p_session_id: sessionId,
+      });
     } catch (err) {
       console.warn('register_successful_login failed:', err);
     }
@@ -155,8 +199,7 @@ export const Login = () => {
       return;
     }
 
-    // CORRECTION CRITIQUE: Vérifie systématiquement la présence d'un facteur TOTP
-    // vérifié. Si présent → challenge obligatoire. Si absent → setup obligatoire.
+    // Vérifie systématiquement la présence d'un facteur TOTP vérifié
     const { data: factorsData } = await supabase.auth.mfa.listFactors();
     const totpFactor = factorsData?.totp?.find(f => f.status === 'verified');
 
@@ -198,6 +241,22 @@ export const Login = () => {
           }}>
             {lockoutInfo?.locked ? <ShieldOff size={18} /> : <AlertCircle size={18} />}
             {error}
+          </div>
+        )}
+
+        {/* Phase 5: warning HIBP si password compromis (non bloquant) */}
+        {breachWarning?.pwned && mfaStep === 'login' && (
+          <div className="error-alert" style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'hsla(var(--warning), 0.1)',
+            borderColor: 'hsl(var(--warning))',
+            fontSize: '0.85rem'
+          }}>
+            <AlertTriangle size={18} />
+            <span>
+              {t('login.breach_warning',
+                `Ce mot de passe a été exposé dans ${breachWarning.count} breach(es) connue(s). Pensez à le changer après connexion.`)}
+            </span>
           </div>
         )}
 
