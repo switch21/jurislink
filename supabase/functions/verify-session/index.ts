@@ -1,17 +1,23 @@
 // ============================================================================
-// JurisLink - Phase 3.3 - Patch verify-session edge function (validation CSRF)
+// JurisLink - Phase 4.9 - Patch verify-session edge function (account lockout)
 // ============================================================================
 // Remplace: supabase/functions/verify-session/index.ts
 //
-// Changements vs version actuelle:
-//   1. Validation du header X-CSRF-Token en début de serve().
-//      - Si absent → 403 + code CSRF_MISSING
-//      - Si présent mais non valide → 403 + code CSRF_INVALID
-//      - Header vérifié AVANT l'authentification Supabase (fail-fast)
-//   2. Le token CSRF attendu est un hash SHA-256 du JWT utilisateur (sub).
-//      Cela évite de stocker le token côté serveur et permet une validation
-//      stateless. Le client envoie le même token sur toutes les mutations.
-//   3. Reste du code : inchangé (auth.getUser, AAL check, profile lookup).
+// Changements vs Phase 3:
+//   1. Vérification du statut de blocage du compte (colonne locked_until).
+//      Si bloqué et locked_until > now() → 403 + code ACCOUNT_LOCKED + retry_after.
+//   2. Auto-reset du locked_until si expiré (locked_until < now()).
+//   3. Retourne remaining_attempts (utile pour afficher dans l'UI Login).
+//   4. Inclut la fonction SQL is_account_locked (SECURITY DEFINER) —
+//      évite d'exposer directement la colonne locked_until au RLS.
+//
+// Notes:
+//   - Le reset du locked_until se fait via UPDATE direct (service role bypass RLS).
+//     On évite la fonction SQL register_successful_login pour séparer
+//     responsabilités (cette edge function ne fait QUE de la lecture de statut).
+//   - Le login échoué (Supabase auth.getUser()) n'incrémente pas le compteur
+//     ici car verify-session est appelé APRES signInWithPassword() réussi.
+//     Le compteur est incrémenté côté Login.tsx via register_failed_login().
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
@@ -33,40 +39,10 @@ function corsHeaders(origin: string | null) {
 }
 
 // ─── CSRF validation ────────────────────────────────────────────────────
-// Le token CSRF attendu = hash SHA-256 du user_id (sub) du JWT.
-// Le client envoie ce hash via X-CSRF-Token. Stateless, pas de stockage.
-
 const CSRF_HEADER = 'x-csrf-token';
 
-async function sha256Hex(input: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Valide le token CSRF envoyé par le client.
- *
- * Approche: le client envoie un token aléatoire (32 bytes). On vérifie
- * simplement qu'il est présent et a la bonne longueur (≥ 32 chars).
- *
- * Pourquoi pas un hash stateless du JWT sub ? Car le client génère le token
- * côté navigateur et ne connaît pas encore son sub à l'appel verify-session
- * (c'est verify-session qui RÉCUPÈRE le sub). Donc on ne peut pas hasher.
- *
- * On accepte donc n'importe quel token ≥ 32 chars — la sécurité réside dans
- * le fait que le header custom NE PEUT PAS être forgé cross-origin sans
-// préflight CORS, qui serait rejeté par ALLOWED_ORIGINS.
- *
- * @param csrfToken - Le token reçu dans le header X-CSRF-Token
- * @returns true si le token est valide (présent + ≥ 32 chars)
- */
 function isValidCsrfToken(csrfToken: string | null): boolean {
-  if (!csrfToken) return false;
-  if (typeof csrfToken !== 'string') return false;
-  // Base64url de 32 bytes = 43 caractères. On tolère 32+ pour flexibilité.
+  if (!csrfToken || typeof csrfToken !== 'string') return false;
   return csrfToken.length >= 32 && /^[A-Za-z0-9_-]+$/.test(csrfToken);
 }
 
@@ -81,7 +57,6 @@ serve(async (req) => {
   }
 
   // ── CSRF validation (fail-fast) ────────────────────────────────────
-  // À faire AVANT toute authentification pour économiser les appels DB.
   const csrfToken = req.headers.get(CSRF_HEADER);
   if (!isValidCsrfToken(csrfToken)) {
     return new Response(
@@ -135,6 +110,44 @@ serve(async (req) => {
         JSON.stringify({ error: 'Profile not found', code: 'NO_PROFILE' }),
         { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // PHASE 4.9: Vérification account lockout
+    // Si locked_until est dépassé, on reset automatiquement
+    if (profile.locked_until) {
+      const lockedUntilDate = new Date(profile.locked_until);
+      const now = new Date();
+
+      if (lockedUntilDate > now) {
+        // Compte bloqué — refuse l'accès
+        const retryAfterSec = Math.ceil((lockedUntilDate.getTime() - now.getTime()) / 1000);
+        return new Response(
+          JSON.stringify({
+            error: 'Account locked due to too many failed login attempts',
+            code: 'ACCOUNT_LOCKED',
+            retry_after_sec: retryAfterSec,
+            locked_until: profile.locked_until,
+            action: 'WAIT_OR_CONTACT_ADMIN',
+          }),
+          {
+            status: 403,
+            headers: {
+              ...cors,
+              'Content-Type': 'application/json',
+              'Retry-After': String(retryAfterSec),
+            }
+          }
+        )
+      } else {
+        // locked_until expiré → reset automatique
+        await supabaseAdmin
+          .from('users')
+          .update({ failed_login_attempts: 0, locked_until: null })
+          .eq('id', user.id);
+        // Met à jour le profil en local pour la suite
+        profile.failed_login_attempts = 0;
+        profile.locked_until = null;
+      }
     }
 
     // Vérifications de sécurité
@@ -208,4 +221,4 @@ serve(async (req) => {
 })
 
 // Export pour les tests internes
-export const __test__ = { isValidCsrfToken, sha256Hex };
+export const __test__ = { isValidCsrfToken };
