@@ -1,12 +1,27 @@
+// ============================================================================
+// JurisLink - Phase 1.2 - Patch MfaChallenge.tsx (callback onSuccess explicite)
+// ============================================================================
+// Remplace: src/components/auth/MfaChallenge.tsx
+//
+// Changements vs version actuelle:
+//   1. Ajout d'une prop `onSuccess: () => void` explicite pour notifier le
+//      parent au lieu de faire une redirection dure via window.location.href.
+//   2. Suppression du `window.location.href = '/dashboard'` qui court-circuitait
+//      le routeur React et empêchait l'audit log de se déclencher.
+//   3. Conservation du debugInfo pour le troubleshooting (à retirer en prod
+//      Phase 2 — voir Phase 3 point 12 console.log).
+// ============================================================================
+
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 
 interface MfaChallengeProps {
   factorId: string;
   onCancel: () => void;
+  onSuccess: () => void; // NOUVEAU: callback explicite après vérification
 }
 
-export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel }) => {
+export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel, onSuccess }) => {
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -14,32 +29,32 @@ export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel }
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       setDebugInfo('Étape 1: Création du challenge...');
       const challenge = await supabase.auth.mfa.challenge({ factorId });
       if (challenge.error) throw challenge.error;
-      
+
       setDebugInfo('Étape 2: Vérification du code...');
       const verify = await supabase.auth.mfa.verify({
         factorId,
         challengeId: challenge.data.id,
         code: verifyCode
       });
-      
+
       if (verify.error) throw verify.error;
-      
-      setDebugInfo('Étape 3: Code validé ! Redirection...');
-      
-      // Redirection dure - impossible à bloquer par React
-      window.location.href = '/dashboard';
-    } catch (err: any) {
+
+      setDebugInfo('Étape 3: Code validé !');
+      // CORRECTION: Appel du callback parent au lieu de window.location.href
+      onSuccess();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Code invalide ou expiré. Veuillez réessayer.';
       console.error('MFA verify error:', err);
       setDebugInfo('');
-      setError(`Erreur: ${err.message || 'Code invalide ou expiré. Veuillez réessayer.'}`);
+      setError(`Erreur: ${message}`);
       setLoading(false);
     }
   };
@@ -70,7 +85,7 @@ export const MfaChallenge: React.FC<MfaChallengeProps> = ({ factorId, onCancel }
             style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '2px' }}
           />
         </div>
-        
+
         <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
           <button type="button" className="btn" onClick={onCancel} style={{ flex: 1, background: 'hsla(var(--text-muted), 0.1)' }}>
             Annuler

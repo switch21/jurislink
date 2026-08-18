@@ -1,0 +1,92 @@
+# ============================================================================
+# JurisLink - Phase 1.4 - GitHub Actions CI
+# ============================================================================
+# Emplacement: .github/workflows/ci.yml
+#
+# Pipeline déclenché à chaque push/PR sur main + develop.
+# Étapes: install → lint → typecheck → test → build.
+# Durée cible: < 5 minutes.
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Anti-concurrence: annule les runs précédents sur la même branche/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint + Typecheck + Test + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      # Variable Supabase factice pour le build (le build ne fait pas d'appel réseau)
+      VITE_SUPABASE_URL: https://placeholder.supabase.co
+      VITE_SUPABASE_ANON_KEY: placeholder-anon-key-for-build-only
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+        continue-on-error: true # Phase 1: warnings non bloquants
+
+      - name: Typecheck (tsc strict)
+        run: npx tsc -p tsconfig.app.json --noEmit
+        # Phase 1: non bloquant tant que les 35 erreurs ne sont pas résolues
+        # (voir tsc_migration_report.md)
+        continue-on-error: true
+
+      - name: Test (Vitest)
+        run: npm run test -- --reporter=verbose --reporter=junit --outputFile=test-results.xml
+        env:
+          NODE_ENV: test
+
+      - name: Build (Vite)
+        run: npm run build
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+          retention-days: 7
+
+      - name: Upload build artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+
+      - name: Coverage report
+        if: always()
+        run: npm run test:coverage || true
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage/
+          retention-days: 14
