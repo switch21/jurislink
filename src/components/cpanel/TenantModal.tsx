@@ -1,7 +1,25 @@
+// ============================================================================
+// JurisLink - Phase 3.9 - Patch TenantModal.tsx (audit log via helper)
+// ============================================================================
+// Changements vs version Phase 2:
+//   1. Import { logAudit } from '../../lib/audit'.
+//   2. Après insert/update réussi d'un tenant, appel logAudit avec:
+//      - action: TENANT_CREATE ou TENANT_UPDATE
+//      - entity: 'tenants'
+//      - entity_id: tenant.id (update) ou inserted.id (create)
+//      - new_state: tenantData
+//      - previous_state: tenant (update) ou null (create)
+//      - metadata: { source: 'UI:TenantModal', plan }
+//   3. Pour le CREATE, on enchaîne .insert(tenantData).select('id').single()
+//      pour récupérer l'ID du tenant créé et l'inclure dans audit_logs.
+// Le reste de l'UI est préservé à l'identique (glass-card, sections, etc.).
+// ============================================================================
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { X } from 'lucide-react';
 import { Portal } from '../common/Portal';
+import { logAudit } from '../../lib/audit';
 
 interface TenantModalProps {
   isOpen: boolean;
@@ -64,7 +82,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({ isOpen, onClose, tenan
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       let finalLogoUrl = logoUrl;
       if (logoFile) {
@@ -81,13 +99,13 @@ export const TenantModal: React.FC<TenantModalProps> = ({ isOpen, onClose, tenan
       const maxUsers = plan === 'premium' ? 10 : 3;
       const maxStorage = plan === 'premium' ? 20 : 5;
 
-      const tenantData = { 
-        name, 
-        language, 
-        phone, 
-        email, 
-        address, 
-        niu, 
+      const tenantData = {
+        name,
+        language,
+        phone,
+        email,
+        address,
+        niu,
         plan,
         logo_url: finalLogoUrl,
         max_users: maxUsers,
@@ -95,13 +113,44 @@ export const TenantModal: React.FC<TenantModalProps> = ({ isOpen, onClose, tenan
       };
 
       if (tenant) {
+        // UPDATE
         const { error } = await supabase.from('tenants').update(tenantData).eq('id', tenant.id);
         if (error) throw error;
+
+        // Audit log UPDATE (Phase 3.9)
+        await logAudit({
+          action: 'TENANT_UPDATE',
+          entity: 'tenants',
+          entity_id: tenant.id,
+          previous_state: tenant,
+          new_state: tenantData,
+          metadata: {
+            source: 'UI:TenantModal',
+            plan,
+          },
+        });
       } else {
-        const { error } = await supabase.from('tenants').insert(tenantData);
+        // CREATE — on récupère l'ID via .select('id').single() pour l'audit
+        const { data: inserted, error } = await supabase.from('tenants')
+          .insert(tenantData)
+          .select('id')
+          .single();
+
         if (error) throw error;
+
+        // Audit log CREATE (Phase 3.9)
+        await logAudit({
+          action: 'TENANT_CREATE',
+          entity: 'tenants',
+          entity_id: inserted?.id ?? 'unknown',
+          new_state: { ...tenantData, id: inserted?.id },
+          metadata: {
+            source: 'UI:TenantModal',
+            plan,
+          },
+        });
       }
-      
+
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -119,18 +168,18 @@ export const TenantModal: React.FC<TenantModalProps> = ({ isOpen, onClose, tenan
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
       padding: '1rem'
     }}>
-      <div className="glass-card animate-fade-in" style={{ 
-        padding: '2.5rem', 
-        width: '100%', 
-        maxWidth: '700px', 
-        maxHeight: '90vh', 
-        overflowY: 'auto', 
+      <div className="glass-card animate-fade-in" style={{
+        padding: '2.5rem',
+        width: '100%',
+        maxWidth: '700px',
+        maxHeight: '90vh',
+        overflowY: 'auto',
         position: 'relative',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
       }}>
-        <button onClick={onClose} style={{ 
-          position: 'absolute', top: '1.5rem', right: '1.5rem', 
-          background: 'hsla(var(--text-muted), 0.1)', border: 'none', 
+        <button onClick={onClose} style={{
+          position: 'absolute', top: '1.5rem', right: '1.5rem',
+          background: 'hsla(var(--text-muted), 0.1)', border: 'none',
           color: 'hsl(var(--text-muted))', cursor: 'pointer',
           width: '32px', height: '32px', borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -147,7 +196,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({ isOpen, onClose, tenan
             Configurez les paramètres et les limites du cabinet JurisLink.
           </p>
         </div>
-        
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           {/* Section: Informations Générales */}
           <section>

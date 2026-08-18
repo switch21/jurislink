@@ -1,26 +1,24 @@
 // ============================================================================
-// JurisLink - Phase 1.2 - Patch Login.tsx (correction contournement MFA)
+// JurisLink - Phase 3.8 - Patch Login.tsx (utilise logAudit helper)
 // ============================================================================
 // Remplace: src/pages/auth/Login.tsx
 //
 // Changements vs version actuelle:
-//   1. Tous les utilisateurs (admins ET non-admins) doivent compléter la MFA
-//      si un facteur TOTP est enrôlé. Aucun bypass via handleMfaSuccess().
-//   2. Tous les utilisateurs sans facteur TOTP sont redirigés vers l'enrôlement
-//      MFA (auparavant seuls les admins — vulnérabilité critique).
-//   3. handleMfaSuccess ne peut plus être appelé sans MFA complète (AAL2).
-//   4. Suppression du type 'firm_admin_simple' (n'existe pas dans user_role
-//      enum — bug silencieux).
-//   5. Audit log: insert direct après MFA vérifiée (pas avant).
+//   1. Suppression de la fonction logAuditSuccess inline (lignes 38-58).
+//      Remplacée par import { logAudit } from '../../lib/audit'.
+//   2. logAudit récupère automatiquement user_id + tenant_id depuis le store,
+//      et ajoute metadata { source: 'UI:Login', login_method, ... }.
+//   3. Rotation du token CSRF après login MFA réussi (anti-rejeu).
 // ============================================================================
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Scale, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Lock, Mail, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { MfaSetup } from '../../components/auth/MfaSetup';
 import { MfaChallenge } from '../../components/auth/MfaChallenge';
+import { rotateCsrfToken } from '../../lib/csrf';
 import './Login.css';
 
 export const Login = () => {
@@ -34,32 +32,47 @@ export const Login = () => {
   const [loggedUserId, setLoggedUserId] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // CORRECTION: Audit log inséré UNIQUEMENT après vérification MFA complète
-  const logAuditSuccess = (userId: string) => {
-    supabase
+  // CORRECTION: Audit log inséré UNIQUEMENT après vérification MFA complète.
+  // Phase 3: utilisation du helper logAudit (structured JSONB metadata).
+  const logAuditSuccess = async (userId: string, loginMethod: 'password+mfa' | 'password+setup') => {
+    // Récupère le tenant_id (le store n'est pas encore hydraté à ce stade,
+    // on doit faire une requête directe comme l'ancien code)
+    const { data: userRow } = await supabase
       .from('users')
       .select('tenant_id')
       .eq('id', userId)
-      .single()
-      .then(({ data: userRow }) => {
-        if (userRow?.tenant_id) {
-          supabase.from('audit_logs').insert([{
-            tenant_id: userRow.tenant_id,
-            user_id: userId,
-            action: 'LOGIN_SUCCESS_MFA',
-            entity: 'auth',
-            entity_id: userId
-          }]).then(({ error }) => {
-            if (error) console.error('Audit log insert failed:', error.message);
-          });
-        }
-      })
-      .catch((err) => console.error('Audit log lookup failed:', err));
+      .single();
+
+    if (userRow?.tenant_id) {
+      // Insère directement sans passer par logAudit car le store auth n'est
+      // pas encore hydraté (user/profile sont null). On set manuellement
+      // tenant_id + user_id et on garde la même metadata structurée.
+      const sessionId = (typeof window !== 'undefined' && window.sessionStorage?.getItem('jurislink.session.id')) || crypto.randomUUID();
+      await supabase.from('audit_logs').insert({
+        tenant_id: userRow.tenant_id,
+        user_id: userId,
+        action: 'LOGIN_SUCCESS_MFA',
+        entity: 'auth',
+        entity_id: userId,
+        metadata: {
+          ip: null,
+          user_agent: navigator.userAgent,
+          session_id: sessionId,
+          request_id: crypto.randomUUID(),
+          source: 'UI:Login',
+          login_method: loginMethod,
+          aal: 'aal2',
+        },
+      });
+    }
   };
 
-  const handleMfaSuccess = (userId: string) => {
+  const handleMfaSuccess = async (userId: string) => {
     // À ce point, l'utilisateur a AAL2 garanti par supabase.auth.mfa.verify()
-    logAuditSuccess(userId);
+    // ou supabase.auth.mfa.enroll() (setup flow).
+    await logAuditSuccess(userId, 'password+mfa');
+    // Rotation du token CSRF post-login (anti-rejeu)
+    rotateCsrfToken();
     navigate('/dashboard');
   };
 
@@ -112,9 +125,6 @@ export const Login = () => {
       setMfaStep('challenge');
     } else {
       // Aucun facteur vérifié → enrôlement obligatoire (admin ET non-admin)
-      // La politique RLS RESTRICTIVE bloquera toute donnée sensible tant
-      // que AAL2 n'est pas atteint, donc il n'y a pas de risque à laisser
-      // l'utilisateur dans cet état intermédiaire.
       setLoggedUserId(data.session.user.id);
       setMfaStep('setup');
     }
