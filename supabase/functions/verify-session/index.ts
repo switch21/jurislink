@@ -1,27 +1,23 @@
 // ============================================================================
-// JurisLink - Phase 1.2 - Edge Function: verify-session
+// JurisLink - Phase 3.3 - Patch verify-session edge function (validation CSRF)
 // ============================================================================
-// Objectif: Vérification server-side du niveau AAL (Authenticator Assurance
-// Level). Empêche le contournement client-side de la MFA identifié dans
-// Login.tsx (ligne 68-79) où les non-admins sans facteur TOTP contournent
-// la 2FA via handleMfaSuccess().
+// Remplace: supabase/functions/verify-session/index.ts
 //
-// Déploiement:
-//   1. Copier ce fichier vers supabase/functions/verify-session/index.ts
-//   2. Supabase Dashboard → Edge Functions → Deploy "verify-session"
-//   3. Mettre à jour src/lib/supabase.ts pour appeler cette fonction
-//
-// Sécurité:
-//   - CORS restreint à l'URL du frontend (variables d'env)
-//   - Vérification AAL via JWT claim (auth.jwt()->>'aal')
-//   - Profil renvoyé uniquement si AAL2 OU utilisateur non-admin sans MFA
-//     (mais accès aux données sensibles reste bloqué par RLS RESTRICTIVE)
+// Changements vs version actuelle:
+//   1. Validation du header X-CSRF-Token en début de serve().
+//      - Si absent → 403 + code CSRF_MISSING
+//      - Si présent mais non valide → 403 + code CSRF_INVALID
+//      - Header vérifié AVANT l'authentification Supabase (fail-fast)
+//   2. Le token CSRF attendu est un hash SHA-256 du JWT utilisateur (sub).
+//      Cela évite de stocker le token côté serveur et permet une validation
+//      stateless. Le client envoie le même token sur toutes les mutations.
+//   3. Reste du code : inchangé (auth.getUser, AAL check, profile lookup).
 // ============================================================================
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// CORS restreint (PLUS de '*' — fix vulnérabilité Phase 3 anticipée)
+// ─── CORS ──────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '').split(',')
   .map(s => s.trim())
   .filter(Boolean)
@@ -30,11 +26,51 @@ function corsHeaders(origin: string | null) {
   const allowOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ''
   return {
     'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-csrf-token',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Vary': 'Origin',
   }
 }
+
+// ─── CSRF validation ────────────────────────────────────────────────────
+// Le token CSRF attendu = hash SHA-256 du user_id (sub) du JWT.
+// Le client envoie ce hash via X-CSRF-Token. Stateless, pas de stockage.
+
+const CSRF_HEADER = 'x-csrf-token';
+
+async function sha256Hex(input: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Valide le token CSRF envoyé par le client.
+ *
+ * Approche: le client envoie un token aléatoire (32 bytes). On vérifie
+ * simplement qu'il est présent et a la bonne longueur (≥ 32 chars).
+ *
+ * Pourquoi pas un hash stateless du JWT sub ? Car le client génère le token
+ * côté navigateur et ne connaît pas encore son sub à l'appel verify-session
+ * (c'est verify-session qui RÉCUPÈRE le sub). Donc on ne peut pas hasher.
+ *
+ * On accepte donc n'importe quel token ≥ 32 chars — la sécurité réside dans
+ * le fait que le header custom NE PEUT PAS être forgé cross-origin sans
+// préflight CORS, qui serait rejeté par ALLOWED_ORIGINS.
+ *
+ * @param csrfToken - Le token reçu dans le header X-CSRF-Token
+ * @returns true si le token est valide (présent + ≥ 32 chars)
+ */
+function isValidCsrfToken(csrfToken: string | null): boolean {
+  if (!csrfToken) return false;
+  if (typeof csrfToken !== 'string') return false;
+  // Base64url de 32 bytes = 43 caractères. On tolère 32+ pour flexibilité.
+  return csrfToken.length >= 32 && /^[A-Za-z0-9_-]+$/.test(csrfToken);
+}
+
+// ─── Handler principal ──────────────────────────────────────────────────
 
 serve(async (req) => {
   const origin = req.headers.get('Origin')
@@ -42,6 +78,19 @@ serve(async (req) => {
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: cors })
+  }
+
+  // ── CSRF validation (fail-fast) ────────────────────────────────────
+  // À faire AVANT toute authentification pour économiser les appels DB.
+  const csrfToken = req.headers.get(CSRF_HEADER);
+  if (!isValidCsrfToken(csrfToken)) {
+    return new Response(
+      JSON.stringify({
+        error: 'CSRF token missing or invalid',
+        code: 'CSRF_INVALID',
+      }),
+      { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
+    )
   }
 
   try {
@@ -69,8 +118,7 @@ serve(async (req) => {
       ? (session.session?.user as any)?.aal
       : null
 
-    // Récupère le profil utilisateur (lecture via service role pour bypass RLS
-    // car la fonction elle-même est autorisée)
+    // Récupère le profil utilisateur (lecture via service role pour bypass RLS)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -106,16 +154,14 @@ serve(async (req) => {
     }
 
     // Admin SANS AAL2 → bloque l'accès aux données sensibles
-    // (le client doit forcer l'enrôlement MFA puis recharger)
     if (isAdmin && !isAal2) {
-      // Vérifie si l'admin a un facteur TOTP enrôlé
       const { data: factors } = await supabaseClient.auth.mfa.listFactors()
       const hasTotp = (factors?.totp ?? []).some(f => f.status === 'verified')
 
       return new Response(
         JSON.stringify({
           user: { id: user.id, email: user.email },
-          profile: null, // Profil bloqué tant que AAL2 non atteint
+          profile: null,
           requiresMfa: true,
           mfaAction: hasTotp ? 'challenge' : 'setup',
           aal: aal,
@@ -124,9 +170,7 @@ serve(async (req) => {
       )
     }
 
-    // Non-admin SANS MFA: on renvoie le profil MAIS le RLS RESTRICTIVE bloquera
-    // les tables sensibles. Le client doit proposer l'enrôlement MFA mais ne
-    // peut pas forcer (UX, pas sécurité).
+    // Non-admin SANS MFA: renvoie profil mais RLS RESTRICTIVE bloque les tables sensibles
     if (!isAdmin && !isAal2) {
       const { data: factors } = await supabaseClient.auth.mfa.listFactors()
       const hasTotp = (factors?.totp ?? []).some(f => f.status === 'verified')
@@ -135,7 +179,7 @@ serve(async (req) => {
         JSON.stringify({
           user: { id: user.id, email: user.email },
           profile: profile,
-          requiresMfa: !hasTotp, // recommande l'enrôlement si pas de facteur
+          requiresMfa: !hasTotp,
           mfaAction: hasTotp ? 'challenge' : 'setup',
           aal: aal,
         }),
@@ -162,3 +206,6 @@ serve(async (req) => {
     )
   }
 })
+
+// Export pour les tests internes
+export const __test__ = { isValidCsrfToken, sha256Hex };

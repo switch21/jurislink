@@ -1,0 +1,98 @@
+# ============================================================================
+# JurisLink - Phase 3.5 - Configuration Supabase (rate-limiting + CORS)
+# ============================================================================
+# Emplacement: supabase/config.toml (nouveau fichier)
+#
+# Configuration déclarative des edge functions. Sert de source de vérité
+# pour le déploiement via `supabase functions deploy`.
+#
+# Déploiement:
+#   1. Installer la CLI: `npm install -g supabase`
+#   2. Login: `supabase login`
+#   3. Lier le projet: `supabase link --project-ref zosqktvmihtkqbbgdbgx`
+#   4. Déployer config + functions:
+#      supabase functions deploy verify-session --no-bundle
+#      supabase functions deploy create-user --no-bundle
+#   5. Set secrets:
+#      supabase secrets set ALLOWED_ORIGINS=https://jurislink.com,https://staging.jurislink.com
+#
+# Rate-limiting Supabase native:
+#   Supabase propose 2 mécanismes de rate-limiting natif:
+#   1. Au niveau plateforme (Dashboard → Settings → API → Rate Limits):
+#      - Configuré en lecture seule sur le dashboard
+#      - IP-based, 60-1000 req/min
+#   2. Au niveau edge function (config.toml [functions.X] verify_jwt):
+#      - verify_jwt = true (rejette requêtes sans JWT valide)
+#      - Pas de rate-limiting direct ici, mais le verify_jwt évite les
+#        appels anonymes massifs (le JWT doit être obtenu via login,
+#        qui peut lui-même être rate-limité au niveau auth Supabase)
+#
+# Pour un rate-limiting plus fin (par IP, par utilisateur, par minute),
+# une edge function dédiée avec Deno KV est nécessaire (Phase 4 future).
+# ============================================================================
+
+project_ref = "zosqktvmihtkqbbgdbgx"
+
+# ─── Configuration globale ───────────────────────────────────────────────
+[functions]
+# Toutes les edge functions requièrent un JWT valide par défaut.
+# Si une function n'a pas besoin de JWT (ex: webhook public), mettre
+# verify_jwt = false dans la section [functions.X] spécifique.
+verify_jwt = true
+
+# ─── verify-session ────────────────────────────────────────────────────
+# Appelée à chaque login + onAuthStateChange. Volume attendu: ~1 req/login
+# + 1 req/refresh-session (toutes les 50 min par user actif).
+# Recommandation dashboard: 60 req/min/IP (anti bruteforce)
+[functions.verify-session]
+verify_jwt = true
+# IMPORTANT: pas de rate-limiting "request_count" natif via config.toml.
+# Pour un vrai rate-limit, voir dashboard Supabase → Settings →
+# Edge Functions → Rate Limits, ou migrer vers Deno KV en Phase 4.
+
+# ─── create-user ────────────────────────────────────────────────────────
+# Appelée uniquement par les admins pour créer des utilisateurs.
+# Volume attendu: très faible (< 10 req/jour pour un cabinet moyen).
+# Recommandation dashboard: 5 req/min/IP (anti création massive)
+[functions.create-user]
+verify_jwt = true
+
+# ─── Secrets attendus (à setter via `supabase secrets set`) ─────────────
+# Les variables ci-dessous sont injectées automatiquement par Supabase
+# dans Deno.env.get() — ne PAS les setter via config.toml:
+#   - SUPABASE_URL
+#   - SUPABASE_ANON_KEY
+#   - SUPABASE_SERVICE_ROLE_KEY
+#   - SUPABASE_DB_URL
+#
+# Variables à setter manuellement:
+#   - ALLOWED_ORIGINS (CSV des URLs frontend autorisées en CORS)
+#     supabase secrets set ALLOWED_ORIGINS=https://jurislink.com,https://staging.jurislink.com
+
+# ============================================================================
+# Documentation: Rate-limiting Supabase Dashboard (à configurer manuellement)
+# ============================================================================
+#
+# 1. Aller sur https://supabase.com/dashboard/project/zosqktvmihtkqbbgdbgx
+# 2. Settings → Edge Functions → Rate Limiting
+# 3. Configurer par function:
+#
+#    Function: verify-session
+#      Requests per minute (per IP): 60
+#      Block duration: 60s
+#      Reason: Anti-bruteforce login (chaque user legit fait < 10 req/h)
+#
+#    Function: create-user
+#      Requests per minute (per IP): 5
+#      Block duration: 300s (5 min)
+#      Reason: Anti-création massive de comptes
+#
+# 4. Settings → Authentication → Rate Limits (supabase auth)
+#      Login attempts per email: 10 / minute
+#      Login attempts per IP: 30 / minute
+#      Signup attempts per IP: 5 / minute
+#      Reason: Anti-bruteforce login + anti-signup-spam
+#
+# Ces settings ne sont pas versionnés dans config.toml — à documenter
+# dans le wiki de l'équipe.
+# ============================================================================

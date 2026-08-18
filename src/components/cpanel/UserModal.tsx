@@ -1,9 +1,24 @@
+// ============================================================================
+// JurisLink - Phase 3.10 - Patch UserModal.tsx (audit log via helper)
+// ============================================================================
+// Remplace: src/components/cpanel/UserModal.tsx
+//
+// Changements vs version actuelle:
+//   1. Import { logAudit } from '../../lib/audit'.
+//   2. Après update d'un user, logAudit({ action: USER_UPDATE, ... }).
+//   3. Après create-user edge function call réussi, logAudit({ action: USER_CREATE, ... }).
+//      Note: la edge function create-user insère déjà son propre log côté serveur
+//      avec IP, user_agent, etc. Le logAudit côté UI est complémentaire
+//      (source: 'UI:UserModal', et garde l'info de qui a initié l'action).
+// ============================================================================
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useTranslation } from 'react-i18next';
 import { Portal } from '../common/Portal';
+import { logAudit } from '../../lib/audit';
 
 interface UserModalProps {
   isOpen: boolean;
@@ -53,33 +68,68 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
     e.preventDefault();
     setLoading(true);
     setError('');
-    
+
     if (userToEdit) {
+      // UPDATE
+      const previousState = {
+        full_name: userToEdit.full_name,
+        role: userToEdit.role,
+        tenant_id: userToEdit.tenant_id,
+      };
+      const newState = {
+        full_name: fullName,
+        role,
+        tenant_id: tenantId || null,
+      };
+
       const { error: updateError } = await supabase
         .from('users')
-        .update({ full_name: fullName, role, tenant_id: tenantId || null })
+        .update(newState)
         .eq('id', userToEdit.id);
-      
-      if (updateError) setError(updateError.message);
-      else {
+
+      if (updateError) {
+        setError(updateError.message);
+      } else {
+        // Audit log UPDATE
+        await logAudit({
+          action: 'USER_UPDATE',
+          entity: 'users',
+          entity_id: userToEdit.id,
+          previous_state: previousState,
+          new_state: newState,
+          metadata: { source: 'UI:UserModal' },
+        });
         onSuccess();
         onClose();
       }
     } else {
+      // CREATE via edge function
       try {
         const { data, error } = await supabase.functions.invoke('create-user', {
-          body: { 
-            email, 
-            password, 
-            full_name: fullName, 
-            role, 
-            tenant_id: tenantId || null 
+          body: {
+            email,
+            password,
+            full_name: fullName,
+            role,
+            tenant_id: tenantId || null
           }
         });
 
         if (error) {
           setError(error.message || t('users.modal.error_create'));
         } else {
+          // Audit log CREATE (l'edge function logge aussi côté serveur avec IP)
+          const newUserId = data?.user?.id ?? 'unknown';
+          await logAudit({
+            action: 'USER_CREATE',
+            entity: 'users',
+            entity_id: newUserId,
+            new_state: { id: newUserId, email, full_name: fullName, role, tenant_id: tenantId || null },
+            metadata: {
+              source: 'UI:UserModal',
+              created_via: 'edge_function',
+            },
+          });
           onSuccess();
           onClose();
         }
@@ -87,7 +137,7 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
         setError(err.message || t('users.modal.error_network'));
       }
     }
-    
+
     setLoading(false);
   };
 
@@ -103,7 +153,7 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
           <X size={24} />
         </button>
         <h2 style={{ marginBottom: '1.5rem' }}>{userToEdit ? t('users.modal.edit_title') : t('users.modal.new_title')}</h2>
-        
+
         {error && <div className="error-alert" style={{marginBottom: '1rem'}}>{error}</div>}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -111,7 +161,7 @@ export const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, userToEdi
             <label className="input-label">{t('users.modal.field_name')}</label>
             <input type="text" className="input-field" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
           </div>
-          
+
           <div className="input-group">
             <label className="input-label">{t('users.modal.field_email')}</label>
             <input type="email" className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={!!userToEdit} />
