@@ -157,3 +157,13 @@
     radial-gradient(circle at 80% 20%, oklch(0.2 0.01 250) 0%, transparent 50%),
     radial-gradient(circle at 40% 80%, oklch(0.22 0.015 160) 0%, transparent 50%);
 }
+
+/* CSS animations for login (replaces framer-motion) */
+@keyframes float-slow { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-12px) rotate(5deg); } }
+@keyframes float-medium { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-10px) rotate(-4deg); } }
+@keyframes float-fast { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-14px) rotate(3deg); } }
+.animate-float-slow { animation: float-slow 6s ease-in-out infinite; }
+.animate-float-medium { animation: float-medium 5.5s ease-in-out infinite; }
+.animate-float-fast { animation: float-fast 7s ease-in-out infinite; }
+.animate-fade-in { animation: fadeIn 0.5s ease-out forwards; opacity: 0; }
+@keyframes fadeIn { to { opacity: 1; } }

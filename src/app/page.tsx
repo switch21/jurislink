@@ -2,10 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AnimatePresence, motion } from 'framer-motion'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
-} from 'recharts'
+// AnimatePresence removed to save memory
+// Charts replaced with lightweight CSS visualizations to reduce memory
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, isSameMonth, differenceInDays, isBefore, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
@@ -267,11 +265,11 @@ function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center login-pattern p-4 relative overflow-hidden">
-      <motion.div animate={{ y: [0, -12, 0], rotate: [0, 5, -5, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }} className="absolute top-[12%] left-[8%] md:top-[10%] md:left-[12%] opacity-[0.08] dark:opacity-[0.05] pointer-events-none"><Scale className="size-16 md:size-20 text-slate-900 dark:text-white" /></motion.div>
-      <motion.div animate={{ y: [0, -10, 0], rotate: [0, -8, 4, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }} className="absolute top-[18%] right-[10%] md:top-[15%] md:right-[14%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none"><FileText className="size-14 md:size-18 text-slate-900 dark:text-white" /></motion.div>
-      <motion.div animate={{ y: [0, -14, 0], rotate: [0, 3, -6, 0] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 2 }} className="absolute bottom-[15%] left-[10%] md:bottom-[18%] md:left-[15%] opacity-[0.06] dark:opacity-[0.04] pointer-events-none"><Building2 className="size-16 md:size-20 text-slate-900 dark:text-white" /></motion.div>
-      <motion.div animate={{ y: [0, -8, 0], rotate: [0, -4, 6, 0] }} transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }} className="absolute bottom-[20%] right-[8%] md:bottom-[22%] md:right-[11%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none"><Shield className="size-14 md:size-18 text-slate-900 dark:text-white" /></motion.div>
-      <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md relative z-10">
+      <div className="absolute top-[12%] left-[8%] md:top-[10%] md:left-[12%] opacity-[0.08] dark:opacity-[0.05] pointer-events-none animate-float-slow"><Scale className="size-16 md:size-20 text-slate-900 dark:text-white" /></div>
+      <div className="absolute top-[18%] right-[10%] md:top-[15%] md:right-[14%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none animate-float-medium"><FileText className="size-14 md:size-18 text-slate-900 dark:text-white" /></div>
+      <div className="absolute bottom-[15%] left-[10%] md:bottom-[18%] md:left-[15%] opacity-[0.06] dark:opacity-[0.04] pointer-events-none animate-float-fast"><Building2 className="size-16 md:size-20 text-slate-900 dark:text-white" /></div>
+      <div className="absolute bottom-[20%] right-[8%] md:bottom-[22%] md:right-[11%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none animate-float-medium"><Shield className="size-14 md:size-18 text-slate-900 dark:text-white" /></div>
+      <div className="w-full max-w-md relative z-10 animate-fade-in">
         <Card className="shadow-2xl border-slate-200/80 dark:border-slate-700/50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
           <CardHeader className="text-center pb-2 pt-8">
             <div className="mx-auto mb-4 flex items-center justify-center gap-2">
@@ -290,7 +288,7 @@ function LoginPage() {
           <CardFooter className="flex-col gap-2 pb-8"><Separator className="mb-2" /><p className="text-xs text-slate-400 dark:text-slate-500">Compte démo</p><p className="text-xs text-slate-500 dark:text-slate-400 font-mono bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-md">ngassa@jurislink.com / Admin@123</p></CardFooter>
         </Card>
         <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-6">© 2025 JurisLink — Tous droits réservés</p>
-      </motion.div>
+      </div>
     </div>
   )
 }
@@ -471,8 +469,8 @@ function DashboardView() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par statut</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={220}><BarChart data={statusChartData}><CartesianGrid strokeDasharray="3 3" className="opacity-30" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><RechartsTooltip /><Bar dataKey="value" fill={colors[0]} radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par type</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={typeChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} paddingAngle={2}>{typeChartData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} /></PieChart></ResponsiveContainer></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par statut</CardTitle></CardHeader><CardContent><div className="space-y-2 pt-2">{statusChartData.map((d, i) => <div key={d.name} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-24 truncate">{d.name}</span><div className="flex-1 h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (d.value / Math.max(...statusChartData.map(x => x.value), 1)) * 100)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} /></div><span className="text-xs font-semibold w-6 text-right">{d.value}</span></div>)}</div></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par type</CardTitle></CardHeader><CardContent><div className="space-y-2 pt-2">{typeChartData.map((d, i) => <div key={d.name} className="flex items-center gap-3"><div className="size-3 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} /><span className="text-xs flex-1">{d.name}</span><span className="text-xs font-semibold">{d.value}</span></div>)}</div></CardContent></Card>
       </div>
     </div>
   )
@@ -1291,7 +1289,7 @@ function ReportsView() {
 
       <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Revenus mensuels</CardTitle></CardHeader><CardContent>
         {monthlyData.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune donnée</p> : (
-          <ResponsiveContainer width="100%" height={250}><BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" className="opacity-30" /><XAxis dataKey="month" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><RechartsTooltip formatter={(v: number) => fmtMoney(v)} /><Bar dataKey="revenue" fill={colors[2]} radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
+          <div className="space-y-2 pt-2">{monthlyData.map((d, i) => <div key={d.month} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-16">{d.month}</span><div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (d.revenue / Math.max(...monthlyData.map(x => x.revenue), 1)) * 100)}%`, backgroundColor: CHART_COLORS[2] }} /></div><span className="text-xs font-semibold w-28 text-right">{fmtMoney(d.revenue)}</span></div>)}</div>
         )}
       </CardContent></Card>
 
@@ -1524,20 +1522,16 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <div className='min-h-screen flex flex-col bg-white dark:bg-slate-950'>
-          <AnimatePresence mode='wait'>
-            {!isAuthenticated ? (
-              <LoginPage key='login' />
-            ) : (
-              <motion.div key={currentView} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className='flex-1 flex flex-col'>
-                <Sidebar />
-                <div className='lg:pl-[260px] flex-1 flex flex-col'>
-                  <Header />
-                  <main className='flex-1'><DashboardRouter /></main>
-                  <Footer />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className='flex-1 flex flex-col'>
+          {!isAuthenticated ? <LoginPage /> : <>
+            <Sidebar />
+            <div className='lg:pl-[260px] flex-1 flex flex-col'>
+              <Header />
+              <main className='flex-1'><DashboardRouter /></main>
+              <Footer />
+            </div>
+          </>}
+        </div>
           <Toaster richColors position='top-right' />
         </div>
       </TooltipProvider>
