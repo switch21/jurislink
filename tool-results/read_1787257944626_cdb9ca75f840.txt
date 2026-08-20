@@ -1,0 +1,502 @@
+   501→            </TooltipTrigger>
+   502→            <TooltipContent>Messages</TooltipContent>
+   503→          </Tooltip>
+   504→        </TooltipProvider>
+   505→        <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
+   506→          <DropdownMenuTrigger asChild>
+   507→            <Button variant="ghost" size="icon" className="relative">
+   508→              <Bell className="size-5 text-slate-600 dark:text-slate-300" />
+   509→              {unreadCount > 0 && (
+   510→                <span className="absolute -top-0.5 -right-0.5 size-4 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+   511→                  {unreadCount > 9 ? '9+' : unreadCount}
+   512→                </span>
+   513→              )}
+   514→            </Button>
+   515→          </DropdownMenuTrigger>
+   516→          <DropdownMenuContent align="end" className="w-80">
+   517→            <DropdownMenuLabel className="flex items-center justify-between">
+   518→              <div className="flex items-center gap-2"><Bell className="size-4" />Notifications</div>
+   519→              {unreadCount > 0 && <Button variant="ghost" size="sm" className="text-xs h-6 text-amber-600" onClick={markAllRead}>Tout marquer lu</Button>}
+   520→            </DropdownMenuLabel>
+   521→            <DropdownMenuSeparator />
+   522→            {notifications && notifications.length > 0 ? (
+   523→              <ScrollArea className="max-h-72">
+   524→                {notifications.slice(0, 10).map(n => (
+   525→                  <DropdownMenuItem key={n.id} className={cn('flex flex-col items-start gap-1 p-3 cursor-pointer rounded-md mx-1 my-0.5',
+   526→                    !n.isRead && 'bg-amber-50 dark:bg-amber-500/10'
+   527→                  )}
+   528→                    onClick={() => { markNotifRead(n.id); const viewMap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', message: 'messages', securite: 'settings' }; const target = viewMap[n.category]; if (target) useAppStore.getState().setCurrentView(target); }}>
+   529→                    <div className="flex items-center gap-2 w-full">
+   530→                      {!n.isRead && <span className="size-2 bg-amber-500 rounded-full shrink-0" />}
+   531→                      <span className={cn('text-sm font-medium', !n.isRead ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300')}>{n.title}</span>
+   532→                    </div>
+   533→                    <span className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 ml-4">{n.message}</span>
+   534→                    <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-4">{fmtDate(n.createdAt)}</span>
+   535→                  </DropdownMenuItem>
+   536→                ))}
+   537→              </ScrollArea>
+   538→            ) : (
+   539→              <div className="py-6 flex flex-col items-center gap-2">
+   540→                <Bell className="size-8 text-slate-300 dark:text-slate-600" />
+   541→                <p className="text-sm text-slate-400 dark:text-slate-500">Aucune notification</p>
+   542→              </div>
+   543→            )}
+   544→          </DropdownMenuContent>
+   545→        </DropdownMenu>
+   546→        <DropdownMenu>
+   547→          <DropdownMenuTrigger asChild>
+   548→            <Button variant="ghost" className="gap-2">
+   549→              <Avatar className="size-7">
+   550→                <AvatarFallback className="bg-amber-600 text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback>
+   551→              </Avatar>
+   552→              <span className="hidden md:block text-sm text-slate-700 dark:text-slate-200">{user?.name}</span>
+   553→              <ChevronDown className="size-3 text-slate-400" />
+   554→            </Button>
+   555→          </DropdownMenuTrigger>
+   556→          <DropdownMenuContent align="end">
+   557→            <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
+   558→            <DropdownMenuSeparator />
+   559→            <DropdownMenuItem onClick={() => setCurrentView('settings')}><User className="size-4 mr-2" />Profil</DropdownMenuItem>
+   560→            <DropdownMenuItem onClick={() => setCurrentView('settings')}><Settings className="size-4 mr-2" />Paramètres</DropdownMenuItem>
+   561→            <DropdownMenuSeparator />
+   562→            <DropdownMenuItem onClick={logout} className="text-rose-600 dark:text-rose-400"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem>
+   563→          </DropdownMenuContent>
+   564→        </DropdownMenu>
+   565→      </div>
+   566→    </header>
+   567→  )
+   568→}
+   569→
+   570→// ==================== Dashboard View ====================
+   571→function DashboardView() {
+   572→  const { user, setCurrentView } = useAppStore()
+   573→  const hour = new Date().getHours()
+   574→  const greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir'
+   575→  const todayStr = format(new Date(), 'EEEE dd MMMM yyyy', { locale: fr })
+   576→
+   577→  const { data: stats, isLoading } = useQuery<DashboardStats >({
+   578→    queryKey: ['dashboard-stats', user?.tenantId],
+   579→    queryFn: () => fetch(`/api/dashboard/stats?tenantId=${user!.tenantId}`).then(r => r.json()),
+   580→    enabled: !!user?.tenantId
+   581→  })
+   582→
+   583→  const statusData = stats?.casesByStatus ? Object.entries(stats.casesByStatus).map(([k, v]) => ({ name: STATUS_LABELS[k] || k, value: v })) : []
+   584→  const typeData = stats?.casesByType ? Object.entries(stats.casesByType).map(([k, v]) => ({ name: TYPE_LABELS[k] || k, value: v })) : []
+   585→
+   586→  const kpis = [
+   587→    { label: 'Dossiers actifs', value: stats?.activeCases || 0, icon: Briefcase, color: 'text-slate-700 dark:text-slate-200', bg: 'bg-slate-100 dark:bg-slate-800' },
+   588→    { label: 'Clients', value: stats?.totalClients || 0, icon: Users, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
+   589→    { label: 'Échéances', value: stats?.upcomingEvents || 0, icon: Clock, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/30' },
+   590→    { label: 'Factures impayées', value: stats?.unpaidInvoices || 0, icon: Receipt, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/30' },
+   591→  ]
+   592→
+   593→  if (isLoading) return (
+   594→    <div className="p-4 md:p-6 space-y-6">
+   595→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   596→        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+   597→      </div>
+   598→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   599→        <Skeleton className="h-80 rounded-xl" /><Skeleton className="h-80 rounded-xl" />
+   600→      </div>
+   601→    </div>
+   602→  )
+   603→
+   604→  return (
+   605→    <div className="p-4 md:p-6 space-y-6">
+   606→      {/* Welcome Section */}
+   607→      <Card className="bg-gradient-to-r from-slate-50 to-amber-50/30 dark:from-slate-900 dark:to-amber-900/10 hover:shadow-lg transition-shadow duration-300">
+   608→        <CardContent className="p-4 md:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   609→          <div>
+   610→            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{greeting}, {user?.name} 👋</h2>
+   611→            <p className="text-sm text-slate-500 dark:text-slate-400 capitalize mt-0.5">{todayStr}</p>
+   612→            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Voici un résumé de votre activité</p>
+   613→          </div>
+   614→          <div className="flex gap-2 shrink-0 hidden sm:flex">
+   615→            <Button onClick={() => setCurrentView('cases')} className="bg-amber-600 hover:bg-amber-700 text-white"><Plus className="size-4 mr-1.5" />Nouveau dossier</Button>
+   616→            <Button variant="outline" onClick={() => setCurrentView('invoices')}><Receipt className="size-4 mr-1.5" />Nouvelle facture</Button>
+   617→          </div>
+   618→        </CardContent>
+   619→      </Card>
+   620→
+   621→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   622→        {kpis.map((kpi, i) => {
+   623→          const Icon = kpi.icon
+   624→          return (
+   625→            <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
+   626→              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden relative">
+   627→                <div className={cn('absolute left-0 top-0 bottom-0 w-1', i === 0 ? 'bg-slate-500' : i === 1 ? 'bg-amber-500' : i === 2 ? 'bg-rose-500' : 'bg-orange-500')} />
+   628→                <CardContent className="p-4 pl-5 flex items-center gap-4">
+   629→                  <div className={cn('p-3 rounded-xl', kpi.bg)}><Icon className={cn('size-6', kpi.color)} /></div>
+   630→                  <div>
+   631→                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{kpi.value}</p>
+   632→                    <p className="text-sm text-slate-500 dark:text-slate-400">{kpi.label}</p>
+   633→                  </div>
+   634→                </CardContent>
+   635→              </Card>
+   636→            </motion.div>
+   637→          )
+   638→        })}
+   639→      </div>
+   640→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   641→        <Card className="hover:shadow-lg transition-shadow duration-300">
+   642→          <CardHeader><CardTitle className="text-base">Dossiers par statut</CardTitle></CardHeader>
+   643→          <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
+   644→            <BarChart data={statusData}><CartesianGrid strokeDasharray="3 3" stroke="" className="stroke-slate-200 dark:stroke-slate-700" />
+   645→              <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--color-slate-500)' }} />
+   646→              <YAxis tick={{ fontSize: 12, fill: 'var(--color-slate-500)' }} />
+   647→              <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+   648→              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+   649→                {statusData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+   650→              </Bar>
+   651→            </BarChart>
+   652→          </ResponsiveContainer></div></CardContent>
+   653→        </Card>
+   654→        <Card className="hover:shadow-lg transition-shadow duration-300">
+   655→          <CardHeader><CardTitle className="text-base">Dossiers par type</CardTitle></CardHeader>
+   656→          <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
+   657→            <PieChart><Pie data={typeData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" nameKey="name" label>
+   658→              {typeData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+   659→            </Pie><Legend formatter={(value: string) => <span className="text-xs text-slate-600 dark:text-slate-300">{value}</span>} /><RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} /></PieChart>
+   660→          </ResponsiveContainer></div></CardContent>
+   661→        </Card>
+   662→      </div>
+   663→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   664→        <Card className="hover:shadow-lg transition-shadow duration-300">
+   665→          <CardHeader><CardTitle className="text-base">Échéances prochaines</CardTitle></CardHeader>
+   666→          <CardContent className="space-y-3">
+   667→            {stats?.upcomingEventsList && stats.upcomingEventsList.length > 0 ? stats.upcomingEventsList.slice(0, 5).map(ev => (
+   668→              <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+   669→                <div className={cn('w-1 h-10 rounded-full shrink-0', CRIT_COLORS[ev.criticality] || 'bg-slate-300')} />
+   670→                <div className="min-w-0 flex-1">
+   671→                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{ev.title}</p>
+   672→                  <p className="text-xs text-slate-500 dark:text-slate-400">{EVENT_TYPE_LABELS[ev.eventType] || ev.eventType} • {fmtDate(ev.startTime)}</p>
+   673→                </div>
+   674→              </div>
+   675→            )) : <EmptyState icon={Calendar} title="Aucune échéance à venir" description="Les événements à venir apparaîtront ici" />}
+   676→          </CardContent>
+   677→        </Card>
+   678→        <Card className="hover:shadow-lg transition-shadow duration-300">
+   679→          <CardHeader><CardTitle className="text-base">Activité récente</CardTitle></CardHeader>
+   680→          <CardContent className="space-y-3">
+   681→            {stats?.recentActivity && stats.recentActivity.length > 0 ? stats.recentActivity.slice(0, 10).map(log => (
+   682→              <div key={log.id} className="flex items-start gap-3">
+   683→                <div className="size-2 mt-1.5 rounded-full bg-amber-500 shrink-0" />
+   684→                <div className="min-w-0">
+   685→                  <p className="text-sm text-slate-700 dark:text-slate-300"><span className="font-medium text-slate-900 dark:text-white">{log.user?.name || 'Système'}</span> {log.action}</p>
+   686→                  <p className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(log.createdAt)}</p>
+   687→                </div>
+   688→              </div>
+   689→            )) : <EmptyState icon={Activity} title="Aucune activité récente" description="L’activité de l’équipe apparaîtra ici" />}
+   690→          </CardContent>
+   691→        </Card>
+   692→      </div>
+   693→    </div>
+   694→  )
+   695→}
+   696→
+   697→// ==================== Clients View ====================
+   698→function ClientsView() {
+   699→  const { user } = useAppStore()
+   700→  const qc = useQueryClient()
+   701→  const [search, setSearch] = useState('')
+   702→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   703→  const [open, setOpen] = useState(false)
+   704→  const [editing, setEditing] = useState<Client | null>(null)
+   705→  const [form, setForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', notes: '' })
+   706→
+   707→  const { data: clients, isLoading } = useQuery<Client[]>({
+   708→    queryKey: ['clients', user?.tenantId, search, statusFilter],
+   709→    queryFn: () => {
+   710→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+   711→      if (search) p.set('search', search)
+   712→      if (statusFilter !== 'all') p.set('status', statusFilter)
+   713→      return fetch(`/api/clients?${p}`).then(r => r.json())
+   714→    },
+   715→    enabled: !!user?.tenantId
+   716→  })
+   717→
+   718→  const mutation = useMutation({
+   719→    mutationFn: async (body: Record<string, string>) => {
+   720→      if (editing) {
+   721→        return fetch(`/api/clients/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+   722→      }
+   723→      return fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId }) }).then(r => r.json())
+   724→    },
+   725→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success(editing ? 'Client modifié' : 'Client créé'); setOpen(false); setEditing(null) },
+   726→    onError: () => toast.error('Erreur lors de l\'enregistrement')
+   727→  })
+   728→
+   729→  const deleteMutation = useMutation({
+   730→    mutationFn: (id: string) => fetch(`/api/clients/${id}`, { method: 'DELETE' }),
+   731→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client supprimé') },
+   732→    onError: () => toast.error('Erreur lors de la suppression')
+   733→  })
+   734→
+   735→  const openCreate = () => { setEditing(null); setForm({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', notes: '' }); setOpen(true) }
+   736→  const openEdit = (c: Client) => { setEditing(c); setForm({ firstName: c.firstName, lastName: c.lastName, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '', notes: c.notes || '' }); setOpen(true) }
+   737→
+   738→  const handleSubmit = (e: React.FormEvent) => {
+   739→    e.preventDefault()
+   740→    if (!form.firstName || !form.lastName) { toast.error('Nom et prénom requis'); return }
+   741→    mutation.mutate(form)
+   742→  }
+   743→
+   744→  return (
+   745→    <div className="p-4 md:p-6 space-y-4">
+   746→      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+   747→        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+   748→          <div className="relative flex-1 sm:max-w-xs">
+   749→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+   750→            <Input placeholder="Rechercher un client..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+   751→          </div>
+   752→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   753→            <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Statut" /></SelectTrigger>
+   754→            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="active">Actif</SelectItem><SelectItem value="inactive">Inactif</SelectItem></SelectContent>
+   755→          </Select>
+   756→        </div>
+   757→        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Nouveau client</Button>
+   758→      </div>
+   759→
+   760→      {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div> : (
+   761→        <Card className="hover:shadow-lg transition-shadow duration-300">
+   762→          <div className="overflow-x-auto">
+   763→            <Table><TableHeader><TableRow>
+   764→              <TableHead>Nom complet</TableHead><TableHead className="hidden md:table-cell">Société</TableHead>
+   765→              <TableHead className="hidden lg:table-cell">Email</TableHead><TableHead className="hidden lg:table-cell">Téléphone</TableHead>
+   766→              <TableHead>Dossiers</TableHead><TableHead>Statut</TableHead><TableHead className="w-10"></TableHead>
+   767→            </TableRow></TableHeader><TableBody>
+   768→              {clients?.map((c, index) => (
+   769→                <TableRow key={c.id} className={cn('hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors', index % 2 === 0 && 'bg-white dark:bg-slate-950', index % 2 !== 0 && 'bg-slate-50/50 dark:bg-slate-900/50')}>
+   770→                  <TableCell className="font-medium">{c.firstName} {c.lastName}</TableCell>
+   771→                  <TableCell className="hidden md:table-cell">{c.company || '—'}</TableCell>
+   772→                  <TableCell className="hidden lg:table-cell">{c.email || '—'}</TableCell>
+   773→                  <TableCell className="hidden lg:table-cell">{c.phone || '—'}</TableCell>
+   774→                  <TableCell>{c._count?.cases || 0}</TableCell>
+   775→                  <TableCell><Badge variant={c.isActive ? 'default' : 'secondary'} className={cn('rounded-full px-2.5', c.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400')}>{c.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell>
+   776→                  <TableCell>
+   777→                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+   778→                      <DropdownMenuContent align="end">
+   779→                        <DropdownMenuItem onClick={() => openEdit(c)}><Edit className="size-4 mr-2" />Modifier</DropdownMenuItem>
+   780→                        <DropdownMenuItem className="text-rose-600 dark:text-rose-400" onClick={() => deleteMutation.mutate(c.id)}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
+   781→                      </DropdownMenuContent>
+   782→                    </DropdownMenu>
+   783→                  </TableCell>
+   784→                </TableRow>
+   785→              ))}
+   786→              {(!clients || clients.length === 0) && (
+   787→                <TableRow><TableCell colSpan={7} className="p-0"><EmptyState icon={Users} title="Aucun client trouvé" description="Commencez par ajouter votre premier client" /></TableCell></TableRow>
+   788→              )}
+   789→            </TableBody></Table>
+   790→          </div>
+   791→        </Card>
+   792→      )}
+   793→
+   794→      <Dialog open={open} onOpenChange={setOpen}>
+   795→        <DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? 'Modifier le client' : 'Nouveau client'}</DialogTitle>
+   796→          <DialogDescription>{editing ? 'Modifiez les informations du client' : 'Ajoutez un nouveau client'}</DialogDescription></DialogHeader>
+   797→          <form onSubmit={handleSubmit} className="space-y-4">
+   798→            <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Prénom *</Label><Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} required /></div>
+   799→              <div className="space-y-2"><Label>Nom *</Label><Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} required /></div></div>
+   800→            <div className="space-y-2"><Label>Société</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
+   801→            <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
+   802→              <div className="space-y-2"><Label>Téléphone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div></div>
+   803→            <div className="space-y-2"><Label>Adresse</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
+   804→            <div className="space-y-2"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
+   805→            <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+   806→              <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
+   807→          </form>
+   808→        </DialogContent>
+   809→      </Dialog>
+   810→    </div>
+   811→  )
+   812→}
+   813→
+   814→// ==================== Cases View ====================
+   815→function CasesView({ archiveMode = false }: { archiveMode?: boolean }) {
+   816→  const { user } = useAppStore()
+   817→  const qc = useQueryClient()
+   818→  const [search, setSearch] = useState('')
+   819→  const [statusFilter, setStatusFilter] = useState('all')
+   820→  const [typeFilter, setTypeFilter] = useState('all')
+   821→  const [priorityFilter, setPriorityFilter] = useState('all')
+   822→  const [open, setOpen] = useState(false)
+   823→  const [editing, setEditing] = useState<CaseItem | null>(null)
+   824→  const [expanded, setExpanded] = useState<string | null>(null)
+   825→  const [noteText, setNoteText] = useState('')
+   826→  const [detailCase, setDetailCase] = useState<CaseItem | null>(null)
+   827→  const [detailOpen, setDetailOpen] = useState(false)
+   828→  const [form, setForm] = useState({ title: '', type: 'civil', priority: 'normal', status: 'nouveau', description: '', clientId: '', isSecret: false, assignedUserIds: '' as string })
+   829→
+   830→  const { data: clients } = useQuery<Client[]>({
+   831→    queryKey: ['clients-list', user?.tenantId], queryFn: () => fetch(`/api/clients?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+   832→  })
+   833→  const { data: users } = useQuery<UserItem[]>({
+   834→    queryKey: ['users-list', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+   835→  })
+   836→
+   837→  const statuses = archiveMode ? 'clos,archive' : ''
+   838→  const { data: cases, isLoading } = useQuery<CaseItem[]>({
+   839→    queryKey: ['cases', user?.tenantId, search, statusFilter, typeFilter, priorityFilter, archiveMode],
+   840→    queryFn: () => {
+   841→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+   842→      if (search) p.set('search', search)
+   843→      if (statusFilter !== 'all') p.set('status', statusFilter)
+   844→      else if (statuses) p.set('status', statuses)
+   845→      if (typeFilter !== 'all') p.set('type', typeFilter)
+   846→      if (priorityFilter !== 'all') p.set('priority', priorityFilter)
+   847→      return fetch(`/api/cases?${p}`).then(r => r.json())
+   848→    },
+   849→    enabled: !!user?.tenantId
+   850→  })
+   851→
+   852→  const mutation = useMutation({
+   853→    mutationFn: async (body: Record<string, unknown>) => {
+   854→      if (editing) {
+   855→        return fetch(`/api/cases/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+   856→      }
+   857→      return fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId }) }).then(r => r.json())
+   858→    },
+   859→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success(editing ? 'Dossier modifié' : 'Dossier créé'); setOpen(false); setEditing(null) },
+   860→    onError: () => toast.error('Erreur')
+   861→  })
+   862→
+   863→  const deleteMutation = useMutation({
+   864→    mutationFn: (id: string) => fetch(`/api/cases/${id}`, { method: 'DELETE' }),
+   865→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success('Dossier supprimé') },
+   866→    onError: () => toast.error('Erreur')
+   867→  })
+   868→
+   869→  const noteMutation = useMutation({
+   870→    mutationFn: ({ caseId, content }: { caseId: string; content: string }) =>
+   871→      fetch(`/api/cases/${caseId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, userId: user!.id, tenantId: user!.tenantId }) }).then(r => r.json()),
+   872→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); setNoteText(''); toast.success('Note ajoutée') },
+   873→    onError: () => toast.error('Erreur')
+   874→  })
+   875→
+   876→  const openCreate = () => { setEditing(null); setForm({ title: '', type: 'civil', priority: 'normal', status: 'nouveau', description: '', clientId: '', isSecret: false, assignedUserIds: '' }); setOpen(true) }
+   877→  const openEdit = (c: CaseItem) => {
+   878→    setEditing(c); setForm({
+   879→      title: c.title, type: c.type, priority: c.priority, status: c.status,
+   880→      description: c.description || '', clientId: c.clientId, isSecret: c.isSecret,
+   881→      assignedUserIds: c.assignments?.map(a => a.userId).join(',') || ''
+   882→    }); setOpen(true)
+   883→  }
+   884→  const handleSubmit = (e: React.FormEvent) => {
+   885→    e.preventDefault()
+   886→    if (!form.title || !form.clientId) { toast.error('Titre et client requis'); return }
+   887→    const assignedUserIds = form.assignedUserIds ? form.assignedUserIds.split(',') : []
+   888→    mutation.mutate({ ...form, assignedUserIds })
+   889→  }
+   890→
+   891→  const expandedCase = cases?.find(c => c.id === expanded)
+   892→
+   893→  return (
+   894→    <div className="p-4 md:p-6 space-y-4">
+   895→      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+   896→        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto flex-wrap">
+   897→          <div className="relative flex-1 sm:max-w-xs">
+   898→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+   899→            <Input placeholder="Rechercher un dossier..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+   900→          </div>
+   901→          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Statut" /></SelectTrigger>
+   902→            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
+   903→          <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Type" /></SelectTrigger>
+   904→            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
+   905→          <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Priorité" /></SelectTrigger>
+   906→            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
+   907→        </div>
+   908→        {!archiveMode && <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Nouveau dossier</Button>}
+   909→      </div>
+   910→
+   911→      {isLoading ? <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div> : (
+   912→        <div className="space-y-3">
+   913→          {cases?.map(c => (
+   914→            <Collapsible key={c.id} open={expanded === c.id} onOpenChange={(o) => setExpanded(o ? c.id : null)}>
+   915→              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+   916→                <div className={cn('absolute left-0 top-0 bottom-0 w-1 rounded-l-lg', c.priority === 'urgente' ? 'bg-rose-500' : c.priority === 'haute' ? 'bg-orange-500' : c.priority === 'basse' ? 'bg-slate-300 dark:bg-slate-600' : 'bg-slate-400 dark:bg-slate-500')} />
+   917→                <CollapsibleTrigger asChild>
+   918→                  <div className="p-4 flex flex-col md:flex-row md:items-center gap-3 cursor-pointer">
+   919→                    <div className="flex-1 min-w-0">
+   920→                      <div className="flex items-center gap-2 flex-wrap">
+   921→                        <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">{c.reference}</span>
+   922→                        {c.isSecret && <Lock className="size-3.5 text-amber-600" />}
+   923→                        <Badge className={cn('rounded-full px-2.5', STATUS_COLORS[c.status] || '')}>{STATUS_LABELS[c.status] || c.status}</Badge>
+   924→                        <Badge className={cn('rounded-full px-2.5', PRIORITY_COLORS[c.priority] || '')}>{PRIORITY_LABELS[c.priority] || c.priority}</Badge>
+   925→                      </div>
+   926→                      <p className="font-medium text-slate-900 dark:text-white mt-1 truncate">{c.title}</p>
+   927→                      <p className="text-sm text-slate-500 dark:text-slate-400">{c.client?.firstName} {c.client?.lastName} {c.client?.company ? `• ${c.client.company}` : ''}</p>
+   928→                    </div>
+   929→                    <div className="flex items-center gap-2 shrink-0">
+   930→                      <span className="text-xs text-slate-400 dark:text-slate-500">{TYPE_LABELS[c.type] || c.type}</span>
+   931→                      {c.nextDueDate && <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1"><Clock className="size-3" />{fmtDate(c.nextDueDate)}</span>}
+   932→                      {!archiveMode && (
+   933→                        <DropdownMenu><DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+   934→                          <DropdownMenuContent align="end">
+   935→                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDetailCase(c); setDetailOpen(true) }}><Eye className="size-4 mr-2" />Voir les détails</DropdownMenuItem>
+   936→                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(c) }}><Edit className="size-4 mr-2" />Modifier</DropdownMenuItem>
+   937→                            <DropdownMenuItem className="text-rose-600 dark:text-rose-400" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(c.id) }}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
+   938→                          </DropdownMenuContent>
+   939→                        </DropdownMenu>
+   940→                      )}
+   941→                      <ChevronDown className={cn('size-4 text-slate-400 dark:text-slate-500 transition-transform', expanded === c.id && 'rotate-180')} />
+   942→                    </div>
+   943→                  </div>
+   944→                </CollapsibleTrigger>
+   945→                <CollapsibleContent>
+   946→                  {expandedCase && (
+   947→                    <div className="border-t border-slate-100 dark:border-slate-700 p-4 space-y-4">
+   948→                      {expandedCase.description && <p className="text-sm text-slate-600 dark:text-slate-300">{expandedCase.description}</p>}
+   949→                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+   950→                        {expandedCase.assignments?.map(a => (
+   951→                          <Badge key={a.id} variant="outline" className="text-xs rounded-full">{a.user?.name || 'Avocat'}</Badge>
+   952→                        ))}
+   953→                      </div>
+   954→                      {expandedCase.documents && expandedCase.documents.length > 0 && (
+   955→                        <div><p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Documents ({expandedCase.documents.length})</p>
+   956→                          <div className="flex flex-wrap gap-2">{expandedCase.documents.map(d => (
+   957→                            <Badge key={d.id} variant="outline" className="text-xs gap-1 rounded-full"><FileText className="size-3" />{d.name}</Badge>
+   958→                          ))}</div></div>
+   959→                      )}
+   960→                      <div>
+   961→                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Notes</p>
+   962→                        <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+   963→                          {expandedCase.notes?.map(n => (
+   964→                            <div key={n.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2 text-sm"><p className="text-slate-700 dark:text-slate-300">{n.content}</p>
+   965→                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{n.user?.name || ''} — {fmtDate(n.createdAt)}</p></div>
+   966→                          ))}
+   967→                        </div>
+   968→                        {!archiveMode && (
+   969→                          <div className="flex gap-2 mt-2">
+   970→                            <Input placeholder="Ajouter une note..." value={noteText} onChange={e => setNoteText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && noteText.trim()) noteMutation.mutate({ caseId: expandedCase!.id, content: noteText.trim() }) }} className="text-sm" />
+   971→                            <Button size="icon" onClick={() => { if (noteText.trim()) noteMutation.mutate({ caseId: expandedCase!.id, content: noteText.trim() }) }} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Send className="size-4" /></Button>
+   972→                          </div>
+   973→                        )}
+   974→                      </div>
+   975→                    </div>
+   976→                  )}
+   977→                </CollapsibleContent>
+   978→              </Card>
+   979→            </Collapsible>
+   980→          ))}
+   981→          {(!cases || cases.length === 0) && (
+   982→            <EmptyState icon={archiveMode ? Archive : Briefcase} title={archiveMode ? 'Aucun dossier archivé' : 'Aucun dossier trouvé'} description={archiveMode ? 'Les dossiers clos et archivés apparaîtront ici' : 'Commencez par créer votre premier dossier'} />
+   983→          )}
+   984→        </div>
+   985→      )}
+   986→
+   987→      {!archiveMode && <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   988→        <DialogHeader><DialogTitle>{editing ? 'Modifier le dossier' : 'Nouveau dossier'}</DialogTitle>
+   989→          <DialogDescription>{editing ? 'Modifiez les informations' : 'Créez un nouveau dossier'}</DialogDescription></DialogHeader>
+   990→        <form onSubmit={handleSubmit} className="space-y-4">
+   991→          <div className="space-y-2"><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required /></div>
+   992→          <div className="grid grid-cols-2 gap-4">
+   993→            <div className="space-y-2"><Label>Type</Label><Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+   994→              <SelectContent><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select></div>
+   995→            <div className="space-y-2"><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+   996→              <SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
+   997→          </div>
+   998→          <div className="space-y-2"><Label>Statut</Label><Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+   999→            <SelectContent><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select></div>
+  1000→          <div className="space-y-2"><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+
+[showing lines 501-1000 of 1953; use offset=1001 with limit to continue reading]

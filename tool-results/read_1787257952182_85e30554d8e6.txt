@@ -1,0 +1,453 @@
+  1501→  const conversation = useMemo(() => {
+  1502→    if (!selectedContact || !messages) return []
+  1503→    return messages.filter(m =>
+  1504→      (m.senderId === selectedContact && m.receiverId === user?.id) ||
+  1505→      (m.receiverId === selectedContact && m.senderId === user?.id)
+  1506→    ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  1507→  }, [messages, selectedContact, user?.id])
+  1508→
+  1509→  const selectedContactName = contacts.find(c => c.id === selectedContact)?.name
+  1510→
+  1511→  useEffect(() => {
+  1512→    if (!selectedContact || !messages) return
+  1513→    const unread = messages.filter(m => m.senderId === selectedContact && m.receiverId === user?.id && !m.isRead)
+  1514→    unread.forEach(m => {
+  1515→      fetch(`/api/messages/${m.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isRead: true }) })
+  1516→    })
+  1517→    if (unread.length > 0) qc.invalidateQueries({ queryKey: ['messages'] })
+  1518→  }, [selectedContact, messages, user?.id, qc])
+  1519→
+  1520→  useEffect(() => {
+  1521→    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  1522→  }, [conversation.length])
+  1523→
+  1524→  const handleSend = () => {
+  1525→    if (!messageText.trim() || !selectedContact) return
+  1526→    sendMutation.mutate(messageText.trim())
+  1527→  }
+  1528→
+  1529→  return (
+  1530→    <div className="h-[calc(100vh-8rem)] flex border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+  1531→      {/* Contacts panel */}
+  1532→      <div className={cn('w-full md:w-80 border-r border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900',
+  1533→        !showContacts && 'hidden md:flex'
+  1534→      )}>
+  1535→        <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+  1536→          <div className="relative">
+  1537→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+  1538→            <Input placeholder="Contacts..." className="pl-9 h-9 bg-slate-50 dark:bg-slate-800" />
+  1539→          </div>
+  1540→        </div>
+  1541→        <ScrollArea className="flex-1 custom-scrollbar">
+  1542→          {contacts.map(c => (
+  1543→            <button key={c.id} onClick={() => { setSelectedContact(c.id); setShowContacts(false) }}
+  1544→              className={cn('w-full flex items-center gap-3 p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800',
+  1545→                selectedContact === c.id && 'bg-amber-50 dark:bg-amber-500/10'
+  1546→              )}>
+  1547→              <Avatar className="size-10 shrink-0"><AvatarFallback className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">{initials(c.name)}</AvatarFallback></Avatar>
+  1548→              <div className="flex-1 min-w-0">
+  1549→                <div className="flex items-center justify-between">
+  1550→                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{c.name}</p>
+  1551→                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{fmtDate(c.lastTime)}</span>
+  1552→                </div>
+  1553→                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{c.lastMessage}</p>
+  1554→              </div>
+  1555→              {c.unread > 0 && <span className="size-5 bg-amber-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0">{c.unread}</span>}
+  1556→            </button>
+  1557→          ))}
+  1558→          {contacts.length === 0 && <EmptyState icon={MessageSquare} title="Aucune conversation" description="Envoyez un message pour commencer" />}
+  1559→        </ScrollArea>
+  1560→      </div>
+  1561→
+  1562→      {/* Chat panel */}
+  1563→      <div className={cn('flex-1 flex flex-col bg-slate-50 dark:bg-slate-950', showContacts && 'hidden md:flex')}>
+  1564→        {selectedContact ? (
+  1565→          <>
+  1566→            <div className="p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
+  1567→              <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setShowContacts(true)}><ArrowLeft className="size-5" /></Button>
+  1568→              <Avatar className="size-8"><AvatarFallback className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs">{initials(selectedContactName || '')}</AvatarFallback></Avatar>
+  1569→              <span className="font-medium text-slate-900 dark:text-white">{selectedContactName}</span>
+  1570→            </div>
+  1571→            <ScrollArea className="flex-1 p-4 custom-scrollbar">
+  1572→              <div className="space-y-3 max-w-2xl mx-auto">
+  1573→                {isLoading ? [...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-48 rounded-2xl" />) :
+  1574→                  conversation.map(m => {
+  1575→                    const isMine = m.senderId === user?.id
+  1576→                    return (
+  1577→                      <div key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
+  1578→                        <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5',
+  1579→                          isMine ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-bl-md shadow-sm'
+  1580→                        )}>
+  1581→                          <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+  1582→                          <p className={cn('text-[10px] mt-1', isMine ? 'text-emerald-200' : 'text-slate-400 dark:text-slate-500')}>{format(parseISO(m.createdAt), 'HH:mm')}</p>
+  1583→                        </div>
+  1584→                      </div>
+  1585→                    )
+  1586→                  })
+  1587→                }
+  1588→                <div ref={messagesEndRef} />
+  1589→              </div>
+  1590→            </ScrollArea>
+  1591→            <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
+  1592→              <div className="flex gap-2 max-w-2xl mx-auto">
+  1593→                <Input placeholder="Écrire un message..." value={messageText} onChange={e => setMessageText(e.target.value)}
+  1594→                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }} className="flex-1" />
+  1595→                <Button onClick={handleSend} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={sendMutation.isPending || !messageText.trim()}>
+  1596→                  {sendMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
+  1597→                </Button>
+  1598→              </div>
+  1599→            </div>
+  1600→          </>
+  1601→        ) : (
+  1602→          <div className="flex-1 flex items-center justify-center text-slate-400">
+  1603→            <EmptyState icon={MessageSquare} title="Sélectionnez une conversation" description="Choisissez un contact pour commencer à discuter" />
+  1604→          </div>
+  1605→        )}
+  1606→      </div>
+  1607→    </div>
+  1608→  )
+  1609→}
+  1610→
+  1611→// ==================== Reports View ====================
+  1612→function ReportsView() {
+  1613→  const { user } = useAppStore()
+  1614→
+  1615→  const { data: invoices, isLoading } = useQuery<Invoice[]>({
+  1616→    queryKey: ['invoices-report', user?.tenantId], queryFn: () => fetch(`/api/invoices?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+  1617→  })
+  1618→
+  1619→  const stats = useMemo(() => {
+  1620→    if (!invoices) return { totalRevenue: 0, paidTotal: 0, unpaidTotal: 0, paidCount: 0, unpaidCount: 0, rate: 0 }
+  1621→    const paid = invoices.filter(i => i.status === 'paye')
+  1622→    const unpaid = invoices.filter(i => i.status === 'non_paye' || i.status === 'partiel')
+  1623→    const paidTotal = paid.reduce((s, i) => s + i.amount, 0)
+  1624→    const unpaidTotal = unpaid.reduce((s, i) => s + i.amount, 0)
+  1625→    return { totalRevenue: paidTotal, paidTotal, unpaidTotal, paidCount: paid.length, unpaidCount: unpaid.length, rate: invoices.length > 0 ? (paid.length / invoices.length) * 100 : 0 }
+  1626→  }, [invoices])
+  1627→
+  1628→  const monthlyData = useMemo(() => {
+  1629→    if (!invoices) return []
+  1630→    const map = new Map<string, number>()
+  1631→    invoices.filter(i => i.status === 'paye').forEach(i => {
+  1632→      const month = i.paidDate ? format(parseISO(i.paidDate), 'MMM yyyy', { locale: fr }) : format(parseISO(i.createdAt), 'MMM yyyy', { locale: fr })
+  1633→      map.set(month, (map.get(month) || 0) + i.amount)
+  1634→    })
+  1635→    return Array.from(map.entries()).map(([name, value]) => ({ name, value }))
+  1636→  }, [invoices])
+  1637→
+  1638→  const topClients = useMemo(() => {
+  1639→    if (!invoices) return []
+  1640→    const map = new Map<string, { name: string; total: number; count: number }>()
+  1641→    invoices.forEach(i => {
+  1642→      const name = i.client ? `${i.client.firstName} ${i.client.lastName}` : 'Inconnu'
+  1643→      const existing = map.get(name) || { name, total: 0, count: 0 }
+  1644→      existing.total += i.amount
+  1645→      existing.count++
+  1646→      map.set(name, existing)
+  1647→    })
+  1648→    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 10)
+  1649→  }, [invoices])
+  1650→
+  1651→  const kpis = [
+  1652→    { label: 'Total revenus', value: fmtMoney(stats.totalRevenue), icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
+  1653→    { label: 'Factures payées', value: stats.paidCount.toString(), icon: FileCheck, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
+  1654→    { label: 'Factures impayées', value: stats.unpaidCount.toString(), icon: FileWarning, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/30' },
+  1655→    { label: 'Taux de recouvrement', value: stats.rate.toFixed(1) + '%', icon: TrendingUp, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
+  1656→  ]
+  1657→
+  1658→  if (isLoading) return (
+  1659→    <div className="p-4 md:p-6 space-y-6">
+  1660→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1661→        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+  1662→      </div>
+  1663→      <Skeleton className="h-80 rounded-xl" />
+  1664→      <Skeleton className="h-64 rounded-xl" />
+  1665→    </div>
+  1666→  )
+  1667→
+  1668→  return (
+  1669→    <div className="p-4 md:p-6 space-y-6">
+  1670→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1671→        {kpis.map((kpi, i) => {
+  1672→          const Icon = kpi.icon
+  1673→          return (
+  1674→            <Card key={i} className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden relative">
+  1675→              <div className={cn('absolute left-0 top-0 bottom-0 w-1', (i === 0 || i === 1) ? 'bg-emerald-500' : i === 2 ? 'bg-rose-500' : 'bg-amber-500')} />
+  1676→              <CardContent className="p-4 pl-5 flex items-center gap-4">
+  1677→                <div className={cn('p-3 rounded-xl', kpi.bg)}><Icon className={cn('size-6', kpi.color)} /></div>
+  1678→                <div><p className="text-2xl font-bold text-slate-900 dark:text-white">{kpi.value}</p><p className="text-sm text-slate-500 dark:text-slate-400">{kpi.label}</p></div>
+  1679→              </CardContent>
+  1680→            </Card>
+  1681→          )}
+  1682→        )}
+  1683→      </div>
+  1684→      <Card className="hover:shadow-lg transition-shadow duration-300">
+  1685→        <CardHeader><CardTitle className="text-base">Revenus par mois</CardTitle></CardHeader>
+  1686→        <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
+  1687→          <BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
+  1688→            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--color-slate-500)' }} />
+  1689→            <YAxis tick={{ fontSize: 11, fill: 'var(--color-slate-500)' }} />
+  1690→            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+  1691→            <Bar dataKey="value" fill="#059669" radius={[4, 4, 0, 0]} />
+  1692→          </BarChart>
+  1693→        </ResponsiveContainer></div></CardContent>
+  1694→      </Card>
+  1695→      <Card className="hover:shadow-lg transition-shadow duration-300">
+  1696→        <CardHeader><CardTitle className="text-base">Top clients par facturation</CardTitle></CardHeader>
+  1697→        <CardContent>
+  1698→          <div className="overflow-x-auto">
+  1699→            <Table><TableHeader><TableRow><TableHead>Client</TableHead><TableHead>Factures</TableHead><TableHead className="text-right">Montant total</TableHead></TableRow></TableHeader>
+  1700→              <TableBody>{topClients.map((c, i) => (
+  1701→                <TableRow key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+  1702→                  <TableCell className="font-medium text-slate-900 dark:text-white">{c.name}</TableCell><TableCell>{c.count}</TableCell>
+  1703→                  <TableCell className="text-right font-medium">{fmtMoney(c.total)}</TableCell></TableRow>
+  1704→              ))}
+  1705→                {topClients.length === 0 && <TableRow><TableCell colSpan={3} className="p-0"><EmptyState icon={Users} title="Aucune donnée" description="Les données de facturation apparaîtront ici" /></TableCell></TableRow>}
+  1706→              </TableBody></Table>
+  1707→          </div>
+  1708→        </CardContent>
+  1709→      </Card>
+  1710→    </div>
+  1711→  )
+  1712→}
+  1713→
+  1714→// ==================== Audit Logs View ====================
+  1715→function AuditLogsView() {
+  1716→  const { user } = useAppStore()
+  1717→  const [actionFilter, setActionFilter] = useState('all')
+  1718→  const [resourceFilter, setResourceFilter] = useState('all')
+  1719→
+  1720→  const { data: logs, isLoading } = useQuery<AuditLogItem[]>({
+  1721→    queryKey: ['audit-logs', user?.tenantId, actionFilter, resourceFilter],
+  1722→    queryFn: () => {
+  1723→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+  1724→      if (actionFilter !== 'all') p.set('action', actionFilter)
+  1725→      if (resourceFilter !== 'all') p.set('resourceType', resourceFilter)
+  1726→      return fetch(`/api/audit-logs?${p}`).then(r => r.json())
+  1727→    },
+  1728→    enabled: !!user?.tenantId
+  1729→  })
+  1730→
+  1731→  return (
+  1732→    <div className="p-4 md:p-6 space-y-4">
+  1733→      <div className="flex flex-col sm:flex-row gap-3">
+  1734→        <div className="space-y-2"><Label className="text-xs">Action</Label>
+  1735→          <Select value={actionFilter} onValueChange={setActionFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Action" /></SelectTrigger>
+  1736→            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="CREATE">Création</SelectItem><SelectItem value="UPDATE">Modification</SelectItem><SelectItem value="DELETE">Suppression</SelectItem><SelectItem value="LOGIN">Connexion</SelectItem></SelectContent></Select></div>
+  1737→        <div className="space-y-2"><Label className="text-xs">Ressource</Label>
+  1738→          <Select value={resourceFilter} onValueChange={setResourceFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Ressource" /></SelectTrigger>
+  1739→            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="User">Utilisateur</SelectItem></SelectContent></Select></div>
+  1740→      </div>
+  1741→      <Card className="hover:shadow-lg transition-shadow duration-300">
+  1742→        {isLoading ? <div className="p-4 space-y-2">{[...Array(10)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div> : (
+  1743→          <div className="overflow-x-auto">
+  1744→            <Table><TableHeader><TableRow>
+  1745→              <TableHead>Date</TableHead><TableHead>Utilisateur</TableHead><TableHead>Action</TableHead>
+  1746→              <TableHead>Ressource</TableHead><TableHead className="hidden lg:table-cell">Détails</TableHead>
+  1747→            </TableRow></TableHeader><TableBody>
+  1748→              {logs?.slice(0, 50).map((log, index) => (
+  1749→                <TableRow key={log.id} className={cn('hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors', index % 2 === 0 && 'bg-white dark:bg-slate-950', index % 2 !== 0 && 'bg-slate-50/50 dark:bg-slate-900/50')}>
+  1750→                  <TableCell className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(log.createdAt)}</TableCell>
+  1751→                  <TableCell className="text-sm font-medium text-slate-900 dark:text-white">{log.user?.name || 'Système'}</TableCell>
+  1752→                  <TableCell><Badge variant="outline" className="rounded-full text-xs">{log.action}</Badge></TableCell>
+  1753→                  <TableCell className="text-sm text-slate-600 dark:text-slate-300">{log.resourceType || '—'}</TableCell>
+  1754→                  <TableCell className="hidden lg:table-cell text-xs text-slate-400 dark:text-slate-500 max-w-[200px] truncate">{log.metadata ? JSON.stringify(JSON.parse(log.metadata)).slice(0, 80) : '—'}</TableCell>
+  1755→                </TableRow>
+  1756→              ))}
+  1757→              {(!logs || logs.length === 0) && <TableRow><TableCell colSpan={5} className="p-0"><EmptyState icon={ClipboardList} title="Aucun log trouvé" description="Les actions auditées apparaîtront ici" /></TableCell></TableRow>}
+  1758→            </TableBody></Table>
+  1759→          </div>
+  1760→        )}
+  1761→      </Card>
+  1762→    </div>
+  1763→  )
+  1764→}
+  1765→
+  1766→// ==================== Settings View ====================
+  1767→function SettingsView() {
+  1768→  const { user } = useAppStore()
+  1769→  const qc = useQueryClient()
+  1770→  const [name, setName] = useState(user?.name || '')
+  1771→  const [phone, setPhone] = useState(user?.phone || '')
+  1772→  const [saving, setSaving] = useState(false)
+  1773→
+  1774→  const { data: tenant, isLoading: tenantLoading } = useQuery<TenantItem>({
+  1775→    queryKey: ['tenant', user?.tenantId],
+  1776→    queryFn: () => fetch(`/api/tenants/${user!.tenantId}`).then(r => r.json()),
+  1777→    enabled: !!user?.tenantId
+  1778→  })
+  1779→
+  1780→  const { data: tenants } = useQuery<TenantItem[]>({
+  1781→    queryKey: ['tenants-all'],
+  1782→    queryFn: () => fetch('/api/tenants').then(r => r.json()),
+  1783→    enabled: user?.role === 'root_admin'
+  1784→  })
+  1785→
+  1786→  const { data: allUsers } = useQuery<UserItem[]>({
+  1787→    queryKey: ['users-all'],
+  1788→    queryFn: () => fetch('/api/users').then(r => r.json()),
+  1789→    enabled: user?.role === 'root_admin'
+  1790→  })
+  1791→
+  1792→  const { data: currencies } = useQuery<CurrencyItem[]>({
+  1793→    queryKey: ['currencies-all'],
+  1794→    queryFn: () => fetch('/api/currencies').then(r => r.json()),
+  1795→    enabled: user?.role === 'root_admin'
+  1796→  })
+  1797→
+  1798→  const handleSave = async () => {
+  1799→    if (!user?.id) return
+  1800→    setSaving(true)
+  1801→    try {
+  1802→      await fetch(`/api/users/${user.id}`, {
+  1803→        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+  1804→        body: JSON.stringify({ name, phone })
+  1805→      })
+  1806→      qc.invalidateQueries({ queryKey: ['users'] })
+  1807→      toast.success('Profil mis à jour')
+  1808→    } catch { toast.error('Erreur') }
+  1809→    setSaving(false)
+  1810→  }
+  1811→
+  1812→  const isAdmin = user?.role === 'firm_admin' || user?.role === 'root_admin'
+  1813→  const isRootAdmin = user?.role === 'root_admin'
+  1814→
+  1815→  return (
+  1816→    <div className="p-4 md:p-6 space-y-6 max-w-4xl">
+  1817→      <Card className="hover:shadow-lg transition-shadow duration-300">
+  1818→        <CardHeader><CardTitle className="text-base">Profil utilisateur</CardTitle><CardDescription>Vos informations personnelles</CardDescription></CardHeader>
+  1819→        <CardContent className="space-y-4">
+  1820→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1821→            <div className="space-y-2"><Label>Nom complet</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
+  1822→            <div className="space-y-2"><Label>E-mail</Label><Input value={user?.email || ''} disabled /></div>
+  1823→            <div className="space-y-2"><Label>Téléphone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
+  1824→            <div className="space-y-2"><Label>Rôle</Label><Input value={ROLE_LABELS[user?.role || ''] || user?.role || ''} disabled /></div>
+  1825→          </div>
+  1826→          <Button onClick={handleSave} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving}>
+  1827→            {saving ? <RefreshCw className="size-4 animate-spin" /> : 'Enregistrer'}
+  1828→          </Button>
+  1829→        </CardContent>
+  1830→      </Card>
+  1831→
+  1832→      {tenantLoading ? <Skeleton className="h-40 rounded-xl" /> : tenant && (
+  1833→        <Card className="hover:shadow-lg transition-shadow duration-300">
+  1834→          <CardHeader><CardTitle className="text-base">Informations du cabinet</CardTitle><CardDescription>Détails de votre organisation</CardDescription></CardHeader>
+  1835→          <CardContent>
+  1836→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1837→              <div><p className="text-xs text-slate-500 dark:text-slate-400">Nom</p><p className="text-sm font-medium text-slate-900 dark:text-white">{tenant.name}</p></div>
+  1838→              <div><p className="text-xs text-slate-500 dark:text-slate-400">Plan</p><Badge variant="outline" className="rounded-full">{tenant.plan}</Badge></div>
+  1839→              <div><p className="text-xs text-slate-500 dark:text-slate-400">Utilisateurs</p><p className="text-sm font-medium text-slate-900 dark:text-white">{tenant._count?.users || 0} / {tenant.maxUsers}</p></div>
+  1840→              <div><p className="text-xs text-slate-500 dark:text-slate-400">Stockage</p><p className="text-sm font-medium text-slate-900 dark:text-white">{tenant.maxStorageGb} Go</p></div>
+  1841→            </div>
+  1842→          </CardContent>
+  1843→        </Card>
+  1844→      )}
+  1845→
+  1846→      {isRootAdmin && (
+  1847→        <Tabs defaultValue="tenants">
+  1848→          <TabsList><TabsTrigger value="tenants">Cabinets</TabsTrigger><TabsTrigger value="users">Utilisateurs</TabsTrigger><TabsTrigger value="currencies">Devises</TabsTrigger></TabsList>
+  1849→          <TabsContent value="tenants">
+  1850→            <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Tous les cabinets</CardTitle></CardHeader>
+  1851→              <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Plan</TableHead><TableHead>Utilisateurs</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader>
+  1852→                <TableBody>{tenants?.map(t => (
+  1853→                  <TableRow key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+  1854→                    <TableCell className="font-medium text-slate-900 dark:text-white">{t.name}</TableCell><TableCell><Badge variant="outline" className="rounded-full">{t.plan}</Badge></TableCell>
+  1855→                    <TableCell>{t._count?.users || 0}</TableCell><TableCell><Badge className={cn('rounded-full px-2.5', t.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300')}>{t.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
+  1856→                ))}</TableBody></Table></div></CardContent></Card>
+  1857→          </TabsContent>
+  1858→          <TabsContent value="users">
+  1859→            <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Tous les utilisateurs</CardTitle></CardHeader>
+  1860→              <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader>
+  1861→                <TableBody>{allUsers?.map(u => (
+  1862→                  <TableRow key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+  1863→                    <TableCell className="font-medium text-slate-900 dark:text-white">{u.name}</TableCell><TableCell className="text-slate-600 dark:text-slate-300">{u.email}</TableCell>
+  1864→                    <TableCell><Badge variant="outline" className="rounded-full">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>
+  1865→                    <TableCell><Badge className={cn('rounded-full px-2.5', u.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300')}>{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
+  1866→                ))}</TableBody></Table></div></CardContent></Card>
+  1867→          </TabsContent>
+  1868→          <TabsContent value="currencies">
+  1869→            <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Devises disponibles</CardTitle></CardHeader>
+  1870→              <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Nom</TableHead><TableHead>Symbole</TableHead></TableRow></TableHeader>
+  1871→                <TableBody>{currencies?.map(c => (
+  1872→                  <TableRow key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+  1873→                    <TableCell className="font-mono font-medium text-slate-900 dark:text-white">{c.code}</TableCell>
+  1874→                    <TableCell>{c.name}</TableCell>
+  1875→                    <TableCell>{c.symbol}</TableCell></TableRow>
+  1876→                ))}</TableBody></Table></div></CardContent></Card>
+  1877→          </TabsContent>
+  1878→        </Tabs>
+  1879→      )}
+  1880→    </div>
+  1881→  )
+  1882→}
+  1883→
+  1884→// ==================== Archives View ====================
+  1885→function ArchivesView() {
+  1886→  return <CasesView archiveMode />
+  1887→}
+  1888→
+  1889→// ==================== Main Layout ====================
+  1890→function AppLayout() {
+  1891→  const { currentView, isAuthenticated } = useAppStore()
+  1892→
+  1893→  if (!isAuthenticated) return <LoginPage />
+  1894→
+  1895→  const renderView = () => {
+  1896→    switch (currentView) {
+  1897→      case 'dashboard': return <DashboardView />
+  1898→      case 'clients': return <ClientsView />
+  1899→      case 'cases': return <CasesView />
+  1900→      case 'documents': return <DocumentsView />
+  1901→      case 'calendar': return <CalendarView />
+  1902→      case 'invoices': return <InvoicesView />
+  1903→      case 'messages': return <MessagesView />
+  1904→      case 'reports': return <ReportsView />
+  1905→      case 'audit-logs': return <AuditLogsView />
+  1906→      case 'settings': return <SettingsView />
+  1907→      case 'archives': return <ArchivesView />
+  1908→      default: return <DashboardView />
+  1909→    }
+  1910→  }
+  1911→
+  1912→  return (
+  1913→    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
+  1914→      <Sidebar />
+  1915→      <div className="flex-1 flex flex-col lg:ml-[260px] transition-all duration-300">
+  1916→        <Header />
+  1917→        <main className="flex-1">
+  1918→          <AnimatePresence mode="wait">
+  1919→            <motion.div key={currentView} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+  1920→              {renderView()}
+  1921→            </motion.div>
+  1922→          </AnimatePresence>
+  1923→        </main>
+  1924→        <footer className="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50">
+  1925→          <div className="py-3 px-4 md:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
+  1926→            <div className="flex items-center gap-2">
+  1927→              <div className="size-5 rounded-md bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center">
+  1928→                <Scale className="size-3 text-white" />
+  1929→              </div>
+  1930→              <p className="text-xs text-slate-400 dark:text-slate-500">© 2025 JurisLink — Gestion Juridique Intelligente</p>
+  1931→            </div>
+  1932→            <div className="flex items-center gap-4">
+  1933→              <span className="text-xs text-slate-400 dark:text-slate-600">v2.0.1</span>
+  1934→              <span className="text-xs text-slate-300 dark:text-slate-700">•</span>
+  1935→              <span className="text-xs text-slate-400 dark:text-slate-600">Tous droits réservés</span>
+  1936→            </div>
+  1937→          </div>
+  1938→        </footer>
+  1939→      </div>
+  1940→    </div>
+  1941→  )
+  1942→}
+  1943→
+  1944→// ==================== Page Component ====================
+  1945→export default function Home() {
+  1946→  return (
+  1947→    <QueryClientProvider client={queryClient}>
+  1948→      <AppLayout />
+  1949→      <Toaster position="top-right" richColors closeButton />
+  1950→    </QueryClientProvider>
+  1951→  )
+  1952→}
+  1953→
