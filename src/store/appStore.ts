@@ -21,6 +21,7 @@ export type ViewName =
   | 'calendar'
   | 'invoices'
   | 'messages'
+  | 'tasks'
   | 'reports'
   | 'settings'
   | 'audit-logs'

@@ -72,6 +72,10 @@ export async function PUT(
         closingDate: body.closingDate ? new Date(body.closingDate) : null,
         archivableAfter: body.archivableAfter ? new Date(body.archivableAfter) : null,
         niu: body.niu,
+        adversary: body.adversary,
+        jurisdiction: body.jurisdiction,
+        amountInDispute: body.amountInDispute,
+        billingType: body.billingType,
       },
     })
     return NextResponse.json(caze)

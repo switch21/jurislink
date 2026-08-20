@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts'
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, isSameMonth } from 'date-fns'
+import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, isSameMonth, differenceInDays, isBefore, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
@@ -40,7 +40,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Progress } from '@/components/ui/progress'
 import { Toaster } from '@/components/ui/sonner'
 
 // ==================== lucide icons ====================
@@ -50,26 +50,33 @@ import {
   ChevronLeft, Plus, Edit, Trash2, Eye, Lock, Clock, Send, ArrowLeft, Download,
   Filter, MoreHorizontal, Archive, AlertTriangle, CheckCircle2, Circle, Phone, Mail,
   Building2, RefreshCw, TrendingUp, DollarSign, FileCheck, FileWarning, Activity,
-  Sun, Moon, Inbox, FolderOpen, Scale, ClipboardList
+  Sun, Moon, Inbox, FolderOpen, Scale, ClipboardList, Zap, AlertOctagon,
+  ChevronUp, ExternalLink, Timer, Target, Flag, Folder, Tag, MapPin, Banknote, Gavel,
+  UserCheck, Check, CircleDot, ArrowUpRight, ArrowDownRight, Minus, AlertCircle
 } from 'lucide-react'
 
 // ==================== Types ====================
 interface Client {
-  id: string; firstName: string; lastName: string; company?: string | null; email?: string | null;
-  phone?: string | null; address?: string | null; notes?: string | null; isActive: boolean;
-  tenantId: string; createdAt: string; _count?: { cases: number; invoices: number };
+  id: string; firstName: string; lastName: string; company?: string | null;
+  clientType?: string; niu?: string | null; email?: string | null;
+  phone?: string | null; address?: string | null; city?: string | null; country?: string | null;
+  notes?: string | null; riskLevel?: string; source?: string | null;
+  isActive: boolean; tenantId: string; createdAt: string; _count?: { cases: number; invoices: number };
 }
 interface CaseItem {
   id: string; reference: string; title: string; description?: string | null; type: string;
   status: string; priority: string; isSecret: boolean; nextDueDate?: string | null;
   closingDate?: string | null; createdAt: string; tenantId: string; clientId: string;
+  adversary?: string | null; jurisdiction?: string | null; amountInDispute?: number | null;
+  billingType?: string | null;
   client?: Client; assignments?: CaseAssignment[]; notes?: CaseNote[]; documents?: Doc[]; events?: EventItem[];
 }
 interface CaseAssignment { id: string; userId: string; caseId: string; user?: UserItem }
 interface CaseNote { id: string; content: string; createdAt: string; userId?: string | null; user?: UserItem }
 interface Doc {
   id: string; name: string; fileName: string; fileType: string; fileSize: number; filePath: string;
-  version: number; description?: string | null; createdAt: string; tenantId: string; caseId?: string | null;
+  version: number; isFinal?: boolean; folder?: string | null; tags?: string | null;
+  description?: string | null; createdAt: string; tenantId: string; caseId?: string | null;
   userId?: string | null; case?: CaseItem;
 }
 interface EventItem {
@@ -82,13 +89,14 @@ interface Invoice {
   id: string; reference: string; amount: number; status: string; dueDate?: string | null;
   paidDate?: string | null; paidAmount?: number | null; notes?: string | null; createdAt: string;
   tenantId: string; clientId: string; client?: Client; caseId?: string | null; case?: CaseItem; currencyCode: string;
+  paymentMethod?: string | null;
 }
 interface Message {
   id: string; content: string; isRead: boolean; createdAt: string; tenantId: string;
   senderId: string; receiverId: string; sender?: UserItem; receiver?: UserItem;
 }
 interface Notification {
-  id: string; title: string; message: string; category: string; isRead: boolean;
+  id: string; title: string; message: string; category: string; priority?: string; isRead: boolean;
   resourceType?: string | null; resourceId?: string | null; createdAt: string;
 }
 interface AuditLogItem {
@@ -104,18 +112,31 @@ interface TenantItem {
   id: string; name: string; slug: string; plan: string; maxUsers: number; maxStorageGb: number;
   isActive: boolean; createdAt: string; _count?: { users: number; clients: number; cases: number };
 }
+interface TaskItem {
+  id: string; title: string; description?: string | null; status: string; priority: string;
+  dueDate?: string | null; completedAt?: string | null; createdAt: string;
+  tenantId: string; caseId?: string | null; userId?: string | null; creatorId?: string | null; eventId?: string | null;
+  user?: UserItem; creator?: UserItem; case?: { id: string; reference: string; title: string } | null;
+  event?: { id: string; title: string } | null;
+}
 interface DashboardStats {
   totalCases: number; activeCases: number; totalClients: number; upcomingEvents: number;
   unpaidInvoices: number; totalRevenue: number; paidInvoices: number;
   casesByStatus: Record<string, number>; casesByType: Record<string, number>;
   recentActivity: AuditLogItem[]; upcomingEventsList: EventItem[];
+  urgencies: Array<{ id: string; reference: string; title: string; clientName: string; nextDueDate: string; daysRemaining: number }>;
+  overdueInvoices: Array<{ id: string; reference: string; clientName: string; amount: number; currencyCode: string; daysOverdue: number }>;
+  urgentTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null; assigneeName: string | null }>;
+  upcomingEventsEnhanced: Array<{ id: string; title: string; startTime: string; eventType: string; criticality: string; location?: string | null; caseReference: string | null; assignments: Array<{ userId: string; userName: string }> }>;
+  myTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null }>;
+}
+interface ConflictResult {
+  type: string; case: { id: string; reference: string; title: string; clientName: string }; description: string;
 }
 interface CurrencyItem { id: string; code: string; name: string; symbol: string }
 
 // ==================== Query Client ====================
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30000, retry: 1 } }
-})
+const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } })
 
 // ==================== Constants ====================
 const STATUS_COLORS: Record<string, string> = {
@@ -129,11 +150,16 @@ const STATUS_COLORS: Record<string, string> = {
   partiel: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
   paye: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   annule: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  a_faire: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  en_cours_t: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  terminee: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  annulee: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 }
 const STATUS_LABELS: Record<string, string> = {
   nouveau: 'Nouveau', ouvert: 'Ouvert', en_cours: 'En cours', en_attente: 'En attente',
   clos: 'Clos', archive: 'Archivé', non_paye: 'Non payé', partiel: 'Partiel',
   paye: 'Payé', annule: 'Annulé',
+  a_faire: 'À faire', en_cours_t: 'En cours', terminee: 'Terminée', annulee: 'Annulée',
 }
 const PRIORITY_COLORS: Record<string, string> = {
   basse: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
@@ -145,9 +171,16 @@ const PRIORITY_LABELS: Record<string, string> = { basse: 'Basse', normal: 'Norma
 const TYPE_LABELS: Record<string, string> = { civil: 'Civil', penal: 'Pénal', commercial: 'Commercial', social: 'Social', administratif: 'Administratif' }
 const EVENT_TYPE_LABELS: Record<string, string> = { audience: 'Audience', rdv: 'Rendez-vous', echeance: 'Échéance', depot: 'Dépôt', autre: 'Autre' }
 const CRIT_COLORS: Record<string, string> = { basse: 'bg-slate-300 dark:bg-slate-600', normal: 'bg-amber-300 dark:bg-amber-600', haute: 'bg-orange-400 dark:bg-orange-500', urgente: 'bg-rose-500 dark:bg-rose-400' }
-const ROLE_LABELS: Record<string, string> = { root_admin: 'Admin Racine', firm_admin: 'Admin Cabinet', lawyer: 'Avocat', secretary: 'Secrétaire', client: 'Client' }
-
-// Legal palette: slate, amber, emerald, rose
+const ROLE_LABELS: Record<string, string> = {
+  root_admin: 'Admin Racine', associate: 'Associé', firm_admin: 'Admin Cabinet',
+  lawyer: 'Avocat', jurist: 'Juriste', assistant: 'Assistant', accountant: 'Comptable', client: 'Client',
+}
+const RISK_COLORS: Record<string, string> = {
+  faible: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  moyen: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  eleve: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+}
+const BILLING_LABELS: Record<string, string> = { forfait: 'Forfait', horaire: 'Horaire', abonnement: 'Abonnement', success_fee: 'Success fee', provision: 'Provision' }
 const CHART_COLORS = ['#475569', '#d97706', '#059669', '#e11d48', '#94a3b8', '#f59e0b']
 const CHART_COLORS_DARK = ['#94a3b8', '#f59e0b', '#34d399', '#fb7185', '#64748b', '#fbbf24']
 
@@ -155,6 +188,7 @@ const NAV_ITEMS: { view: ViewName; label: string; icon: React.ElementType; admin
   { view: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
   { view: 'cases', label: 'Dossiers', icon: Briefcase },
   { view: 'clients', label: 'Clients', icon: Users },
+  { view: 'tasks', label: 'Tâches', icon: ClipboardList },
   { view: 'documents', label: 'Documents', icon: FileText },
   { view: 'calendar', label: 'Calendrier', icon: Calendar },
   { view: 'invoices', label: 'Factures', icon: Receipt },
@@ -169,6 +203,10 @@ function fmtDate(d: string | null | undefined) {
   if (!d) return '—'
   try { return format(parseISO(d), 'dd/MM/yyyy', { locale: fr }) } catch { return '—' }
 }
+function fmtDateTime(d: string | null | undefined) {
+  if (!d) return '—'
+  try { return format(parseISO(d), 'dd/MM/yyyy HH:mm', { locale: fr }) } catch { return '—' }
+}
 function fmtMoney(amount: number, code: string = 'XAF') {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(amount)
 }
@@ -177,30 +215,25 @@ function fmtFileSize(bytes: number) {
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko'
   return (bytes / 1048576).toFixed(1) + ' Mo'
 }
-function initials(name: string) {
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-}
+function initials(name: string) { return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) }
+function taskStatusColor(s: string) { return STATUS_COLORS[s === 'en_cours' ? 'en_cours_t' : s] || STATUS_COLORS[s] || '' }
+function taskStatusLabel(s: string) { return STATUS_LABELS[s === 'en_cours' ? 'en_cours_t' : s] || s }
 
 // ==================== Theme Toggle ====================
 function ThemeToggle() {
   const { theme, setTheme } = useTheme()
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-            <Sun className="size-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute size-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Basculer le thème</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{theme === 'dark' ? 'Mode clair' : 'Mode sombre'}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <TooltipProvider><Tooltip><TooltipTrigger asChild>
+      <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <Sun className="size-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+        <Moon className="absolute size-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+        <span className="sr-only">Basculer le thème</span>
+      </Button>
+    </TooltipTrigger><TooltipContent>{theme === 'dark' ? 'Mode clair' : 'Mode sombre'}</TooltipContent></Tooltip></TooltipProvider>
   )
 }
 
-// ==================== Empty State Component ====================
+// ==================== Empty State ====================
 function EmptyState({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 px-4">
@@ -225,56 +258,36 @@ function LoginPage() {
     if (!email || !password) { toast.error('Veuillez remplir tous les champs'); return }
     setLoading(true)
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      })
+      const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Erreur de connexion'); return }
-      login(data)
-      toast.success(`Bienvenue, ${data.name} !`)
-    } catch {
-      toast.error('Erreur de connexion au serveur')
-    } finally { setLoading(false) }
+      login(data); toast.success(`Bienvenue, ${data.name} !`)
+    } catch { toast.error('Erreur de connexion au serveur') } finally { setLoading(false) }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center login-pattern p-4">
-      <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center login-pattern p-4 relative overflow-hidden">
+      <motion.div animate={{ y: [0, -12, 0], rotate: [0, 5, -5, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }} className="absolute top-[12%] left-[8%] md:top-[10%] md:left-[12%] opacity-[0.08] dark:opacity-[0.05] pointer-events-none"><Scale className="size-16 md:size-20 text-slate-900 dark:text-white" /></motion.div>
+      <motion.div animate={{ y: [0, -10, 0], rotate: [0, -8, 4, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }} className="absolute top-[18%] right-[10%] md:top-[15%] md:right-[14%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none"><FileText className="size-14 md:size-18 text-slate-900 dark:text-white" /></motion.div>
+      <motion.div animate={{ y: [0, -14, 0], rotate: [0, 3, -6, 0] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 2 }} className="absolute bottom-[15%] left-[10%] md:bottom-[18%] md:left-[15%] opacity-[0.06] dark:opacity-[0.04] pointer-events-none"><Building2 className="size-16 md:size-20 text-slate-900 dark:text-white" /></motion.div>
+      <motion.div animate={{ y: [0, -8, 0], rotate: [0, -4, 6, 0] }} transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }} className="absolute bottom-[20%] right-[8%] md:bottom-[22%] md:right-[11%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none"><Shield className="size-14 md:size-18 text-slate-900 dark:text-white" /></motion.div>
+      <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md relative z-10">
         <Card className="shadow-2xl border-slate-200/80 dark:border-slate-700/50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
           <CardHeader className="text-center pb-2 pt-8">
             <div className="mx-auto mb-4 flex items-center justify-center gap-2">
-              <div className="size-11 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/20">
-                <Scale className="size-6 text-white" />
-              </div>
+              <div className="size-11 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/20"><Scale className="size-6 text-white" /></div>
             </div>
-            <div className="mb-1">
-              <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Juris</span><span className="text-2xl font-bold tracking-tight text-amber-600">Link</span>
-            </div>
-            <CardDescription className="text-sm mt-1">Gestion juridique intelligente</CardDescription>
+            <div className="mb-1"><span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Juris</span><span className="text-2xl font-bold tracking-tight text-amber-600">Link</span></div>
+            <CardDescription className="text-sm mt-1">Le système d'exploitation de votre cabinet</CardDescription>
           </CardHeader>
           <CardContent className="pt-4">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Adresse e-mail</Label>
-                <Input id="email" type="email" placeholder="email@jurislink.com" value={email} onChange={e => setEmail(e.target.value)} className="h-11" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Mot de passe</Label>
-                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="h-11" />
-              </div>
-              <Button type="submit" className="w-full h-11 bg-slate-900 hover:bg-slate-800 dark:bg-amber-600 dark:hover:bg-amber-700 text-white" disabled={loading}>
-                {loading ? <RefreshCw className="size-4 animate-spin" /> : 'Se connecter'}
-              </Button>
+              <div className="space-y-2"><Label htmlFor="email">Adresse e-mail</Label><Input id="email" type="email" placeholder="email@jurislink.com" value={email} onChange={e => setEmail(e.target.value)} className="h-11" /></div>
+              <div className="space-y-2"><Label htmlFor="password">Mot de passe</Label><Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="h-11" /></div>
+              <Button type="submit" className="w-full h-11 bg-slate-900 hover:bg-slate-800 dark:bg-amber-600 dark:hover:bg-amber-700 text-white" disabled={loading}>{loading ? <RefreshCw className="size-4 animate-spin" /> : 'Se connecter'}</Button>
             </form>
           </CardContent>
-          <CardFooter className="flex-col gap-2 pb-8">
-            <Separator className="mb-2" />
-            <p className="text-xs text-slate-400 dark:text-slate-500">Compte démo</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-md">
-              ngassa@jurislink.com / Admin@123
-            </p>
-          </CardFooter>
+          <CardFooter className="flex-col gap-2 pb-8"><Separator className="mb-2" /><p className="text-xs text-slate-400 dark:text-slate-500">Compte démo</p><p className="text-xs text-slate-500 dark:text-slate-400 font-mono bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-md">ngassa@jurislink.com / Admin@123</p></CardFooter>
         </Card>
         <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-6">© 2025 JurisLink — Tous droits réservés</p>
       </motion.div>
@@ -285,1492 +298,1249 @@ function LoginPage() {
 // ==================== Sidebar ====================
 function Sidebar() {
   const { currentView, setCurrentView, user, sidebarOpen, setSidebarOpen } = useAppStore()
-  const isAdmin = user?.role === 'firm_admin' || user?.role === 'root_admin'
-
+  const isAdmin = user?.role === 'firm_admin' || user?.role === 'root_admin' || user?.role === 'associate'
   const navContent = (
     <nav className="space-y-1 px-3">
       {NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => {
-        const Icon = item.icon
-        const active = currentView === item.view
+        const Icon = item.icon; const active = currentView === item.view
         return (
           <button key={item.view} onClick={() => { setCurrentView(item.view); setSidebarOpen(false) }}
-            className={cn(
-              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-              active
-                ? 'bg-amber-500/15 text-amber-400 dark:bg-amber-500/20 dark:text-amber-400'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-200'
-            )}>
-            <Icon className="size-5 shrink-0" />
-            <span className="whitespace-nowrap">{item.label}</span>
+            className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-l-2',
+              active ? 'bg-amber-500/10 text-amber-400 dark:bg-amber-500/15 dark:text-amber-400 border-amber-500' : 'border-transparent text-slate-300 hover:bg-slate-800 hover:text-white dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-200')}>
+            {active && <span className="size-1.5 rounded-full bg-amber-500 shrink-0" />}
+            <Icon className="size-5 shrink-0" /><span className="whitespace-nowrap">{item.label}</span>
           </button>
         )
       })}
     </nav>
   )
-
-  const sidebarHeader = (
-    <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-700/50 shrink-0">
-      <div className="size-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shrink-0">
-        <Scale className="size-4 text-white" />
+  return (<>
+    <aside className="hidden lg:flex fixed top-0 left-0 z-40 h-full bg-slate-900 dark:bg-slate-950 text-white flex-col w-[260px]">
+      <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-700/50 shrink-0">
+        <div className="size-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shrink-0"><Scale className="size-4 text-white" /></div>
+        <span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-white">Juris</span><span className="text-amber-500">Link</span></span>
       </div>
-      <span className="text-lg font-bold tracking-tight whitespace-nowrap">
-        <span className="text-white">Juris</span><span className="text-amber-500">Link</span>
-      </span>
-      <Button variant="ghost" size="icon" className="ml-auto text-slate-400 hover:text-white lg:hidden" onClick={() => setSidebarOpen(false)}>
-        <X className="size-5" />
-      </Button>
-    </div>
-  )
-
-  const sidebarFooter = (
-    <div className="p-4 border-t border-slate-700/50">
-      <div className="flex items-center gap-3">
-        <Avatar className="size-8 shrink-0">
-          <AvatarFallback className="bg-amber-600 text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <p className="text-sm font-medium truncate text-white">{user?.name}</p>
-          <p className="text-xs text-slate-400 truncate">{ROLE_LABELS[user?.role || ''] || user?.role}</p>
-        </div>
-      </div>
-    </div>
-  )
-
-  return (
-    <>
-      {/* Desktop sidebar - always visible with full labels */}
-      <aside className="hidden lg:flex fixed top-0 left-0 z-40 h-full bg-slate-900 dark:bg-slate-950 text-white flex-col w-[260px]">
-        {sidebarHeader}
-        <ScrollArea className="flex-1 py-4 custom-scrollbar">
-          {navContent}
-        </ScrollArea>
-        {sidebarFooter}
-      </aside>
-
-      {/* Mobile sidebar - Sheet overlay */}
-      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[280px] p-0 bg-slate-900 dark:bg-slate-950 text-white border-slate-700/50">
-          {sidebarHeader}
-          <ScrollArea className="flex-1 py-4 custom-scrollbar">
-            {navContent}
-          </ScrollArea>
-          {sidebarFooter}
-        </SheetContent>
-      </Sheet>
-    </>
-  )
+      <ScrollArea className="flex-1 py-4 custom-scrollbar">{navContent}</ScrollArea>
+      <div className="p-4 border-t border-slate-700/50"><div className="flex items-center gap-3"><Avatar className="size-8 shrink-0"><AvatarFallback className="bg-amber-600 text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate text-white">{user?.name}</p><p className="text-xs text-slate-400 truncate">{ROLE_LABELS[user?.role || ''] || user?.role}</p></div></div></div>
+    </aside>
+    <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}><SheetContent side="left" className="w-[280px] p-0 bg-slate-900 dark:bg-slate-950 text-white border-slate-700/50">
+      <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-700/50 shrink-0"><div className="size-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shrink-0"><Scale className="size-4 text-white" /></div><span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-white">Juris</span><span className="text-amber-500">Link</span></span><Button variant="ghost" size="icon" className="ml-auto text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}><X className="size-5" /></Button></div>
+      <ScrollArea className="flex-1 py-4 custom-scrollbar">{navContent}</ScrollArea>
+    </SheetContent></Sheet>
+  </>)
 }
 
 // ==================== Header ====================
 function Header() {
   const { currentView, user, logout, setCurrentView } = useAppStore()
   const [search, setSearch] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchResults, setSearchResults] = useState<{type: string; label: string; sub: string; view: ViewName; id: string}[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
-
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const viewLabel = NAV_ITEMS.find(n => n.view === currentView)?.label || 'JurisLink'
 
-  const { data: notifications } = useQuery<Notification[]>({
-    queryKey: ['notifications', user?.tenantId, user?.id],
-    queryFn: () => fetch(`/api/notifications?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
-    enabled: !!user?.tenantId
-  })
-  const unreadCount = notifications?.filter(n => !n.isRead).length || 0
+  const doSearch = useCallback(async (q: string) => {
+    if (!q.trim() || !user?.tenantId) return
+    try {
+      const base = `tenantId=${user.tenantId}&search=${encodeURIComponent(q.trim())}`
+      const [casesRes, clientsRes, invoicesRes, tasksRes] = await Promise.all([
+        fetch(`/api/cases?${base}`).then(r => r.json()).catch(() => []),
+        fetch(`/api/clients?${base}`).then(r => r.json()).catch(() => []),
+        fetch(`/api/invoices?${base}`).then(r => r.json()).catch(() => []),
+        fetch(`/api/tasks?${base}`).then(r => r.json()).catch(() => ({ tasks: [] })),
+      ])
+      const results: {type: string; label: string; sub: string; view: ViewName; id: string}[] = []
+      for (const c of (casesRes.cases || casesRes || [])) results.push({ type: 'Dossier', label: c.reference, sub: c.title, view: 'cases', id: c.id })
+      for (const c of (clientsRes.clients || clientsRes || [])) results.push({ type: 'Client', label: `${c.firstName} ${c.lastName}`, sub: c.company || c.email || '', view: 'clients', id: c.id })
+      for (const i of (invoicesRes.invoices || invoicesRes || [])) results.push({ type: 'Facture', label: i.reference, sub: fmtMoney(i.amount, i.currencyCode), view: 'invoices', id: i.id })
+      for (const t of (tasksRes.tasks || [])) results.push({ type: 'Tâche', label: t.title, sub: PRIORITY_LABELS[t.priority] || '', view: 'tasks', id: t.id })
+      setSearchResults(results.slice(0, 10))
+    } catch { /* ignore */ }
+  }, [user])
 
-  const { data: messages } = useQuery<Message[]>({
-    queryKey: ['messages-unread', user?.tenantId, user?.id],
-    queryFn: () => fetch(`/api/messages?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
-    enabled: !!user?.tenantId
-  })
-  const unreadMsgCount = messages?.filter(m => !m.isRead && m.receiverId === user?.id).length || 0
+  const handleSearchChange = (val: string) => { setSearch(val); setSearchOpen(true); if (searchTimerRef.current) clearTimeout(searchTimerRef.current); searchTimerRef.current = setTimeout(() => doSearch(val), 300) }
 
-  const markAllRead = async () => {
-    if (!user?.tenantId || !user?.id) return
-    await fetch('/api/notifications/read-all', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenantId: user.tenantId, userId: user.id })
-    })
-    queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    setNotifOpen(false)
-  }
-
-  const markNotifRead = async (id: string) => {
-    await fetch(`/api/notifications/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isRead: true }) })
-    queryClient.invalidateQueries({ queryKey: ['notifications'] })
-  }
+  const { data: notifs } = useQuery({ queryKey: ['notifications', user?.tenantId], queryFn: () => fetch(`/api/notifications?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId, refetchInterval: 30000 })
+  const { data: msgCount } = useQuery({ queryKey: ['msg-count', user?.id], queryFn: () => fetch(`/api/messages?tenantId=${user!.tenantId}`).then(r => r.json()).then(d => (d.messages || []).filter((m: Message) => m.receiverId === user!.id && !m.isRead).length), enabled: !!user?.tenantId, refetchInterval: 10000 })
+  const unreadCount = (notifs?.notifications || []).filter((n: Notification) => !n.isRead).length
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700/50 h-16 flex items-center px-4 md:px-6 gap-4">
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => useAppStore.getState().toggleSidebar()}>
-        <Menu className="size-5" />
-      </Button>
-      <h1 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">{viewLabel}</h1>
-      <div className="flex-1 max-w-md mx-auto">
-        <div className="relative">
+    <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700/50">
+      <div className="flex items-center gap-4 h-16 px-4 lg:px-6">
+        <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => useAppStore.getState().toggleSidebar()}><Menu className="size-5" /></Button>
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">{viewLabel}</h1>
+        <div className="relative flex-1 max-w-md ml-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-          <Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-9 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 h-9" />
+          <Input placeholder="Rechercher dossiers, clients, factures, tâches..." className="pl-9 h-9 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700" value={search} onChange={e => handleSearchChange(e.target.value)} onFocus={() => search && setSearchOpen(true)} />
+          {searchOpen && searchResults.length > 0 && (
+            <div className="absolute top-full mt-1 w-full bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg z-50 max-h-80 overflow-y-auto">
+              {searchResults.map((r, i) => (
+                <button key={i} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-left" onMouseDown={e => { e.preventDefault(); setSearchOpen(false); setCurrentView(r.view); setSearch('') }}>
+                  <div className="size-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">{r.type === 'Dossier' ? <Briefcase className="size-4 text-amber-600" /> : r.type === 'Client' ? <Users className="size-4 text-emerald-600" /> : r.type === 'Facture' ? <Receipt className="size-4 text-rose-600" /> : <ClipboardList className="size-4 text-blue-600" />}</div>
+                  <div className="min-w-0"><p className="text-sm font-medium truncate">{r.label}</p><p className="text-xs text-slate-400 truncate">{r.type} — {r.sub}</p></div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
-      <div className="flex items-center gap-1">
-        <ThemeToggle />
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative" onClick={() => setCurrentView('messages')}>
-                <MessageSquare className="size-5 text-slate-600 dark:text-slate-300" />
-                {unreadMsgCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 size-4 bg-amber-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                    {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
-                  </span>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Messages</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="size-5 text-slate-600 dark:text-slate-300" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 size-4 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            <DropdownMenuLabel className="flex items-center justify-between">
-              <div className="flex items-center gap-2"><Bell className="size-4" />Notifications</div>
-              {unreadCount > 0 && <Button variant="ghost" size="sm" className="text-xs h-6 text-amber-600" onClick={markAllRead}>Tout marquer lu</Button>}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {notifications && notifications.length > 0 ? (
-              <ScrollArea className="max-h-72">
-                {notifications.slice(0, 10).map(n => (
-                  <DropdownMenuItem key={n.id} className={cn('flex flex-col items-start gap-1 p-3 cursor-pointer rounded-md mx-1 my-0.5',
-                    !n.isRead && 'bg-amber-50 dark:bg-amber-500/10'
-                  )}
-                    onClick={() => { markNotifRead(n.id); const viewMap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', message: 'messages', securite: 'settings' }; const target = viewMap[n.category]; if (target) useAppStore.getState().setCurrentView(target); }}>
-                    <div className="flex items-center gap-2 w-full">
-                      {!n.isRead && <span className="size-2 bg-amber-500 rounded-full shrink-0" />}
-                      <span className={cn('text-sm font-medium', !n.isRead ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300')}>{n.title}</span>
-                    </div>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 ml-4">{n.message}</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-4">{fmtDate(n.createdAt)}</span>
-                  </DropdownMenuItem>
-                ))}
-              </ScrollArea>
-            ) : (
-              <div className="py-6 flex flex-col items-center gap-2">
-                <Bell className="size-8 text-slate-300 dark:text-slate-600" />
-                <p className="text-sm text-slate-400 dark:text-slate-500">Aucune notification</p>
-              </div>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2">
-              <Avatar className="size-7">
-                <AvatarFallback className="bg-amber-600 text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback>
-              </Avatar>
-              <span className="hidden md:block text-sm text-slate-700 dark:text-slate-200">{user?.name}</span>
-              <ChevronDown className="size-3 text-slate-400" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setCurrentView('settings')}><User className="size-4 mr-2" />Profil</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCurrentView('settings')}><Settings className="size-4 mr-2" />Paramètres</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-rose-600 dark:text-rose-400"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-1">
+          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="relative" onClick={() => { setCurrentView('messages') }}><MessageSquare className="size-5" />{msgCount ? <span className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center font-bold">{msgCount > 9 ? '9+' : msgCount}</span> : null}</Button></TooltipTrigger><TooltipContent>Messages</TooltipContent></Tooltip></TooltipProvider>
+          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="size-5" />{unreadCount ? <span className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span> : null}</Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto"><DropdownMenuLabel>Notifications ({unreadCount})</DropdownMenuLabel><DropdownMenuSeparator />{(notifs?.notifications || []).slice(0, 8).map((n: Notification) => (<DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 p-3 cursor-pointer" onClick={() => { const vmap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', tache: 'tasks', message: 'messages' }; setCurrentView(vmap[n.category] || 'dashboard'); setNotifOpen(false) }}><p className={cn('text-sm font-medium', !n.isRead && 'text-slate-900 dark:text-white')}>{n.title}</p><p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{n.message}</p></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>
+          <ThemeToggle />
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><LogOut className="size-5 text-slate-500" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={logout} className="text-rose-600 cursor-pointer"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+        </div>
       </div>
     </header>
   )
 }
 
-// ==================== Dashboard View ====================
+// ==================== Dashboard ====================
 function DashboardView() {
-  const { user } = useAppStore()
+  const { user, setCurrentView } = useAppStore()
   const { data: stats, isLoading } = useQuery<DashboardStats>({
-    queryKey: ['dashboard-stats', user?.tenantId],
-    queryFn: () => fetch(`/api/dashboard/stats?tenantId=${user!.tenantId}`).then(r => r.json()),
-    enabled: !!user?.tenantId
+    queryKey: ['dashboard', user?.tenantId],
+    queryFn: () => fetch(`/api/dashboard?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
+    enabled: !!user?.tenantId, refetchInterval: 60000
   })
+  const { theme } = useTheme()
+  const now = new Date()
+  const greeting = now.getHours() < 12 ? 'Bonjour' : now.getHours() < 18 ? 'Bon après-midi' : 'Bonsoir'
+  const hour = new Date().getHours()
+  const minute = new Date().getMinutes()
 
-  const statusData = stats?.casesByStatus ? Object.entries(stats.casesByStatus).map(([k, v]) => ({ name: STATUS_LABELS[k] || k, value: v })) : []
-  const typeData = stats?.casesByType ? Object.entries(stats.casesByType).map(([k, v]) => ({ name: TYPE_LABELS[k] || k, value: v })) : []
+  if (isLoading) return <div className="p-6"><Skeleton className="h-8 w-48 mb-6" /><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div></div>
+  if (!stats) return null
 
-  const kpis = [
-    { label: 'Dossiers actifs', value: stats?.activeCases || 0, icon: Briefcase, color: 'text-slate-700 dark:text-slate-200', bg: 'bg-slate-100 dark:bg-slate-800' },
-    { label: 'Clients', value: stats?.totalClients || 0, icon: Users, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
-    { label: 'Échéances', value: stats?.upcomingEvents || 0, icon: Clock, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/30' },
-    { label: 'Factures impayées', value: stats?.unpaidInvoices || 0, icon: Receipt, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/30' },
-  ]
+  const urgencyCount = (stats.urgencies?.length || 0) + (stats.overdueInvoices?.length || 0)
+  const myTaskCount = stats.myTasks?.length || 0
+  const totalPending = (stats.overdueInvoices || []).reduce((s, i) => s + i.amount, 0)
 
-  if (isLoading) return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Skeleton className="h-80 rounded-xl" /><Skeleton className="h-80 rounded-xl" />
-      </div>
-    </div>
-  )
+  const statusChartData = Object.entries(stats.casesByStatus).map(([name, value]) => ({ name: STATUS_LABELS[name] || name, value })).filter(d => d.value > 0)
+  const typeChartData = Object.entries(stats.casesByType).map(([name, value]) => ({ name: TYPE_LABELS[name] || name, value })).filter(d => d.value > 0)
+  const colors = (theme === 'dark' ? CHART_COLORS_DARK : CHART_COLORS)
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi, i) => {
-          const Icon = kpi.icon
-          return (
-            <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden relative">
-                <div className={cn('absolute left-0 top-0 bottom-0 w-1', i === 0 ? 'bg-slate-500' : i === 1 ? 'bg-amber-500' : i === 2 ? 'bg-rose-500' : 'bg-orange-500')} />
-                <CardContent className="p-4 pl-5 flex items-center gap-4">
-                  <div className={cn('p-3 rounded-xl', kpi.bg)}><Icon className={cn('size-6', kpi.color)} /></div>
-                  <div>
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{kpi.value}</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{kpi.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )
-        })}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader><CardTitle className="text-base">Dossiers par statut</CardTitle></CardHeader>
-          <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
-            <BarChart data={statusData}><CartesianGrid strokeDasharray="3 3" stroke="" className="stroke-slate-200 dark:stroke-slate-700" />
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--color-slate-500)' }} />
-              <YAxis tick={{ fontSize: 12, fill: 'var(--color-slate-500)' }} />
-              <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                {statusData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer></div></CardContent>
-        </Card>
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader><CardTitle className="text-base">Dossiers par type</CardTitle></CardHeader>
-          <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
-            <PieChart><Pie data={typeData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" nameKey="name" label>
-              {typeData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-            </Pie><Legend formatter={(value: string) => <span className="text-xs text-slate-600 dark:text-slate-300">{value}</span>} /><RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} /></PieChart>
-          </ResponsiveContainer></div></CardContent>
-        </Card>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader><CardTitle className="text-base">Échéances prochaines</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {stats?.upcomingEventsList && stats.upcomingEventsList.length > 0 ? stats.upcomingEventsList.slice(0, 5).map(ev => (
-              <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                <div className={cn('w-1 h-10 rounded-full shrink-0', CRIT_COLORS[ev.criticality] || 'bg-slate-300')} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{ev.title}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{EVENT_TYPE_LABELS[ev.eventType] || ev.eventType} • {fmtDate(ev.startTime)}</p>
-                </div>
+    <div className="p-4 lg:p-6 space-y-6">
+      {/* Welcome + Aujourd'hui section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between mb-4">
+              <div><h2 className="text-xl font-bold text-slate-900 dark:text-white">{greeting}, {user?.name?.split(' ').slice(-1)}</h2><p className="text-sm text-slate-500 dark:text-slate-400">{format(now, 'EEEE d MMMM yyyy', { locale: fr })} — {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}</p></div>
+              <div className="flex gap-2"><Button size="sm" onClick={() => setCurrentView('cases')} className="hidden sm:flex"><Plus className="size-4 mr-1" />Nouveau dossier</Button><Button size="sm" variant="outline" onClick={() => setCurrentView('invoices')} className="hidden sm:flex"><Receipt className="size-4 mr-1" />Nouvelle facture</Button></div>
+            </div>
+            <Separator className="mb-4" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className={cn('rounded-xl p-4 border-l-4', urgencyCount > 0 ? 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30' : 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30')}>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Aujourd'hui</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{urgencyCount > 0 ? <><span className="text-rose-600">{urgencyCount}</span> <span className="text-sm font-normal">urgence{urgencyCount > 1 ? 's' : ''}</span></> : <><CheckCircle2 className="size-6 text-emerald-500 inline" /> <span className="text-sm font-normal text-emerald-600">Tout va bien</span></>}</p>
               </div>
-            )) : <EmptyState icon={Calendar} title="Aucune échéance à venir" description="Les événements à venir apparaîtront ici" />}
+              <div className="rounded-xl p-4 border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-950/30">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Actions à faire</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{myTaskCount} <span className="text-sm font-normal text-slate-500">tâche{myTaskCount > 1 ? 's' : ''}</span></p>
+              </div>
+              <div className="rounded-xl p-4 border-l-4 border-l-slate-500 bg-slate-50 dark:bg-slate-800/50">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Dossiers actifs</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeCases}</p>
+              </div>
+              <div className="rounded-xl p-4 border-l-4 border-l-orange-500 bg-orange-50 dark:bg-orange-950/30">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Honoraires en attente</p>
+                <p className="text-2xl font-bold text-orange-600">{fmtMoney(totalPending, 'XAF')}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader><CardTitle className="text-base">Activité récente</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {stats?.recentActivity && stats.recentActivity.length > 0 ? stats.recentActivity.slice(0, 10).map(log => (
-              <div key={log.id} className="flex items-start gap-3">
-                <div className="size-2 mt-1.5 rounded-full bg-amber-500 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm text-slate-700 dark:text-slate-300"><span className="font-medium text-slate-900 dark:text-white">{log.user?.name || 'Système'}</span> {log.action}</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(log.createdAt)}</p>
-                </div>
-              </div>
-            )) : <EmptyState icon={Activity} title="Aucune activité récente" description="L’activité de l’équipe apparaîtra ici" />}
-          </CardContent>
-        </Card>
+        {/* My Tasks quick panel */}
+        <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><ClipboardList className="size-4 text-amber-500" />Mes tâches en cours</CardTitle></CardHeader><CardContent className="p-4 pt-0"><div className="space-y-2 max-h-48 overflow-y-auto">{(stats.myTasks || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucune tâche en cours</p> : (stats.myTasks || []).map(t => (<div key={t.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => setCurrentView('tasks')}><span className={cn('size-2 rounded-full shrink-0', t.priority === 'urgente' ? 'bg-rose-500' : t.priority === 'haute' ? 'bg-orange-500' : 'bg-amber-400')} /><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{t.title}</p><p className="text-xs text-slate-400">{t.caseReference ? `${t.caseReference} — ` : ''}{t.dueDate ? `Échéance: ${fmtDate(t.dueDate)}` : ''}</p></div></div>))}</div></CardContent></Card>
+      </div>
+
+      {/* Urgencies + Upcoming Events */}
+      {(urgencyCount > 0 || (stats.urgentTasks?.length || 0) > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Urgencies */}
+          <Card className="border-l-4 border-l-rose-500"><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2 text-rose-700 dark:text-rose-400"><AlertOctagon className="size-4" />Urgences</CardTitle></CardHeader><CardContent className="p-4 pt-0"><div className="space-y-3 max-h-64 overflow-y-auto">
+            {stats.urgencies?.map(u => (<div key={u.id} className="flex items-start gap-3 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/20 cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-950/40" onClick={() => setCurrentView('cases')}><div className="mt-0.5"><Gavel className="size-4 text-rose-500" /></div><div className="min-w-0"><p className="text-sm font-medium">{u.reference} — {u.title}</p><p className="text-xs text-slate-500">{u.clientName} • <span className="font-semibold text-rose-600">{u.daysRemaining <= 0 ? 'Aujourd\'hui !' : `Dans ${u.daysRemaining} jour${u.daysRemaining > 1 ? 's' : ''}`}</span></p></div></div>))}
+            {stats.overdueInvoices?.map(inv => (<div key={inv.id} className="flex items-start gap-3 p-2 rounded-lg bg-orange-50 dark:bg-orange-950/20 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-950/40" onClick={() => setCurrentView('invoices')}><div className="mt-0.5"><AlertTriangle className="size-4 text-orange-500" /></div><div className="min-w-0"><p className="text-sm font-medium">{inv.reference} — {inv.clientName}</p><p className="text-xs text-slate-500">{fmtMoney(inv.amount, inv.currencyCode)} • <span className="font-semibold text-orange-600">{inv.daysOverdue}j de retard</span></p></div></div>))}
+            {stats.urgentTasks?.slice(0, 3).map(t => (<div key={t.id} className="flex items-start gap-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40" onClick={() => setCurrentView('tasks')}><div className="mt-0.5"><Timer className="size-4 text-amber-500" /></div><div className="min-w-0"><p className="text-sm font-medium">{t.title}</p><p className="text-xs text-slate-500">{t.assigneeName ? `→ ${t.assigneeName}` : ''} {t.caseReference ? `• ${t.caseReference}` : ''}</p></div></div>))}
+          </div></CardContent></Card>
+          {/* Upcoming Events */}
+          <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Calendar className="size-4 text-amber-500" />Prochains événements (7j)</CardTitle></CardHeader><CardContent className="p-4 pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">{(stats.upcomingEventsEnhanced || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucun événement à venir</p> : (stats.upcomingEventsEnhanced || []).map(e => (<div key={e.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => setCurrentView('calendar')}><span className={cn('w-1 h-8 rounded-full shrink-0', CRIT_COLORS[e.criticality] || CRIT_COLORS.normal)} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{e.title}</p><p className="text-xs text-slate-500">{fmtDateTime(e.startTime)}{e.location ? ` • ${e.location}` : ''}{e.caseReference ? ` • ${e.caseReference}` : ''}</p><p className="text-xs text-slate-400 mt-0.5">{e.assignments.map(a => a.userName).join(', ')}</p></div><Badge variant="outline" className="text-[10px] shrink-0">{EVENT_TYPE_LABELS[e.eventType] || e.eventType}</Badge></div>))}</div></CardContent></Card>
+        </div>
+      )}
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par statut</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={220}><BarChart data={statusChartData}><CartesianGrid strokeDasharray="3 3" className="opacity-30" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><RechartsTooltip /><Bar dataKey="value" fill={colors[0]} radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par type</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={typeChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} paddingAngle={2}>{typeChartData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} /></PieChart></ResponsiveContainer></CardContent></Card>
       </div>
     </div>
   )
 }
 
-// ==================== Clients View ====================
-function ClientsView() {
+// ==================== TASKS VIEW ====================
+function TasksView() {
   const { user } = useAppStore()
   const qc = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState<Client | null>(null)
-  const [form, setForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', notes: '' })
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<TaskItem | null>(null)
+  const [form, setForm] = useState({ title: '', description: '', priority: 'normal', dueDate: '', userId: '', caseId: '' })
 
-  const { data: clients, isLoading } = useQuery<Client[]>({
-    queryKey: ['clients', user?.tenantId, search, statusFilter],
+  const { data: tasksData, isLoading } = useQuery({
+    queryKey: ['tasks', user?.tenantId, statusFilter, priorityFilter],
     queryFn: () => {
-      const p = new URLSearchParams({ tenantId: user!.tenantId })
-      if (search) p.set('search', search)
+      const p = new URLSearchParams()
+      if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (statusFilter !== 'all') p.set('status', statusFilter)
-      return fetch(`/api/clients?${p}`).then(r => r.json())
+      if (priorityFilter !== 'all') p.set('priority', priorityFilter)
+      return fetch(`/api/tasks?${p}`).then(r => r.json()).then(d => d.tasks || d)
     },
-    enabled: !!user?.tenantId
   })
 
-  const mutation = useMutation({
-    mutationFn: async (body: Record<string, string>) => {
-      if (editing) {
-        return fetch(`/api/clients/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
-      }
-      return fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId }) }).then(r => r.json())
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success(editing ? 'Client modifié' : 'Client créé'); setOpen(false); setEditing(null) },
-    onError: () => toast.error('Erreur lors de l\'enregistrement')
+  const { data: users } = useQuery({
+    queryKey: ['users', user?.tenantId],
+    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/clients/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client supprimé') },
-    onError: () => toast.error('Erreur lors de la suppression')
+  const { data: cases } = useQuery({
+    queryKey: ['cases-mini', user?.tenantId],
+    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()),
   })
 
-  const openCreate = () => { setEditing(null); setForm({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', notes: '' }); setOpen(true) }
-  const openEdit = (c: Client) => { setEditing(c); setForm({ firstName: c.firstName, lastName: c.lastName, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '', notes: c.notes || '' }); setOpen(true) }
+  const createMut = useMutation({
+    mutationFn: (body: Record<string, unknown>) => fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId, creatorId: user?.id }) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche créée'); setDialogOpen(false); resetForm() },
+    onError: () => toast.error('Erreur lors de la création'),
+  })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.firstName || !form.lastName) { toast.error('Nom et prénom requis'); return }
-    mutation.mutate(form)
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/tasks/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche mise à jour') },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche supprimée') },
+    onError: () => toast.error('Erreur lors de la suppression'),
+  })
+
+  const resetForm = () => { setForm({ title: '', description: '', priority: 'normal', dueDate: '', userId: '', caseId: '' }); setEditing(null) }
+  const openEdit = (t: TaskItem) => { setEditing(t); setForm({ title: t.title, description: t.description || '', priority: t.priority, dueDate: t.dueDate?.slice(0, 10) || '', userId: t.userId || '', caseId: t.caseId || '' }); setDialogOpen(true) }
+  const handleSubmit = () => {
+    if (!form.title.trim()) return
+    if (editing) { updateMut.mutate({ id: editing.id, title: form.title, description: form.description || null, priority: form.priority, dueDate: form.dueDate || null, userId: form.userId || null, caseId: form.caseId || null }) }
+    else { createMut.mutate({ title: form.title, description: form.description || null, priority: form.priority, dueDate: form.dueDate || null, userId: form.userId || null, caseId: form.caseId || null }) }
   }
+
+  const toggleStatus = (t: TaskItem) => {
+    const newStatus = t.status === 'terminee' ? 'a_faire' : 'terminee'
+    updateMut.mutate({ id: t.id, status: newStatus })
+  }
+
+  const tasks: TaskItem[] = tasksData || []
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <Input placeholder="Rechercher un client..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Statut" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="active">Actif</SelectItem><SelectItem value="inactive">Inactif</SelectItem></SelectContent>
-          </Select>
-        </div>
-        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Nouveau client</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h2 className="text-lg font-semibold">Tâches</h2>
+        <Button onClick={() => { resetForm(); setDialogOpen(true) }} size="sm"><Plus className="size-4 mr-1" />Nouvelle tâche</Button>
       </div>
 
-      {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div> : (
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <div className="overflow-x-auto">
-            <Table><TableHeader><TableRow>
-              <TableHead>Nom complet</TableHead><TableHead className="hidden md:table-cell">Société</TableHead>
-              <TableHead className="hidden lg:table-cell">Email</TableHead><TableHead className="hidden lg:table-cell">Téléphone</TableHead>
-              <TableHead>Dossiers</TableHead><TableHead>Statut</TableHead><TableHead className="w-10"></TableHead>
-            </TableRow></TableHeader><TableBody>
-              {clients?.map(c => (
-                <TableRow key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <TableCell className="font-medium">{c.firstName} {c.lastName}</TableCell>
-                  <TableCell className="hidden md:table-cell">{c.company || '—'}</TableCell>
-                  <TableCell className="hidden lg:table-cell">{c.email || '—'}</TableCell>
-                  <TableCell className="hidden lg:table-cell">{c.phone || '—'}</TableCell>
-                  <TableCell>{c._count?.cases || 0}</TableCell>
-                  <TableCell><Badge variant={c.isActive ? 'default' : 'secondary'} className={cn('rounded-full px-2.5', c.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400')}>{c.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell>
-                  <TableCell>
-                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(c)}><Edit className="size-4 mr-2" />Modifier</DropdownMenuItem>
-                        <DropdownMenuItem className="text-rose-600 dark:text-rose-400" onClick={() => deleteMutation.mutate(c.id)}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(!clients || clients.length === 0) && (
-                <TableRow><TableCell colSpan={7} className="p-0"><EmptyState icon={Users} title="Aucun client trouvé" description="Commencez par ajouter votre premier client" /></TableCell></TableRow>
-              )}
-            </TableBody></Table>
-          </div>
-        </Card>
-      )}
+      <div className="flex flex-wrap gap-2">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[160px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les statuts</SelectItem>
+            <SelectItem value="a_faire">À faire</SelectItem>
+            <SelectItem value="en_cours">En cours</SelectItem>
+            <SelectItem value="terminee">Terminée</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+          <SelectTrigger className="w-[150px] h-9 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les priorités</SelectItem>
+            <SelectItem value="normal">Normal</SelectItem>
+            <SelectItem value="haute">Haute</SelectItem>
+            <SelectItem value="urgente">Urgente</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? 'Modifier le client' : 'Nouveau client'}</DialogTitle>
-          <DialogDescription>{editing ? 'Modifiez les informations du client' : 'Ajoutez un nouveau client'}</DialogDescription></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Prénom *</Label><Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} required /></div>
-              <div className="space-y-2"><Label>Nom *</Label><Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} required /></div></div>
-            <div className="space-y-2"><Label>Société</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
-              <div className="space-y-2"><Label>Téléphone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div></div>
-            <div className="space-y-2"><Label>Adresse</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
-            <div className="space-y-2"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
-            <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-              <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
-          </form>
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
+        tasks.length === 0 ? <EmptyState icon={ClipboardList} title="Aucune tâche" description="Créez votre première tâche" /> :
+        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
+          <Table><TableHeader><TableRow>
+            <TableHead className="w-10"></TableHead>
+            <TableHead>Titre</TableHead>
+            <TableHead className="hidden md:table-cell">Priorité</TableHead>
+            <TableHead className="hidden sm:table-cell">Statut</TableHead>
+            <TableHead className="hidden lg:table-cell">Assigné</TableHead>
+            <TableHead className="hidden lg:table-cell">Dossier</TableHead>
+            <TableHead className="hidden md:table-cell">Échéance</TableHead>
+            <TableHead className="w-24">Actions</TableHead>
+          </TableRow></TableHeader><TableBody>
+            {tasks.map(t => (
+              <TableRow key={t.id} className={cn(t.status === 'terminee' && 'opacity-60')}>
+                <TableCell><Checkbox checked={t.status === 'terminee'} onCheckedChange={() => toggleStatus(t)} /></TableCell>
+                <TableCell className="font-medium"><span className={cn(t.status === 'terminee' && 'line-through')}>{t.title}</span></TableCell>
+                <TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', PRIORITY_COLORS[t.priority])}>{PRIORITY_LABELS[t.priority] || t.priority}</Badge></TableCell>
+                <TableCell className="hidden sm:table-cell"><Badge variant="outline" className={cn('text-[10px]', taskStatusColor(t.status))}>{taskStatusLabel(t.status)}</Badge></TableCell>
+                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{t.user?.name || '—'}</TableCell>
+                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{t.case?.reference || '—'}</TableCell>
+                <TableCell className="hidden md:table-cell text-sm text-slate-500 dark:text-slate-400">{fmtDate(t.dueDate)}</TableCell>
+                <TableCell>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(t)}><Edit className="size-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="size-7 text-rose-500 hover:text-rose-700" onClick={() => deleteMut.mutate(t.id)}><Trash2 className="size-3.5" /></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody></Table>
+        </div></CardContent></Card>}
+
+      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{editing ? 'Modifier la tâche' : 'Nouvelle tâche'}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Titre de la tâche" /></div>
+            <div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
+              <div><Label>Échéance</Label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Assigné à</Label><Select value={form.userId} onValueChange={v => setForm(f => ({ ...f, userId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(users || []).map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} disabled={!form.title.trim() || createMut.isPending || updateMut.isPending}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   )
 }
 
-// ==================== Cases View ====================
-function CasesView({ archiveMode = false }: { archiveMode?: boolean }) {
+// ==================== CASES VIEW ====================
+function CasesView() {
   const { user } = useAppStore()
   const qc = useQueryClient()
-  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
-  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
   const [editing, setEditing] = useState<CaseItem | null>(null)
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [noteText, setNoteText] = useState('')
-  const [form, setForm] = useState({ title: '', type: 'civil', priority: 'normal', status: 'nouveau', description: '', clientId: '', isSecret: false, assignedUserIds: '' as string })
+  const [selectedCase, setSelectedCase] = useState<CaseItem | null>(null)
+  const [conflicts, setConflicts] = useState<ConflictResult[]>([])
+  const [form, setForm] = useState({ title: '', description: '', type: 'civil', status: 'nouveau', priority: 'normal', clientId: '', reference: '', nextDueDate: '', adversary: '', jurisdiction: '', amountInDispute: '', billingType: '' })
 
-  const { data: clients } = useQuery<Client[]>({
-    queryKey: ['clients-list', user?.tenantId], queryFn: () => fetch(`/api/clients?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
-  })
-  const { data: users } = useQuery<UserItem[]>({
-    queryKey: ['users-list', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
-  })
-
-  const statuses = archiveMode ? 'clos,archive' : ''
-  const { data: cases, isLoading } = useQuery<CaseItem[]>({
-    queryKey: ['cases', user?.tenantId, search, statusFilter, typeFilter, priorityFilter, archiveMode],
+  const { data: cases, isLoading } = useQuery({
+    queryKey: ['cases', user?.tenantId, statusFilter, typeFilter, priorityFilter, search],
     queryFn: () => {
-      const p = new URLSearchParams({ tenantId: user!.tenantId })
-      if (search) p.set('search', search)
+      const p = new URLSearchParams()
+      if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (statusFilter !== 'all') p.set('status', statusFilter)
-      else if (statuses) p.set('status', statuses)
       if (typeFilter !== 'all') p.set('type', typeFilter)
       if (priorityFilter !== 'all') p.set('priority', priorityFilter)
+      if (search) p.set('search', search)
       return fetch(`/api/cases?${p}`).then(r => r.json())
     },
-    enabled: !!user?.tenantId
   })
 
-  const mutation = useMutation({
+  const { data: clients } = useQuery({
+    queryKey: ['clients-mini', user?.tenantId],
+    queryFn: () => fetch(`/api/clients?tenantId=${user?.tenantId}`).then(r => r.json()),
+  })
+
+  const { data: caseDetail } = useQuery({
+    queryKey: ['case-detail', selectedCase?.id],
+    queryFn: () => fetch(`/api/cases/${selectedCase!.id}`).then(r => r.json()),
+    enabled: !!selectedCase?.id && detailOpen,
+  })
+
+  const createMut = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      if (editing) {
-        return fetch(`/api/cases/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+      if (body.adversary && body.clientId) {
+        try {
+          const conflictRes = await fetch('/api/conflicts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: user?.tenantId, clientId: body.clientId, adversary: body.adversary }) }).then(r => r.json())
+          if (conflictRes.conflicts?.length > 0) setConflicts(conflictRes.conflicts)
+        } catch { /* ignore */ }
       }
-      return fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId }) }).then(r => r.json())
+      return fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success(editing ? 'Dossier modifié' : 'Dossier créé'); setOpen(false); setEditing(null) },
-    onError: () => toast.error('Erreur')
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success('Dossier créé'); setDialogOpen(false); resetForm() },
+    onError: () => toast.error('Erreur lors de la création'),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/cases/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success('Dossier supprimé') },
-    onError: () => toast.error('Erreur')
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/cases/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); qc.invalidateQueries({ queryKey: ['case-detail'] }); toast.success('Dossier mis à jour') },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
   })
 
-  const noteMutation = useMutation({
-    mutationFn: ({ caseId, content }: { caseId: string; content: string }) =>
-      fetch(`/api/cases/${caseId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, userId: user!.id, tenantId: user!.tenantId }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); setNoteText(''); toast.success('Note ajoutée') },
-    onError: () => toast.error('Erreur')
-  })
-
-  const openCreate = () => { setEditing(null); setForm({ title: '', type: 'civil', priority: 'normal', status: 'nouveau', description: '', clientId: '', isSecret: false, assignedUserIds: '' }); setOpen(true) }
+  const resetForm = () => { setForm({ title: '', description: '', type: 'civil', status: 'nouveau', priority: 'normal', clientId: '', reference: '', nextDueDate: '', adversary: '', jurisdiction: '', amountInDispute: '', billingType: '' }); setEditing(null); setConflicts([]) }
   const openEdit = (c: CaseItem) => {
-    setEditing(c); setForm({
-      title: c.title, type: c.type, priority: c.priority, status: c.status,
-      description: c.description || '', clientId: c.clientId, isSecret: c.isSecret,
-      assignedUserIds: c.assignments?.map(a => a.userId).join(',') || ''
-    }); setOpen(true)
+    setEditing(c)
+    setForm({ title: c.title, description: c.description || '', type: c.type, status: c.status, priority: c.priority, clientId: c.clientId, reference: c.reference, nextDueDate: c.nextDueDate?.slice(0, 10) || '', adversary: c.adversary || '', jurisdiction: c.jurisdiction || '', amountInDispute: c.amountInDispute?.toString() || '', billingType: c.billingType || '' })
+    setDialogOpen(true)
   }
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.title || !form.clientId) { toast.error('Titre et client requis'); return }
-    const assignedUserIds = form.assignedUserIds ? form.assignedUserIds.split(',') : []
-    mutation.mutate({ ...form, assignedUserIds })
+  const handleSubmit = () => {
+    if (!form.title.trim() || !form.clientId) return
+    const payload = { title: form.title, description: form.description || null, type: form.type, status: form.status, priority: form.priority, clientId: form.clientId, reference: form.reference, nextDueDate: form.nextDueDate || null, tenantId: user?.tenantId, adversary: form.adversary || null, jurisdiction: form.jurisdiction || null, amountInDispute: form.amountInDispute ? parseFloat(form.amountInDispute) : null, billingType: form.billingType || null }
+    if (editing) { updateMut.mutate({ id: editing.id, ...payload }) } else { createMut.mutate(payload) }
   }
 
-  const expandedCase = cases?.find(c => c.id === expanded)
+  const timeline = useMemo(() => {
+    if (!caseDetail) return []
+    const items: Array<{ date: string; type: 'event' | 'note' | 'doc'; icon: React.ElementType; title: string; description: string }> = []
+    for (const e of (caseDetail.events || [])) { items.push({ date: e.startTime, type: 'event', icon: Calendar, title: e.title, description: e.description || '' }) }
+    for (const n of (caseDetail.notes || [])) { items.push({ date: n.createdAt, type: 'note', icon: FileText, title: 'Note', description: n.content }) }
+    for (const d of (caseDetail.documents || [])) { items.push({ date: d.createdAt, type: 'doc', icon: FileCheck, title: d.name, description: `${d.fileType} • ${fmtFileSize(d.fileSize)}` }) }
+    return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [caseDetail])
+
+  const getClientName = (c: CaseItem) => c.client ? `${c.client.firstName} ${c.client.lastName}` : '—'
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto flex-wrap">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <Input placeholder="Rechercher un dossier..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Statut" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
-          <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Type" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Priorité" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
-        </div>
-        {!archiveMode && <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Nouveau dossier</Button>}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h2 className="text-lg font-semibold">Dossiers</h2>
+        <Button onClick={() => { resetForm(); setDialogOpen(true) }} size="sm"><Plus className="size-4 mr-1" />Nouveau dossier</Button>
       </div>
 
-      {isLoading ? <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div> : (
-        <div className="space-y-3">
-          {cases?.map(c => (
-            <Collapsible key={c.id} open={expanded === c.id} onOpenChange={(o) => setExpanded(o ? c.id : null)}>
-              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
-                <div className={cn('absolute left-0 top-0 bottom-0 w-1 rounded-l-lg', c.priority === 'urgente' ? 'bg-rose-500' : c.priority === 'haute' ? 'bg-orange-500' : c.priority === 'basse' ? 'bg-slate-300 dark:bg-slate-600' : 'bg-slate-400 dark:bg-slate-500')} />
-                <CollapsibleTrigger asChild>
-                  <div className="p-4 flex flex-col md:flex-row md:items-center gap-3 cursor-pointer">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">{c.reference}</span>
-                        {c.isSecret && <Lock className="size-3.5 text-amber-600" />}
-                        <Badge className={cn('rounded-full px-2.5', STATUS_COLORS[c.status] || '')}>{STATUS_LABELS[c.status] || c.status}</Badge>
-                        <Badge className={cn('rounded-full px-2.5', PRIORITY_COLORS[c.priority] || '')}>{PRIORITY_LABELS[c.priority] || c.priority}</Badge>
-                      </div>
-                      <p className="font-medium text-slate-900 dark:text-white mt-1 truncate">{c.title}</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">{c.client?.firstName} {c.client?.lastName} {c.client?.company ? `• ${c.client.company}` : ''}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-slate-400 dark:text-slate-500">{TYPE_LABELS[c.type] || c.type}</span>
-                      {c.nextDueDate && <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1"><Clock className="size-3" />{fmtDate(c.nextDueDate)}</span>}
-                      {!archiveMode && (
-                        <DropdownMenu><DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(c) }}><Edit className="size-4 mr-2" />Modifier</DropdownMenuItem>
-                            <DropdownMenuItem className="text-rose-600 dark:text-rose-400" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(c.id) }}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                      <ChevronDown className={cn('size-4 text-slate-400 dark:text-slate-500 transition-transform', expanded === c.id && 'rotate-180')} />
-                    </div>
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  {expandedCase && (
-                    <div className="border-t border-slate-100 dark:border-slate-700 p-4 space-y-4">
-                      {expandedCase.description && <p className="text-sm text-slate-600 dark:text-slate-300">{expandedCase.description}</p>}
-                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                        {expandedCase.assignments?.map(a => (
-                          <Badge key={a.id} variant="outline" className="text-xs rounded-full">{a.user?.name || 'Avocat'}</Badge>
-                        ))}
-                      </div>
-                      {expandedCase.documents && expandedCase.documents.length > 0 && (
-                        <div><p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Documents ({expandedCase.documents.length})</p>
-                          <div className="flex flex-wrap gap-2">{expandedCase.documents.map(d => (
-                            <Badge key={d.id} variant="outline" className="text-xs gap-1 rounded-full"><FileText className="size-3" />{d.name}</Badge>
-                          ))}</div></div>
-                      )}
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Notes</p>
-                        <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                          {expandedCase.notes?.map(n => (
-                            <div key={n.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2 text-sm"><p className="text-slate-700 dark:text-slate-300">{n.content}</p>
-                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{n.user?.name || ''} — {fmtDate(n.createdAt)}</p></div>
-                          ))}
-                        </div>
-                        {!archiveMode && (
-                          <div className="flex gap-2 mt-2">
-                            <Input placeholder="Ajouter une note..." value={noteText} onChange={e => setNoteText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && noteText.trim()) noteMutation.mutate({ caseId: expandedCase!.id, content: noteText.trim() }) }} className="text-sm" />
-                            <Button size="icon" onClick={() => { if (noteText.trim()) noteMutation.mutate({ caseId: expandedCase!.id, content: noteText.trim() }) }} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Send className="size-4" /></Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </CollapsibleContent>
-              </Card>
-            </Collapsible>
-          ))}
-          {(!cases || cases.length === 0) && (
-            <EmptyState icon={archiveMode ? Archive : Briefcase} title={archiveMode ? 'Aucun dossier archivé' : 'Aucun dossier trouvé'} description={archiveMode ? 'Les dossiers clos et archivés apparaîtront ici' : 'Commencez par créer votre premier dossier'} />
-          )}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-xs" /></div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
+        <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Type" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
+      </div>
 
-      {!archiveMode && <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{editing ? 'Modifier le dossier' : 'Nouveau dossier'}</DialogTitle>
-          <DialogDescription>{editing ? 'Modifiez les informations' : 'Créez un nouveau dossier'}</DialogDescription></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2"><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Type</Label><Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
+        (cases || []).length === 0 ? <EmptyState icon={Briefcase} title="Aucun dossier" description="Créez votre premier dossier" /> :
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
+          {(cases || []).map(c => (
+            <Card key={c.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => { setSelectedCase(c); setDetailOpen(true) }}>
+              <CardHeader className="pb-2"><div className="flex items-start justify-between"><CardTitle className="text-sm font-semibold">{c.reference}</CardTitle><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[c.status])}>{STATUS_LABELS[c.status] || c.status}</Badge></div><CardDescription className="text-xs mt-1 line-clamp-2">{c.title}</CardDescription></CardHeader>
+              <CardContent className="p-4 pt-0 space-y-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400"><Users className="size-3 inline mr-1" />{getClientName(c)}</p>
+                {c.adversary && <p className="text-xs text-slate-500 dark:text-slate-400"><Scale className="size-3 inline mr-1" />Contre : {c.adversary}</p>}
+                {c.jurisdiction && <p className="text-xs text-slate-500 dark:text-slate-400"><MapPin className="size-3 inline mr-1" />{c.jurisdiction}</p>}
+                {c.amountInDispute != null && c.amountInDispute > 0 && <p className="text-xs font-medium text-amber-600"><Banknote className="size-3 inline mr-1" />{fmtMoney(c.amountInDispute)}</p>}
+                {c.billingType && <Badge variant="secondary" className="text-[10px]">{BILLING_LABELS[c.billingType] || c.billingType}</Badge>}
+                <div className="flex items-center justify-between pt-2">
+                  <Badge variant="outline" className="text-[10px]">{TYPE_LABELS[c.type] || c.type}</Badge>
+                  <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(c)}><Edit className="size-3.5" /></Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>}
+
+      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing ? 'Modifier le dossier' : 'Nouveau dossier'}</DialogTitle></DialogHeader>
+          {conflicts.length > 0 && <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-1">{conflicts.map((c, i) => <div key={i} className="flex items-start gap-2 text-xs"><AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" /><span className="text-amber-700 dark:text-amber-300">{c.description}</span></div>)}</div>}
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Référence *</Label><Input value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} placeholder="REF-001" /></div>
+              <div><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{(clients || []).map(cl => <SelectItem key={cl.id} value={cl.id}>{cl.firstName} {cl.lastName}{cl.company ? ` (${cl.company})` : ''}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+            <div><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
+            <div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>Type</Label><Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select></div>
+              <div><Label>Statut</Label><Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select></div>
+              <div><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Partie adverse</Label><Input value={form.adversary} onChange={e => setForm(f => ({ ...f, adversary: e.target.value }))} placeholder="Nom de la partie adverse" /></div>
+              <div><Label>Juridiction</Label><Input value={form.jurisdiction} onChange={e => setForm(f => ({ ...f, jurisdiction: e.target.value }))} placeholder="TPI de Douala" /></div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>Montant en jeu</Label><Input type="number" value={form.amountInDispute} onChange={e => setForm(f => ({ ...f, amountInDispute: e.target.value }))} placeholder="0" /></div>
+              <div><Label>Facturation</Label><Select value={form.billingType} onValueChange={v => setForm(f => ({ ...f, billingType: v }))}><SelectTrigger><SelectValue placeholder="—" /></SelectTrigger><SelectContent><SelectItem value="forfait">Forfait</SelectItem><SelectItem value="horaire">Horaire</SelectItem><SelectItem value="abonnement">Abonnement</SelectItem><SelectItem value="success_fee">Success fee</SelectItem><SelectItem value="provision">Provision</SelectItem></SelectContent></Select></div>
+              <div><Label>Prochaine échéance</Label><Input type="date" value={form.nextDueDate} onChange={e => setForm(f => ({ ...f, nextDueDate: e.target.value }))} /></div>
+            </div>
           </div>
-          <div className="space-y-2"><Label>Statut</Label><Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select></div>
-          <div className="space-y-2"><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-            <SelectContent>{clients?.map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}{c.company ? ` (${c.company})` : ''}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
-          <div className="flex items-center gap-2"><Checkbox checked={form.isSecret} onCheckedChange={v => setForm(f => ({ ...f, isSecret: !!v }))} />
-            <Label>Confidentiel (secret)</Label></div>
-          <div className="space-y-2"><Label>Avocats assignés</Label><Select value={form.assignedUserIds} onValueChange={v => setForm(f => ({ ...f, assignedUserIds: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-            <SelectContent>{users?.filter(u => u.role === 'lawyer' || u.role === 'firm_admin').map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
-        </form>
-      </DialogContent></Dialog>}
+          <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} disabled={!form.title.trim() || !form.clientId || createMut.isPending}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader><DialogTitle className="flex items-center gap-2">{selectedCase?.reference} — {selectedCase?.title}</DialogTitle></DialogHeader>
+          <Tabs defaultValue="resume" className="flex-1 overflow-hidden">
+            <TabsList className="w-full"><TabsTrigger value="resume">Résumé</TabsTrigger><TabsTrigger value="timeline">Chronologie</TabsTrigger><TabsTrigger value="notes">Notes</TabsTrigger><TabsTrigger value="documents">Documents</TabsTrigger></TabsList>
+            <TabsContent value="resume" className="mt-4 space-y-3 overflow-y-auto max-h-[50vh]">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-slate-500">Client :</span> <span className="font-medium">{caseDetail?.client ? `${caseDetail.client.firstName} ${caseDetail.client.lastName}` : '—'}</span></div>
+                <div><span className="text-slate-500">Type :</span> <Badge variant="outline" className="text-[10px]">{TYPE_LABELS[caseDetail?.type || ''] || caseDetail?.type}</Badge></div>
+                <div><span className="text-slate-500">Statut :</span> <Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[caseDetail?.status || ''])}>{STATUS_LABELS[caseDetail?.status || ''] || caseDetail?.status}</Badge></div>
+                <div><span className="text-slate-500">Priorité :</span> <Badge variant="outline" className={cn('text-[10px]', PRIORITY_COLORS[caseDetail?.priority || ''])}>{PRIORITY_LABELS[caseDetail?.priority || ''] || caseDetail?.priority}</Badge></div>
+                {caseDetail?.adversary && <div className="col-span-2"><span className="text-slate-500">Partie adverse :</span> <span className="font-medium">{caseDetail.adversary}</span></div>}
+                {caseDetail?.jurisdiction && <div className="col-span-2"><span className="text-slate-500">Juridiction :</span> <span className="font-medium">{caseDetail.jurisdiction}</span></div>}
+                {caseDetail?.amountInDispute != null && <div><span className="text-slate-500">Montant en jeu :</span> <span className="font-medium">{fmtMoney(caseDetail.amountInDispute)}</span></div>}
+                {caseDetail?.billingType && <div><span className="text-slate-500">Facturation :</span> <Badge variant="secondary" className="text-[10px]">{BILLING_LABELS[caseDetail.billingType] || caseDetail.billingType}</Badge></div>}
+                <div className="col-span-2"><span className="text-slate-500">Description :</span><p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{caseDetail?.description || 'Aucune description'}</p></div>
+              </div>
+            </TabsContent>
+            <TabsContent value="timeline" className="mt-4 overflow-y-auto max-h-[50vh]">
+              {timeline.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune activité</p> :
+              <div className="relative pl-6">
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700" />
+                {timeline.map((item, i) => {
+                  const Icon = item.icon
+                  return (
+                    <div key={i} className="relative pb-4">
+                      <div className="absolute -left-6 top-1 size-[15px] rounded-full bg-white dark:bg-slate-950 border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center"><Icon className="size-2.5 text-slate-500" /></div>
+                      <div><p className="text-xs text-slate-400">{fmtDateTime(item.date)}</p><p className="text-sm font-medium mt-0.5">{item.title}</p>{item.description && <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>}</div>
+                    </div>
+                  )
+                })}
+              </div>}
+            </TabsContent>
+            <TabsContent value="notes" className="mt-4 space-y-3 overflow-y-auto max-h-[50vh]">
+              {(caseDetail?.notes || []).length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune note</p> :
+                (caseDetail?.notes || []).map(n => (
+                  <div key={n.id} className="border rounded-lg p-3"><div className="flex items-center justify-between mb-1"><span className="text-xs font-medium">{n.user?.name || '—'}</span><span className="text-[10px] text-slate-400">{fmtDateTime(n.createdAt)}</span></div><p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{n.content}</p></div>
+                ))}
+            </TabsContent>
+            <TabsContent value="documents" className="mt-4 space-y-2 overflow-y-auto max-h-[50vh]">
+              {(caseDetail?.documents || []).length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucun document</p> :
+                (caseDetail?.documents || []).map(d => (
+                  <div key={d.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50"><FileText className="size-4 text-slate-400 shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{d.name}</p><p className="text-[10px] text-slate-400">{d.fileType} • {fmtFileSize(d.fileSize)}</p></div>{d.isFinal && <Badge className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Officielle</Badge>}</div>
+                ))}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-// ==================== Documents View ====================
-function DocumentsView() {
+// ==================== CLIENTS VIEW ====================
+function ClientsView() {
   const { user } = useAppStore()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
-  const [caseFilter, setCaseFilter] = useState('all')
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '', caseId: '' })
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<Client | null>(null)
+  const [form, setForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', city: '', country: 'Cameroun', notes: '', clientType: 'particulier', niu: '', riskLevel: 'faible', source: '', isActive: true })
 
-  const { data: cases } = useQuery<CaseItem[]>({
-    queryKey: ['cases-docs', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
-  })
-  const { data: documents, isLoading } = useQuery<Doc[]>({
-    queryKey: ['documents', user?.tenantId, search, caseFilter],
+  const { data: clients, isLoading } = useQuery({
+    queryKey: ['clients', user?.tenantId, search],
     queryFn: () => {
-      const p = new URLSearchParams({ tenantId: user!.tenantId })
+      const p = new URLSearchParams()
+      if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (search) p.set('search', search)
-      return fetch(`/api/documents?${p}`).then(r => r.json())
+      return fetch(`/api/clients?${p}`).then(r => r.json())
     },
-    enabled: !!user?.tenantId
   })
 
-  const mutation = useMutation({
-    mutationFn: (body: Record<string, string>) =>
-      fetch('/api/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId, userId: user!.id, fileName: body.name, fileType: 'pdf', filePath: '/uploads/' + body.name, fileSize: 0 }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success('Document ajouté'); setOpen(false) },
-    onError: () => toast.error('Erreur')
+  const createMut = useMutation({
+    mutationFn: (body: Record<string, unknown>) => fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId }) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client créé'); setDialogOpen(false); resetForm() },
+    onError: () => toast.error('Erreur lors de la création'),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/documents/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success('Document supprimé') },
-    onError: () => toast.error('Erreur')
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/clients/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client mis à jour'); setDialogOpen(false); resetForm() },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
   })
 
-  const filtered = caseFilter === 'all' ? documents : documents?.filter(d => d.caseId === caseFilter)
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => fetch(`/api/clients/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client supprimé') },
+    onError: () => toast.error('Erreur lors de la suppression'),
+  })
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, { clientName: string; cases: { caseName: string; docs: Doc[] }[] }>()
-    filtered?.forEach(d => {
-      const clientName = d.case?.client ? `${d.case.client.firstName} ${d.case.client.lastName}` : 'Sans client'
-      const caseName = d.case?.title || 'Sans dossier'
-      const key = `${clientName}::${d.caseId || 'none'}`
-      if (!map.has(key)) { map.set(key, { clientName, cases: [] }) }
-      const entry = map.get(key)!
-      let caseEntry = entry.cases.find(c => c.caseName === caseName)
-      if (!caseEntry) { caseEntry = { caseName, docs: [] }; entry.cases.push(caseEntry) }
-      caseEntry.docs.push(d)
-    })
-    return map
-  }, [filtered])
+  const resetForm = () => { setForm({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', city: '', country: 'Cameroun', notes: '', clientType: 'particulier', niu: '', riskLevel: 'faible', source: '', isActive: true }); setEditing(null) }
+  const openEdit = (c: Client) => { setEditing(c); setForm({ firstName: c.firstName, lastName: c.lastName, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '', city: c.city || '', country: c.country || 'Cameroun', notes: c.notes || '', clientType: c.clientType || 'particulier', niu: c.niu || '', riskLevel: c.riskLevel || 'faible', source: c.source || '', isActive: c.isActive }); setDialogOpen(true) }
+  const handleSubmit = () => {
+    if (!form.firstName.trim() || !form.lastName.trim()) return
+    const payload = { ...form, company: form.company || null, email: form.email || null, phone: form.phone || null, address: form.address || null, city: form.city || null, niu: form.niu || null, notes: form.notes || null, source: form.source || null }
+    if (editing) { updateMut.mutate({ id: editing.id, ...payload }) } else { createMut.mutate(payload) }
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <Input placeholder="Rechercher un document..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-          </div>
-          <Select value={caseFilter} onValueChange={setCaseFilter}><SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Filtrer par dossier" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Tous les dossiers</SelectItem>
-              {cases?.map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select>
-        </div>
-        <Button onClick={() => { setForm({ name: '', description: '', caseId: '' }); setOpen(true) }} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Ajouter un document</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h2 className="text-lg font-semibold">Clients</h2>
+        <Button onClick={() => { resetForm(); setDialogOpen(true) }} size="sm"><Plus className="size-4 mr-1" />Nouveau client</Button>
       </div>
 
-      {isLoading ? <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div> : (
-        <div className="space-y-6">
-          {Array.from(grouped.entries()).map(([key, group]) => (
-            <div key={key}>
-              <h3 className="font-medium text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-2"><Users className="size-4" />{group.clientName}</h3>
-              {group.cases.map((caseGroup, ci) => (
-                <div key={ci} className="ml-4 mb-3">
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-2"><Briefcase className="size-3 inline mr-1" />{caseGroup.caseName}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {caseGroup.docs.map(d => (
-                      <Card key={d.id} className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-                        <CardContent className="p-4 flex items-start gap-3">
-                          <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800"><FileText className="size-5 text-slate-600 dark:text-slate-300" /></div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{d.name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{d.fileType.toUpperCase()} • {fmtFileSize(d.fileSize)}</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(d.createdAt)}</p>
-                          </div>
-                          <div className="flex gap-1 shrink-0">
-                            <Button variant="ghost" size="icon" className="size-8"><Download className="size-3.5" /></Button>
-                            <Button variant="ghost" size="icon" className="size-8 text-rose-600 dark:text-rose-400" onClick={() => deleteMutation.mutate(d.id)}><Trash2 className="size-3.5" /></Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              <Separator className="mt-4" />
-            </div>
-          ))}
-          {grouped.size === 0 && <EmptyState icon={FileText} title="Aucun document trouvé" description="Les documents ajoutés aux dossiers apparaîtront ici" />}
-        </div>
-      )}
+      <div className="relative max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-xs" /></div>
 
-      <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Ajouter un document</DialogTitle><DialogDescription>Enregistrez les métadonnées du document</DialogDescription></DialogHeader>
-        <form onSubmit={e => { e.preventDefault(); if (!form.name) { toast.error('Nom requis'); return } mutation.mutate(form) }} className="space-y-4">
-          <div className="space-y-2"><Label>Nom du document *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required /></div>
-          <div className="space-y-2"><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-            <SelectContent>{cases?.map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : 'Ajouter'}</Button></DialogFooter>
-        </form>
-      </DialogContent></Dialog>
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
+        (clients || []).length === 0 ? <EmptyState icon={Users} title="Aucun client" description="Ajoutez votre premier client" /> :
+        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
+          <Table><TableHeader><TableRow>
+            <TableHead>Nom</TableHead>
+            <TableHead className="hidden md:table-cell">Type</TableHead>
+            <TableHead className="hidden lg:table-cell">Ville</TableHead>
+            <TableHead className="hidden md:table-cell">Risque</TableHead>
+            <TableHead className="hidden sm:table-cell">Dossiers</TableHead>
+            <TableHead className="w-24">Actions</TableHead>
+          </TableRow></TableHeader><TableBody>
+            {(clients || []).map((c: Client, i: number) => (
+              <TableRow key={c.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="size-7"><AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-800">{initials(`${c.firstName} ${c.lastName}`)}</AvatarFallback></Avatar>
+                    <div><p className="text-sm font-medium">{c.firstName} {c.lastName}</p>{c.company && <p className="text-[10px] text-slate-400">{c.company}</p>}</div>
+                  </div>
+                </TableCell>
+                <TableCell className="hidden md:table-cell"><Badge variant="outline" className="text-[10px]">{c.clientType === 'entreprise' ? 'Entreprise' : 'Particulier'}</Badge></TableCell>
+                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{c.city || '—'}</TableCell>
+                <TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', RISK_COLORS[c.riskLevel || 'faible'])}>{c.riskLevel === 'eleve' ? 'Élevé' : c.riskLevel === 'moyen' ? 'Moyen' : 'Faible'}</Badge></TableCell>
+                <TableCell className="hidden sm:table-cell text-sm text-slate-500 dark:text-slate-400">{c._count?.cases || 0}</TableCell>
+                <TableCell>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(c)}><Edit className="size-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="size-7 text-rose-500 hover:text-rose-700" onClick={() => deleteMut.mutate(c.id)}><Trash2 className="size-3.5" /></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody></Table>
+        </div></CardContent></Card>}
+
+      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing ? 'Modifier le client' : 'Nouveau client'}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Prénom *</Label><Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} /></div>
+              <div><Label>Nom *</Label><Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} /></div>
+            </div>
+            <div><Label>Société</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
+              <div><Label>Téléphone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
+            </div>
+            <div><Label>Adresse</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Ville</Label><Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
+              <div><Label>Pays</Label><Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Type</Label><Select value={form.clientType} onValueChange={v => setForm(f => ({ ...f, clientType: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="particulier">Particulier</SelectItem><SelectItem value="entreprise">Entreprise</SelectItem></SelectContent></Select></div>
+              <div><Label>NIU</Label><Input value={form.niu} onChange={e => setForm(f => ({ ...f, niu: e.target.value }))} placeholder="Numéro d'Identification Unique" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Niveau de risque</Label><Select value={form.riskLevel} onValueChange={v => setForm(f => ({ ...f, riskLevel: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="faible">Faible</SelectItem><SelectItem value="moyen">Moyen</SelectItem><SelectItem value="eleve">Élevé</SelectItem></SelectContent></Select></div>
+              <div><Label>Source</Label><Select value={form.source} onValueChange={v => setForm(f => ({ ...f, source: v }))}><SelectTrigger><SelectValue placeholder="—" /></SelectTrigger><SelectContent><SelectItem value="bouche_a_oreille">Bouche à oreille</SelectItem><SelectItem value="internet">Internet</SelectItem><SelectItem value="recommandation">Recommandation</SelectItem><SelectItem value="autre">Autre</SelectItem></SelectContent></Select></div>
+            </div>
+            <div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} disabled={!form.firstName.trim() || !form.lastName.trim() || createMut.isPending || updateMut.isPending}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-// ==================== Calendar View ====================
+// ==================== DOCUMENTS VIEW ====================
+function DocumentsView() {
+  const { user } = useAppStore()
+  const [caseFilter, setCaseFilter] = useState('all')
+
+  const { data: cases } = useQuery({
+    queryKey: ['cases-mini-docs', user?.tenantId],
+    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()),
+  })
+
+  const { data: docs, isLoading } = useQuery({
+    queryKey: ['documents', user?.tenantId, caseFilter],
+    queryFn: () => {
+      const p = new URLSearchParams()
+      if (user?.tenantId) p.set('tenantId', user.tenantId)
+      if (caseFilter !== 'all') p.set('caseId', caseFilter)
+      return fetch(`/api/documents?${p}`).then(r => r.json())
+    },
+  })
+
+  const grouped = useMemo(() => {
+    const groups: Record<string, Doc[]> = {}
+    for (const d of (docs || []) as Doc[]) {
+      const folder = d.folder || 'Sans dossier'
+      if (!groups[folder]) groups[folder] = []
+      groups[folder].push(d)
+    }
+    return groups
+  }, [docs])
+
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Documents</h2>
+      <Select value={caseFilter} onValueChange={setCaseFilter}>
+        <SelectTrigger className="w-[220px] h-9 text-xs"><SelectValue placeholder="Filtrer par dossier" /></SelectTrigger>
+        <SelectContent><SelectItem value="all">Tous les dossiers</SelectItem>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent>
+      </Select>
+
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
+        (docs || []).length === 0 ? <EmptyState icon={FileText} title="Aucun document" /> :
+        <div className="max-h-[600px] overflow-y-auto space-y-4">
+          {Object.entries(grouped).map(([folder, items]) => (
+            <Card key={folder}>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Folder className="size-4 text-amber-500" />{folder}<Badge variant="secondary" className="text-[10px]">{items.length}</Badge></CardTitle></CardHeader>
+              <CardContent className="p-4 pt-0 space-y-1">
+                {items.map(d => (
+                  <div key={d.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <FileText className="size-4 text-slate-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2"><p className="text-sm font-medium truncate">{d.name}</p>{d.isFinal && <Badge className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">V</Badge>}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-slate-400">{d.fileType} • {fmtFileSize(d.fileSize)}</span>
+                        {d.tags && d.tags.split(',').map((t, i) => <Badge key={i} variant="outline" className="text-[10px] px-1 py-0"><Tag className="size-2.5 mr-0.5" />{t.trim()}</Badge>)}
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 shrink-0">{fmtDate(d.createdAt)}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ))}
+        </div>}
+    </div>
+  )
+}
+
+// ==================== CALENDAR VIEW ====================
 function CalendarView() {
   const { user } = useAppStore()
-  const qc = useQueryClient()
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', date: '', time: '', eventType: 'audience', criticality: 'normal', caseId: '', location: '', assignedUserIds: '' })
-
   const monthStr = format(currentMonth, 'yyyy-MM')
-  const { data: events, isLoading } = useQuery<EventItem[]>({
-    queryKey: ['events', user?.tenantId, monthStr],
-    queryFn: () => fetch(`/api/events?tenantId=${user!.tenantId}&month=${monthStr}`).then(r => r.json()),
-    enabled: !!user?.tenantId
-  })
-  const { data: cases } = useQuery<CaseItem[]>({
-    queryKey: ['cases-cal', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
-  })
-  const { data: users } = useQuery<UserItem[]>({
-    queryKey: ['users-cal', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
-  })
 
-  const mutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId, assignedUserIds: body.assignedUserIds ? (body.assignedUserIds as string).split(',') : [] }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['events'] }); toast.success('Événement créé'); setOpen(false) },
-    onError: () => toast.error('Erreur')
+  const { data: events, isLoading } = useQuery({
+    queryKey: ['events', user?.tenantId, monthStr],
+    queryFn: () => fetch(`/api/events?tenantId=${user?.tenantId}&month=${monthStr}`).then(r => r.json()),
   })
 
   const days = useMemo(() => {
     const monthStart = startOfMonth(currentMonth)
+    const monthEnd = endOfMonth(currentMonth)
     const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
-    const calEnd = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 })
+    const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
     return eachDayOfInterval({ start: calStart, end: calEnd })
   }, [currentMonth])
 
-  const dayEvents = (day: Date) => events?.filter(e => isSameDay(parseISO(e.startTime), day)) || []
-  const selectedDayEvents = selectedDay ? dayEvents(selectedDay) : []
-
-  const handleDayClick = (day: Date) => {
-    setSelectedDay(day)
-    setForm(f => ({ ...f, date: format(day, 'yyyy-MM-dd') }))
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.title || !form.date) { toast.error('Titre et date requis'); return }
-    mutation.mutate({ ...form, startTime: form.date + 'T' + (form.time || '09:00') + ':00.000Z' })
-  }
-
   const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+  const getEventsForDay = (day: Date) => (events || []).filter((e: EventItem) => isSameDay(parseISO(e.startTime), day))
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}><ChevronLeft className="size-4" /></Button>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white capitalize min-w-[180px] text-center">{format(currentMonth, 'MMMM yyyy', { locale: fr })}</h2>
-        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}><ChevronRight className="size-4" /></Button>
-        <Button variant="outline" size="sm" onClick={() => { setCurrentMonth(new Date()); setSelectedDay(new Date()) }}>Aujourd'hui</Button>
-        <Button className="bg-amber-600 hover:bg-amber-700 text-white ml-auto" onClick={() => { setForm({ title: '', description: '', date: selectedDay ? format(selectedDay, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), time: '09:00', eventType: 'audience', criticality: 'normal', caseId: '', location: '', assignedUserIds: '' }); setOpen(true) }}>
-          <Plus className="size-4" />Nouvel événement
-        </Button>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Calendrier</h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" className="size-8" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}><ChevronLeft className="size-4" /></Button>
+          <span className="text-sm font-medium min-w-[140px] text-center">{format(currentMonth, 'MMMM yyyy', { locale: fr })}</span>
+          <Button variant="outline" size="icon" className="size-8" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}><ChevronRight className="size-4" /></Button>
+        </div>
       </div>
 
-      {isLoading ? <Skeleton className="h-96 rounded-xl" /> : (
-        <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-slate-700 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
-          {weekDays.map(d => <div key={d} className="bg-slate-50 dark:bg-slate-800 p-2 text-center text-xs font-medium text-slate-600 dark:text-slate-400">{d}</div>)}
-          {days.map(day => {
-            const evts = dayEvents(day)
-            const isCurrentMonth = isSameMonth(day, currentMonth)
-            return (
-              <div key={day.toISOString()} onClick={() => handleDayClick(day)}
-                className={cn('bg-white dark:bg-slate-900 p-1.5 min-h-[80px] md:min-h-[100px] cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors',
-                  !isCurrentMonth && 'bg-slate-50/50 dark:bg-slate-800/50',
-                  isToday(day) && 'bg-amber-50 dark:bg-amber-500/10',
-                  selectedDay && isSameDay(day, selectedDay) && 'ring-2 ring-amber-500 ring-inset'
-                )}>
-                <span className={cn('text-xs font-medium',
-                  isCurrentMonth ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600',
-                  isToday(day) && 'text-amber-600 dark:text-amber-400 font-bold'
-                )}>{format(day, 'd')}</span>
-                <div className="mt-1 space-y-0.5">
-                  {evts.slice(0, 2).map(ev => (
-                    <div key={ev.id} className={cn('text-[10px] leading-tight px-1 py-0.5 rounded truncate', CRIT_COLORS[ev.criticality] || 'bg-slate-200 dark:bg-slate-700', 'text-slate-800 dark:text-slate-200')}>
-                      {ev.title}
-                    </div>
-                  ))}
-                  {evts.length > 2 && <p className="text-[10px] text-slate-400 dark:text-slate-500">+{evts.length - 2} autres</p>}
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> : (
+        <Card><CardContent className="p-2">
+          <div className="grid grid-cols-7 gap-px bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden">
+            {weekDays.map(d => <div key={d} className="bg-white dark:bg-slate-950 p-2 text-center text-xs font-medium text-slate-500 dark:text-slate-400">{d}</div>)}
+            {days.map(day => {
+              const dayEvents = getEventsForDay(day)
+              return (
+                <div key={day.toISOString()} className={cn('bg-white dark:bg-slate-950 p-1 min-h-[80px] md:min-h-[100px]', !isSameMonth(day, currentMonth) && 'opacity-40', isToday(day) && 'bg-amber-50 dark:bg-amber-950/20')}>
+                  <p className={cn('text-xs mb-1', isToday(day) ? 'font-bold text-amber-600' : 'text-slate-500')}>{format(day, 'd')}</p>
+                  <div className="space-y-0.5">
+                    {dayEvents.slice(0, 3).map(e => (
+                      <div key={e.id} className={cn('text-[10px] px-1 py-0.5 rounded truncate', CRIT_COLORS[e.criticality], e.criticality === 'urgente' || e.criticality === 'haute' ? 'text-white' : 'text-white dark:text-slate-900')} title={`${e.title}${e.location ? ` — ${e.location}` : ''}`}>
+                        {e.title}
+                      </div>
+                    ))}
+                    {dayEvents.length > 3 && <p className="text-[10px] text-slate-400 pl-1">+{dayEvents.length - 3}</p>}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {selectedDay && (
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader className="pb-2"><CardTitle className="text-base">{format(selectedDay, 'EEEE dd MMMM yyyy', { locale: fr })}</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {selectedDayEvents.length > 0 ? selectedDayEvents.map(ev => (
-              <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                <div className={cn('w-1.5 h-10 rounded-full shrink-0', CRIT_COLORS[ev.criticality] || 'bg-slate-300')} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">{ev.title}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{EVENT_TYPE_LABELS[ev.eventType] || ev.eventType} • {format(parseISO(ev.startTime), 'HH:mm')}{ev.location ? ` • ${ev.location}` : ''}</p>
-                  {ev.case && <p className="text-xs text-slate-400 dark:text-slate-500">Dossier : {ev.case.reference}</p>}
-                </div>
-              </div>
-            )) : <EmptyState icon={Calendar} title="Aucun événement ce jour" description="Cliquez sur « Nouvel événement » pour en créer un" />}
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Nouvel événement</DialogTitle><DialogDescription>Créez un événement au calendrier</DialogDescription></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2"><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Date *</Label><Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></div>
-            <div className="space-y-2"><Label>Heure</Label><Input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} /></div>
+              )
+            })}
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Type</Label><Select value={form.eventType} onValueChange={v => setForm(f => ({ ...f, eventType: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="audience">Audience</SelectItem><SelectItem value="rdv">Rendez-vous</SelectItem><SelectItem value="echeance">Échéance</SelectItem><SelectItem value="depot">Dépôt</SelectItem><SelectItem value="autre">Autre</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>Criticité</Label><Select value={form.criticality} onValueChange={v => setForm(f => ({ ...f, criticality: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
-          </div>
-          <div className="space-y-2"><Label>Dossier lié</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
-            <SelectContent><SelectItem value="">Aucun</SelectItem>{cases?.map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>Lieu</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} /></div>
-          <div className="space-y-2"><Label>Personnes assignées</Label><Select value={form.assignedUserIds} onValueChange={v => setForm(f => ({ ...f, assignedUserIds: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-            <SelectContent>{users?.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : 'Créer'}</Button></DialogFooter>
-        </form>
-      </DialogContent></Dialog>
+        </CardContent></Card>
+      )}
     </div>
   )
 }
 
-// ==================== Invoices View ====================
+// ==================== INVOICES VIEW ====================
 function InvoicesView() {
   const { user } = useAppStore()
   const qc = useQueryClient()
-  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ clientId: '', caseId: '', amount: '', currencyCode: 'XAF', dueDate: '', notes: '' })
 
-  const { data: clients } = useQuery<Client[]>({
-    queryKey: ['clients-inv', user?.tenantId], queryFn: () => fetch(`/api/clients?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
-  })
-  const { data: cases } = useQuery<CaseItem[]>({
-    queryKey: ['cases-inv', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
-  })
-  const { data: invoices, isLoading } = useQuery<Invoice[]>({
-    queryKey: ['invoices', user?.tenantId, search, statusFilter],
+  const { data: invoices, isLoading } = useQuery({
+    queryKey: ['invoices', user?.tenantId, statusFilter],
     queryFn: () => {
-      const p = new URLSearchParams({ tenantId: user!.tenantId })
-      if (search) p.set('search', search)
+      const p = new URLSearchParams()
+      if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (statusFilter !== 'all') p.set('status', statusFilter)
       return fetch(`/api/invoices?${p}`).then(r => r.json())
     },
-    enabled: !!user?.tenantId
   })
 
-  const mutation = useMutation({
-    mutationFn: (body: Record<string, string>) =>
-      fetch('/api/invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId, amount: parseFloat(body.amount) || 0 }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture créée'); setOpen(false) },
-    onError: () => toast.error('Erreur')
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/invoices/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture mise à jour') },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/invoices/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture supprimée') },
-    onError: () => toast.error('Erreur')
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.clientId || !form.amount) { toast.error('Client et montant requis'); return }
-    mutation.mutate(form)
+  const markStatus = (inv: Invoice, newStatus: string) => {
+    const data: Record<string, unknown> = { id: inv.id, status: newStatus }
+    if (newStatus === 'paye') { data.paidDate = new Date().toISOString(); data.paidAmount = inv.amount }
+    else if (newStatus === 'partiel') { data.paidDate = new Date().toISOString(); data.paidAmount = inv.amount * 0.5 }
+    updateMut.mutate(data)
   }
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <Input placeholder="Rechercher une facture..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Statut" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent></Select>
-        </div>
-        <Button onClick={() => { setForm({ clientId: '', caseId: '', amount: '', currencyCode: 'XAF', dueDate: '', notes: '' }); setOpen(true) }} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0">
-          <Plus className="size-4" />Nouvelle facture
-        </Button>
-      </div>
+      <h2 className="text-lg font-semibold">Factures</h2>
+      <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger>
+        <SelectContent><SelectItem value="all">Tous les statuts</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent>
+      </Select>
 
-      {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div> : (
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <div className="overflow-x-auto">
-            <Table><TableHeader><TableRow>
-              <TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead className="hidden md:table-cell">Dossier</TableHead>
-              <TableHead>Montant</TableHead><TableHead>Statut</TableHead><TableHead className="hidden lg:table-cell">Échéance</TableHead><TableHead className="w-10"></TableHead>
-            </TableRow></TableHeader><TableBody>
-              {invoices?.map(inv => (
-                <TableRow key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <TableCell className="font-mono text-xs">{inv.reference}</TableCell>
-                  <TableCell className="font-medium">{inv.client?.firstName} {inv.client?.lastName}</TableCell>
-                  <TableCell className="hidden md:table-cell">{inv.case?.reference || '—'}</TableCell>
-                  <TableCell className="font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell>
-                  <TableCell><Badge className={cn('rounded-full px-2.5', STATUS_COLORS[inv.status] || '')}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell>
-                  <TableCell className="hidden lg:table-cell">{fmtDate(inv.dueDate)}</TableCell>
-                  <TableCell>
-                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem className="text-rose-600 dark:text-rose-400" onClick={() => deleteMutation.mutate(inv.id)}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(!invoices || invoices.length === 0) && (
-                <TableRow><TableCell colSpan={7} className="p-0"><EmptyState icon={Receipt} title="Aucune facture trouvée" description="Créez votre première facture" /></TableCell></TableRow>
-              )}
-            </TableBody></Table>
-          </div>
-        </Card>
-      )}
-
-      <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Nouvelle facture</DialogTitle><DialogDescription>Créez une facture pour un client</DialogDescription></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2"><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-            <SelectContent>{clients?.map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}{c.company ? ` (${c.company})` : ''}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
-            <SelectContent><SelectItem value="">Aucun</SelectItem>{cases?.filter(c => c.clientId === form.clientId).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Montant *</Label><Input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required /></div>
-            <div className="space-y-2"><Label>Devise</Label><Select value={form.currencyCode} onValueChange={v => setForm(f => ({ ...f, currencyCode: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="XAF">XAF</SelectItem><SelectItem value="XOF">XOF</SelectItem><SelectItem value="EUR">EUR</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></div>
-          </div>
-          <div className="space-y-2"><Label>Date d'échéance</Label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
-          <div className="space-y-2"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : 'Créer'}</Button></DialogFooter>
-        </form>
-      </DialogContent></Dialog>
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
+        (invoices || []).length === 0 ? <EmptyState icon={Receipt} title="Aucune facture" /> :
+        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
+          <Table><TableHeader><TableRow>
+            <TableHead>Référence</TableHead>
+            <TableHead>Client</TableHead>
+            <TableHead>Montant</TableHead>
+            <TableHead className="hidden md:table-cell">Statut</TableHead>
+            <TableHead className="hidden lg:table-cell">Échéance</TableHead>
+            <TableHead className="w-36">Actions</TableHead>
+          </TableRow></TableHeader><TableBody>
+            {(invoices || []).map((inv: Invoice, i: number) => (
+              <TableRow key={inv.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}>
+                <TableCell className="font-medium text-sm">{inv.reference}</TableCell>
+                <TableCell className="text-sm text-slate-500 dark:text-slate-400">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell>
+                <TableCell className="text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell>
+                <TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell>
+                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{fmtDate(inv.dueDate)}</TableCell>
+                <TableCell>
+                  {(inv.status === 'non_paye' || inv.status === 'partiel') && (
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'paye')}>Marquer payée</Button>
+                      <Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'partiel')}>Marquer partielle</Button>
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody></Table>
+        </div></CardContent></Card>}
     </div>
   )
 }
 
-// ==================== Messages View ====================
+// ==================== MESSAGES VIEW ====================
 function MessagesView() {
   const { user } = useAppStore()
   const qc = useQueryClient()
   const [selectedContact, setSelectedContact] = useState<string | null>(null)
-  const [messageText, setMessageText] = useState('')
-  const [showContacts, setShowContacts] = useState(true)
+  const [newMessage, setNewMessage] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const { data: messages, isLoading } = useQuery<Message[]>({
-    queryKey: ['messages', user?.tenantId, user?.id],
-    queryFn: () => fetch(`/api/messages?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
-    enabled: !!user?.tenantId,
-    refetchInterval: 5000
+  const { data: contacts } = useQuery({
+    queryKey: ['users-contacts', user?.tenantId],
+    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
   })
 
-  const sendMutation = useMutation({
-    mutationFn: (content: string) => fetch('/api/messages', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, senderId: user!.id, receiverId: selectedContact, tenantId: user!.tenantId })
-    }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['messages'] }); setMessageText('') },
-    onError: () => toast.error('Erreur d\'envoi')
+  const { data: messages } = useQuery({
+    queryKey: ['messages', user?.id, selectedContact],
+    queryFn: () => {
+      const p = new URLSearchParams()
+      if (user?.tenantId) p.set('tenantId', user.tenantId)
+      if (user?.id) p.set('userId', user.id)
+      if (selectedContact) p.set('contactId', selectedContact)
+      return fetch(`/api/messages?${p}`).then(r => r.json())
+    },
+    refetchInterval: 5000,
   })
 
-  const contacts = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; lastMessage: string; lastTime: string; unread: number }>()
-    messages?.forEach(m => {
-      const other = m.senderId === user?.id ? m.receiver : m.sender
-      if (!other) return
-      const existing = map.get(other.id)
-      if (!existing || new Date(m.createdAt) > new Date(existing.lastTime)) {
-        map.set(other.id, { id: other.id, name: other.name, lastMessage: m.content, lastTime: m.createdAt, unread: existing?.unread || 0 })
-      }
-      if (m.receiverId === user?.id && !m.isRead && m.senderId !== selectedContact) {
-        const e = map.get(other.id)
-        if (e) e.unread++
-      }
-    })
-    return Array.from(map.values()).sort((a, b) => new Date(b.lastTime).getTime() - new Date(a.lastTime).getTime())
-  }, [messages, user?.id, selectedContact])
+  const sendMut = useMutation({
+    mutationFn: (content: string) => fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, tenantId: user?.tenantId, senderId: user?.id, receiverId: selectedContact }) }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['messages'] }); setNewMessage('') },
+    onError: () => toast.error("Erreur d'envoi"),
+  })
 
-  const conversation = useMemo(() => {
-    if (!selectedContact || !messages) return []
-    return messages.filter(m =>
-      (m.senderId === selectedContact && m.receiverId === user?.id) ||
-      (m.receiverId === selectedContact && m.senderId === user?.id)
-    ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-  }, [messages, selectedContact, user?.id])
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  const selectedContactName = contacts.find(c => c.id === selectedContact)?.name
-
-  useEffect(() => {
-    if (!selectedContact || !messages) return
-    const unread = messages.filter(m => m.senderId === selectedContact && m.receiverId === user?.id && !m.isRead)
-    unread.forEach(m => {
-      fetch(`/api/messages/${m.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isRead: true }) })
-    })
-    if (unread.length > 0) qc.invalidateQueries({ queryKey: ['messages'] })
-  }, [selectedContact, messages, user?.id, qc])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversation.length])
+  const contactList = (contacts || []).filter((c: UserItem) => c.id !== user?.id)
+  const chatMessages = selectedContact ? (messages || []) as Message[] : []
 
   const handleSend = () => {
-    if (!messageText.trim() || !selectedContact) return
-    sendMutation.mutate(messageText.trim())
+    if (!newMessage.trim() || !selectedContact) return
+    sendMut.mutate(newMessage.trim())
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-      {/* Contacts panel */}
-      <div className={cn('w-full md:w-80 border-r border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-900',
-        !showContacts && 'hidden md:flex'
-      )}>
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-            <Input placeholder="Contacts..." className="pl-9 h-9 bg-slate-50 dark:bg-slate-800" />
-          </div>
+    <div className="p-4 md:p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Messages</h2>
+      <Card className="overflow-hidden"><div className="flex h-[500px]">
+        <div className="w-64 border-r dark:border-slate-800 flex-shrink-0 overflow-y-auto hidden sm:block">
+          {contactList.length === 0 ? <p className="text-xs text-slate-400 p-4 text-center">Aucun contact</p> :
+            contactList.map((c: UserItem) => (
+              <button key={c.id} className={cn('w-full flex items-center gap-2 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors', selectedContact === c.id && 'bg-slate-100 dark:bg-slate-800')} onClick={() => setSelectedContact(c.id)}>
+                <Avatar className="size-8"><AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-700">{initials(c.name)}</AvatarFallback></Avatar>
+                <div className="min-w-0"><p className="text-sm font-medium truncate">{c.name}</p><p className="text-[10px] text-slate-400">{ROLE_LABELS[c.role] || c.role}</p></div>
+              </button>
+            ))}
         </div>
-        <ScrollArea className="flex-1 custom-scrollbar">
-          {contacts.map(c => (
-            <button key={c.id} onClick={() => { setSelectedContact(c.id); setShowContacts(false) }}
-              className={cn('w-full flex items-center gap-3 p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800',
-                selectedContact === c.id && 'bg-amber-50 dark:bg-amber-500/10'
-              )}>
-              <Avatar className="size-10 shrink-0"><AvatarFallback className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">{initials(c.name)}</AvatarFallback></Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{c.name}</p>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{fmtDate(c.lastTime)}</span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{c.lastMessage}</p>
-              </div>
-              {c.unread > 0 && <span className="size-5 bg-amber-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0">{c.unread}</span>}
-            </button>
-          ))}
-          {contacts.length === 0 && <EmptyState icon={MessageSquare} title="Aucune conversation" description="Envoyez un message pour commencer" />}
-        </ScrollArea>
-      </div>
-
-      {/* Chat panel */}
-      <div className={cn('flex-1 flex flex-col bg-slate-50 dark:bg-slate-950', showContacts && 'hidden md:flex')}>
-        {selectedContact ? (
-          <>
-            <div className="p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setShowContacts(true)}><ArrowLeft className="size-5" /></Button>
-              <Avatar className="size-8"><AvatarFallback className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs">{initials(selectedContactName || '')}</AvatarFallback></Avatar>
-              <span className="font-medium text-slate-900 dark:text-white">{selectedContactName}</span>
-            </div>
-            <ScrollArea className="flex-1 p-4 custom-scrollbar">
-              <div className="space-y-3 max-w-2xl mx-auto">
-                {isLoading ? [...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-48 rounded-2xl" />) :
-                  conversation.map(m => {
-                    const isMine = m.senderId === user?.id
-                    return (
-                      <div key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
-                        <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5',
-                          isMine ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-bl-md shadow-sm'
-                        )}>
-                          <p className="text-sm whitespace-pre-wrap">{m.content}</p>
-                          <p className={cn('text-[10px] mt-1', isMine ? 'text-emerald-200' : 'text-slate-400 dark:text-slate-500')}>{format(parseISO(m.createdAt), 'HH:mm')}</p>
-                        </div>
+        <div className="flex-1 flex flex-col">
+          {!selectedContact ? <div className="flex-1 flex items-center justify-center"><EmptyState icon={MessageSquare} title="Sélectionnez une conversation" description="Choisissez un contact pour commencer" /></div> : (
+            <>
+              <div className="p-3 border-b dark:border-slate-800"><p className="text-sm font-semibold">{(contacts || []).find((c: UserItem) => c.id === selectedContact)?.name || ''}</p></div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {chatMessages.length === 0 && <p className="text-xs text-slate-400 text-center py-8">Aucun message</p>}
+                {chatMessages.map((m: Message) => {
+                  const isMine = m.senderId === user?.id
+                  return (
+                    <div key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
+                      <div className={cn('max-w-[75%] rounded-xl px-3 py-2', isMine ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100')}>
+                        <p className="text-sm">{m.content}</p>
+                        <p className={cn('text-[10px] mt-1', isMine ? 'text-emerald-100' : 'text-slate-400')}>{fmtDateTime(m.createdAt)}</p>
                       </div>
-                    )
-                  })
-                }
+                    </div>
+                  )
+                })}
                 <div ref={messagesEndRef} />
               </div>
-            </ScrollArea>
-            <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
-              <div className="flex gap-2 max-w-2xl mx-auto">
-                <Input placeholder="Écrire un message..." value={messageText} onChange={e => setMessageText(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }} className="flex-1" />
-                <Button onClick={handleSend} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={sendMutation.isPending || !messageText.trim()}>
-                  {sendMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
-                </Button>
+              <div className="p-3 border-t dark:border-slate-800 flex gap-2">
+                <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Écrire un message..." className="text-sm" onKeyDown={e => e.key === 'Enter' && handleSend()} />
+                <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sendMut.isPending}><Send className="size-4" /></Button>
               </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-400">
-            <EmptyState icon={MessageSquare} title="Sélectionnez une conversation" description="Choisissez un contact pour commencer à discuter" />
-          </div>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      </div></Card>
     </div>
   )
 }
 
-// ==================== Reports View ====================
+// ==================== REPORTS VIEW ====================
 function ReportsView() {
   const { user } = useAppStore()
+  const [period, setPeriod] = useState('month')
 
-  const { data: invoices, isLoading } = useQuery<Invoice[]>({
-    queryKey: ['invoices-report', user?.tenantId], queryFn: () => fetch(`/api/invoices?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+  const { data: invoices } = useQuery({
+    queryKey: ['invoices-report', user?.tenantId],
+    queryFn: () => fetch(`/api/invoices?tenantId=${user?.tenantId}`).then(r => r.json()),
   })
 
   const stats = useMemo(() => {
-    if (!invoices) return { totalRevenue: 0, paidTotal: 0, unpaidTotal: 0, paidCount: 0, unpaidCount: 0, rate: 0 }
-    const paid = invoices.filter(i => i.status === 'paye')
-    const unpaid = invoices.filter(i => i.status === 'non_paye' || i.status === 'partiel')
-    const paidTotal = paid.reduce((s, i) => s + i.amount, 0)
-    const unpaidTotal = unpaid.reduce((s, i) => s + i.amount, 0)
-    return { totalRevenue: paidTotal, paidTotal, unpaidTotal, paidCount: paid.length, unpaidCount: unpaid.length, rate: invoices.length > 0 ? (paid.length / invoices.length) * 100 : 0 }
+    const all = (invoices || []) as Invoice[]
+    const paid = all.filter(i => i.status === 'paye')
+    const unpaid = all.filter(i => i.status === 'non_paye')
+    const partial = all.filter(i => i.status === 'partiel')
+    const totalRevenue = paid.reduce((s, i) => s + i.amount, 0)
+    const totalPending = unpaid.reduce((s, i) => s + i.amount, 0) + partial.reduce((s, i) => s + (i.amount - (i.paidAmount || 0)), 0)
+    return { totalRevenue, totalPending, paidCount: paid.length, unpaidCount: unpaid.length + partial.length, totalInvoices: all.length }
   }, [invoices])
 
   const monthlyData = useMemo(() => {
-    if (!invoices) return []
-    const map = new Map<string, number>()
-    invoices.filter(i => i.status === 'paye').forEach(i => {
-      const month = i.paidDate ? format(parseISO(i.paidDate), 'MMM yyyy', { locale: fr }) : format(parseISO(i.createdAt), 'MMM yyyy', { locale: fr })
-      map.set(month, (map.get(month) || 0) + i.amount)
-    })
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }))
+    const all = (invoices || []) as Invoice[]
+    const months: Record<string, { month: string; revenue: number }> = {}
+    for (const inv of all) {
+      if (inv.status !== 'paye' || !inv.paidDate) continue
+      const m = format(parseISO(inv.paidDate), 'MMM yy', { locale: fr })
+      if (!months[m]) months[m] = { month: m, revenue: 0 }
+      months[m].revenue += inv.amount
+    }
+    return Object.values(months).sort((a, b) => a.month.localeCompare(b.month)).slice(-12)
   }, [invoices])
 
   const topClients = useMemo(() => {
-    if (!invoices) return []
-    const map = new Map<string, { name: string; total: number; count: number }>()
-    invoices.forEach(i => {
-      const name = i.client ? `${i.client.firstName} ${i.client.lastName}` : 'Inconnu'
-      const existing = map.get(name) || { name, total: 0, count: 0 }
-      existing.total += i.amount
-      existing.count++
-      map.set(name, existing)
-    })
-    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 10)
+    const all = (invoices || []) as Invoice[]
+    const map: Record<string, { name: string; total: number }> = {}
+    for (const inv of all) {
+      if (inv.status !== 'paye') continue
+      const name = inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : 'Inconnu'
+      if (!map[inv.clientId]) map[inv.clientId] = { name, total: 0 }
+      map[inv.clientId].total += inv.amount
+    }
+    return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 5)
   }, [invoices])
 
-  const kpis = [
-    { label: 'Total revenus', value: fmtMoney(stats.totalRevenue), icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
-    { label: 'Factures payées', value: stats.paidCount.toString(), icon: FileCheck, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
-    { label: 'Factures impayées', value: stats.unpaidCount.toString(), icon: FileWarning, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/30' },
-    { label: 'Taux de recouvrement', value: stats.rate.toFixed(1) + '%', icon: TrendingUp, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
-  ]
-
-  if (isLoading) return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
-      </div>
-      <Skeleton className="h-80 rounded-xl" />
-      <Skeleton className="h-64 rounded-xl" />
-    </div>
-  )
+  const isDark = useTheme().resolvedTheme === 'dark'
+  const colors = isDark ? CHART_COLORS_DARK : CHART_COLORS
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi, i) => {
-          const Icon = kpi.icon
-          return (
-            <Card key={i} className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className={cn('p-3 rounded-xl', kpi.bg)}><Icon className={cn('size-6', kpi.color)} /></div>
-                <div><p className="text-2xl font-bold text-slate-900 dark:text-white">{kpi.value}</p><p className="text-sm text-slate-500 dark:text-slate-400">{kpi.label}</p></div>
-              </CardContent>
-            </Card>
-          )}
-        )}
+    <div className="p-4 md:p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Rapports</h2>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Revenus totaux</p><p className="text-xl font-bold text-emerald-600 mt-1">{fmtMoney(stats.totalRevenue)}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">En attente</p><p className="text-xl font-bold text-orange-600 mt-1">{fmtMoney(stats.totalPending)}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Factures payées</p><p className="text-xl font-bold mt-1">{stats.paidCount}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Total factures</p><p className="text-xl font-bold mt-1">{stats.totalInvoices}</p></CardContent></Card>
       </div>
-      <Card className="hover:shadow-lg transition-shadow duration-300">
-        <CardHeader><CardTitle className="text-base">Revenus par mois</CardTitle></CardHeader>
-        <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
-          <BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--color-slate-500)' }} />
-            <YAxis tick={{ fontSize: 11, fill: 'var(--color-slate-500)' }} />
-            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
-            <Bar dataKey="value" fill="#059669" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer></div></CardContent>
-      </Card>
-      <Card className="hover:shadow-lg transition-shadow duration-300">
-        <CardHeader><CardTitle className="text-base">Top clients par facturation</CardTitle></CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table><TableHeader><TableRow><TableHead>Client</TableHead><TableHead>Factures</TableHead><TableHead className="text-right">Montant total</TableHead></TableRow></TableHeader>
-              <TableBody>{topClients.map((c, i) => (
-                <TableRow key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <TableCell className="font-medium text-slate-900 dark:text-white">{c.name}</TableCell><TableCell>{c.count}</TableCell>
-                  <TableCell className="text-right font-medium">{fmtMoney(c.total)}</TableCell></TableRow>
-              ))}
-                {topClients.length === 0 && <TableRow><TableCell colSpan={3} className="p-0"><EmptyState icon={Users} title="Aucune donnée" description="Les données de facturation apparaîtront ici" /></TableCell></TableRow>}
-              </TableBody></Table>
+
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Revenus mensuels</CardTitle></CardHeader><CardContent>
+        {monthlyData.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune donnée</p> : (
+          <ResponsiveContainer width="100%" height={250}><BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" className="opacity-30" /><XAxis dataKey="month" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><RechartsTooltip formatter={(v: number) => fmtMoney(v)} /><Bar dataKey="revenue" fill={colors[2]} radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
+        )}
+      </CardContent></Card>
+
+      <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Top clients</CardTitle></CardHeader><CardContent>
+        {topClients.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune donnée</p> : (
+          <div className="space-y-3">
+            {topClients.map((c, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="flex items-center gap-2"><span className="size-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold">{i + 1}</span><span className="text-sm font-medium">{c.name}</span></div>
+                <span className="text-sm font-semibold">{fmtMoney(c.total)}</span>
+              </div>
+            ))}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </CardContent></Card>
     </div>
   )
 }
 
-// ==================== Audit Logs View ====================
+// ==================== AUDIT LOGS VIEW ====================
 function AuditLogsView() {
   const { user } = useAppStore()
-  const [actionFilter, setActionFilter] = useState('all')
-  const [resourceFilter, setResourceFilter] = useState('all')
+  const [resourceType, setResourceType] = useState('all')
+  const isAdmin = user?.role === 'root_admin' || user?.role === 'firm_admin' || user?.role === 'associate'
 
-  const { data: logs, isLoading } = useQuery<AuditLogItem[]>({
-    queryKey: ['audit-logs', user?.tenantId, actionFilter, resourceFilter],
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ['audit-logs', user?.tenantId, resourceType],
     queryFn: () => {
-      const p = new URLSearchParams({ tenantId: user!.tenantId })
-      if (actionFilter !== 'all') p.set('action', actionFilter)
-      if (resourceFilter !== 'all') p.set('resourceType', resourceFilter)
+      const p = new URLSearchParams()
+      if (user?.tenantId) p.set('tenantId', user.tenantId)
+      if (resourceType !== 'all') p.set('resourceType', resourceType)
       return fetch(`/api/audit-logs?${p}`).then(r => r.json())
     },
-    enabled: !!user?.tenantId
+    enabled: isAdmin,
+  })
+
+  if (!isAdmin) return <div className="p-6"><EmptyState icon={Shield} title="Accès restreint" description="Cette section est réservée aux administrateurs" /></div>
+
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Journal d'audit</h2>
+      <Select value={resourceType} onValueChange={setResourceType}>
+        <SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue placeholder="Type de ressource" /></SelectTrigger>
+        <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="User">Utilisateur</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="Task">Tâche</SelectItem></SelectContent>
+      </Select>
+
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
+        (logs || []).length === 0 ? <EmptyState icon={Shield} title="Aucune entrée" /> :
+        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
+          <Table><TableHeader><TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Utilisateur</TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead className="hidden md:table-cell">Ressource</TableHead>
+            <TableHead className="hidden lg:table-cell">IP</TableHead>
+          </TableRow></TableHeader><TableBody>
+            {(logs || []).map((log: AuditLogItem) => (
+              <TableRow key={log.id}>
+                <TableCell className="text-xs text-slate-500 dark:text-slate-400">{fmtDateTime(log.createdAt)}</TableCell>
+                <TableCell className="text-sm">{log.user?.name || 'Système'}</TableCell>
+                <TableCell className="text-sm font-medium">{log.action}</TableCell>
+                <TableCell className="hidden md:table-cell"><Badge variant="outline" className="text-[10px]">{log.resourceType || '—'}</Badge></TableCell>
+                <TableCell className="hidden lg:table-cell text-xs text-slate-400">{log.ipAddress || '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody></Table>
+        </div></CardContent></Card>}
+    </div>
+  )
+}
+
+// ==================== SETTINGS VIEW ====================
+function SettingsView() {
+  const { user, logout } = useAppStore()
+  const qc = useQueryClient()
+  const isAdmin = user?.role === 'root_admin' || user?.role === 'firm_admin' || user?.role === 'associate'
+  const [profileForm, setProfileForm] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '' })
+  const tenantInfo: TenantItem | null = tenantData || null
+  const [newUser, setNewUser] = useState({ name: '', email: '', role: 'lawyer', password: '' })
+  const [newCurrency, setNewCurrency] = useState({ code: '', name: '', symbol: '' })
+  const [showNewUser, setShowNewUser] = useState(false)
+  const [showNewCurrency, setShowNewCurrency] = useState(false)
+
+  const { data: tenantData } = useQuery({
+    queryKey: ['tenant', user?.tenantId],
+    queryFn: () => fetch(`/api/tenants/${user?.tenantId}`).then(r => r.json()),
+    enabled: !!user?.tenantId,
+  })
+
+  const { data: usersList } = useQuery({
+    queryKey: ['settings-users', user?.tenantId],
+    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
+    enabled: isAdmin,
+  })
+
+  const { data: currencies } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: () => fetch('/api/currencies').then(r => r.json()),
+    enabled: isAdmin,
+  })
+
+  const updateProfile = useMutation({
+    mutationFn: (body: Record<string, unknown>) => fetch(`/api/users/${user?.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    onSuccess: () => { toast.success('Profil mis à jour'); qc.invalidateQueries({ queryKey: ['tenant'] }) },
+    onError: () => toast.error('Erreur'),
+  })
+
+  const createUserMut = useMutation({
+    mutationFn: (body: Record<string, unknown>) => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    onSuccess: () => { toast.success('Utilisateur créé'); qc.invalidateQueries({ queryKey: ['settings-users'] }); setShowNewUser(false); setNewUser({ name: '', email: '', role: 'lawyer', password: '' }) },
+    onError: () => toast.error('Erreur lors de la création'),
+  })
+
+  const createCurrencyMut = useMutation({
+    mutationFn: (body: Record<string, unknown>) => fetch('/api/currencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    onSuccess: () => { toast.success('Devise ajoutée'); qc.invalidateQueries({ queryKey: ['currencies'] }); setShowNewCurrency(false); setNewCurrency({ code: '', name: '', symbol: '' }) },
+    onError: () => toast.error('Erreur'),
+  })
+
+  return (
+    <div className="p-4 md:p-6 space-y-6 max-w-3xl">
+      <h2 className="text-lg font-semibold">Paramètres</h2>
+
+      <Card><CardHeader><CardTitle className="text-sm font-semibold">Mon profil</CardTitle></CardHeader><CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Nom</Label><Input value={profileForm.name} onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))} /></div>
+          <div><Label>Email</Label><Input value={profileForm.email} onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))} /></div>
+        </div>
+        <div><Label>Téléphone</Label><Input value={profileForm.phone} onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))} /></div>
+        <Button size="sm" onClick={() => updateProfile.mutate(profileForm)} disabled={updateProfile.isPending}>Enregistrer</Button>
+      </CardContent></Card>
+
+      {tenantInfo && <Card><CardHeader><CardTitle className="text-sm font-semibold">Informations du cabinet</CardTitle></CardHeader><CardContent>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div><span className="text-slate-500">Nom :</span> <span className="font-medium">{tenantInfo.name}</span></div>
+          <div><span className="text-slate-500">Plan :</span> <Badge variant="outline" className="text-[10px]">{tenantInfo.plan}</Badge></div>
+          <div><span className="text-slate-500">Email :</span> <span className="font-medium">{tenantInfo.email || '—'}</span></div>
+          <div><span className="text-slate-500">Téléphone :</span> <span className="font-medium">{tenantInfo.phone || '—'}</span></div>
+          <div className="col-span-2"><span className="text-slate-500">Adresse :</span> <span className="font-medium">{tenantInfo.address || '—'}</span></div>
+        </div>
+      </CardContent></Card>}
+
+      {isAdmin && <Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-sm font-semibold">Utilisateurs</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewUser(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
+        {showNewUser && <div className="border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-2 gap-2"><div><Label>Nom</Label><Input value={newUser.name} onChange={e => setNewUser(u => ({ ...u, name: e.target.value }))} /></div><div><Label>Email</Label><Input type="email" value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))} /></div><div><Label>Rôle</Label><Select value={newUser.role} onValueChange={v => setNewUser(u => ({ ...u, role: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="lawyer">Avocat</SelectItem><SelectItem value="jurist">Juriste</SelectItem><SelectItem value="assistant">Assistant</SelectItem><SelectItem value="accountant">Comptable</SelectItem></SelectContent></Select></div><div><Label>Mot de passe</Label><Input type="password" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createUserMut.mutate({ ...newUser, tenantId: user?.tenantId })} disabled={!newUser.name || !newUser.email}>Créer</Button><Button size="sm" variant="outline" onClick={() => setShowNewUser(false)}>Annuler</Button></div></div>}
+        <div className="max-h-64 overflow-y-auto">
+          <Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader><TableBody>
+            {(usersList || []).map((u: UserItem) => (
+              <TableRow key={u.id}><TableCell className="text-sm font-medium">{u.name}</TableCell><TableCell className="text-sm text-slate-500">{u.email}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell><TableCell><Badge variant={u.isActive ? 'default' : 'secondary'} className="text-[10px]">{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
+            ))}
+          </TableBody></Table>
+        </div>
+      </CardContent></Card>}
+
+      {isAdmin && <Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-sm font-semibold">Devises</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
+        {showNewCurrency && <div className="border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-3 gap-2"><div><Label>Code</Label><Input value={newCurrency.code} onChange={e => setNewCurrency(c => ({ ...c, code: e.target.value }))} placeholder="XAF" /></div><div><Label>Nom</Label><Input value={newCurrency.name} onChange={e => setNewCurrency(c => ({ ...c, name: e.target.value }))} placeholder="Franc CFA" /></div><div><Label>Symbole</Label><Input value={newCurrency.symbol} onChange={e => setNewCurrency(c => ({ ...c, symbol: e.target.value }))} placeholder="FCFA" /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createCurrencyMut.mutate(newCurrency)} disabled={!newCurrency.code || !newCurrency.name}>Ajouter</Button><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(false)}>Annuler</Button></div></div>}
+        <div className="flex flex-wrap gap-2">
+          {(currencies || []).map((c: CurrencyItem) => <Badge key={c.id} variant="outline" className="text-xs py-1 px-2">{c.code} — {c.symbol} ({c.name})</Badge>)}
+        </div>
+      </CardContent></Card>}
+
+      <Button variant="outline" className="text-rose-600 hover:text-rose-700" onClick={logout}><LogOut className="size-4 mr-2" />Se déconnecter</Button>
+    </div>
+  )
+}
+
+// ==================== ARCHIVES VIEW ====================
+function ArchivesView() {
+  const { user } = useAppStore()
+
+  const { data: cases, isLoading } = useQuery({
+    queryKey: ['archived-cases', user?.tenantId],
+    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}&status=archive`).then(r => r.json()),
   })
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="space-y-2"><Label className="text-xs">Action</Label>
-          <Select value={actionFilter} onValueChange={setActionFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Action" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="CREATE">Création</SelectItem><SelectItem value="UPDATE">Modification</SelectItem><SelectItem value="DELETE">Suppression</SelectItem><SelectItem value="LOGIN">Connexion</SelectItem></SelectContent></Select></div>
-        <div className="space-y-2"><Label className="text-xs">Ressource</Label>
-          <Select value={resourceFilter} onValueChange={setResourceFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Ressource" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="User">Utilisateur</SelectItem></SelectContent></Select></div>
-      </div>
-      <Card className="hover:shadow-lg transition-shadow duration-300">
-        {isLoading ? <div className="p-4 space-y-2">{[...Array(10)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div> : (
-          <div className="overflow-x-auto">
-            <Table><TableHeader><TableRow>
-              <TableHead>Date</TableHead><TableHead>Utilisateur</TableHead><TableHead>Action</TableHead>
-              <TableHead>Ressource</TableHead><TableHead className="hidden lg:table-cell">Détails</TableHead>
-            </TableRow></TableHeader><TableBody>
-              {logs?.slice(0, 50).map(log => (
-                <TableRow key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <TableCell className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(log.createdAt)}</TableCell>
-                  <TableCell className="text-sm font-medium text-slate-900 dark:text-white">{log.user?.name || 'Système'}</TableCell>
-                  <TableCell><Badge variant="outline" className="rounded-full text-xs">{log.action}</Badge></TableCell>
-                  <TableCell className="text-sm text-slate-600 dark:text-slate-300">{log.resourceType || '—'}</TableCell>
-                  <TableCell className="hidden lg:table-cell text-xs text-slate-400 dark:text-slate-500 max-w-[200px] truncate">{log.metadata ? JSON.stringify(JSON.parse(log.metadata)).slice(0, 80) : '—'}</TableCell>
-                </TableRow>
-              ))}
-              {(!logs || logs.length === 0) && <TableRow><TableCell colSpan={5} className="p-0"><EmptyState icon={ClipboardList} title="Aucun log trouvé" description="Les actions auditées apparaîtront ici" /></TableCell></TableRow>}
-            </TableBody></Table>
-          </div>
-        )}
-      </Card>
+      <h2 className="text-lg font-semibold">Archives</h2>
+      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
+        (cases || []).length === 0 ? <EmptyState icon={Archive} title="Aucun dossier archivé" /> :
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
+          {(cases || []).map((c: CaseItem) => (
+            <Card key={c.id} className="opacity-80">
+              <CardHeader className="pb-2"><div className="flex items-start justify-between"><CardTitle className="text-sm font-semibold">{c.reference}</CardTitle><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS.archive)}>{STATUS_LABELS.archive}</Badge></div><CardDescription className="text-xs mt-1 line-clamp-2">{c.title}</CardDescription></CardHeader>
+              <CardContent className="p-4 pt-0 space-y-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400">{c.client ? `${c.client.firstName} ${c.client.lastName}` : '—'}</p>
+                <p className="text-xs text-slate-400">Type : {TYPE_LABELS[c.type] || c.type}</p>
+                {c.closingDate && <p className="text-xs text-slate-400">Clôture : {fmtDate(c.closingDate)}</p>}
+              </CardContent>
+            </Card>
+          ))}
+        </div>}
     </div>
   )
 }
 
-// ==================== Settings View ====================
-function SettingsView() {
-  const { user } = useAppStore()
-  const qc = useQueryClient()
-  const [name, setName] = useState(user?.name || '')
-  const [phone, setPhone] = useState(user?.phone || '')
-  const [saving, setSaving] = useState(false)
-
-  const { data: tenant, isLoading: tenantLoading } = useQuery<TenantItem>({
-    queryKey: ['tenant', user?.tenantId],
-    queryFn: () => fetch(`/api/tenants/${user!.tenantId}`).then(r => r.json()),
-    enabled: !!user?.tenantId
-  })
-
-  const { data: tenants } = useQuery<TenantItem[]>({
-    queryKey: ['tenants-all'],
-    queryFn: () => fetch('/api/tenants').then(r => r.json()),
-    enabled: user?.role === 'root_admin'
-  })
-
-  const { data: allUsers } = useQuery<UserItem[]>({
-    queryKey: ['users-all'],
-    queryFn: () => fetch('/api/users').then(r => r.json()),
-    enabled: user?.role === 'root_admin'
-  })
-
-  const { data: currencies } = useQuery<CurrencyItem[]>({
-    queryKey: ['currencies-all'],
-    queryFn: () => fetch('/api/currencies').then(r => r.json()),
-    enabled: user?.role === 'root_admin'
-  })
-
-  const handleSave = async () => {
-    if (!user?.id) return
-    setSaving(true)
-    try {
-      await fetch(`/api/users/${user.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone })
-      })
-      qc.invalidateQueries({ queryKey: ['users'] })
-      toast.success('Profil mis à jour')
-    } catch { toast.error('Erreur') }
-    setSaving(false)
-  }
-
-  const isAdmin = user?.role === 'firm_admin' || user?.role === 'root_admin'
-  const isRootAdmin = user?.role === 'root_admin'
-
+// ==================== FOOTER ====================
+function Footer() {
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-4xl">
-      <Card className="hover:shadow-lg transition-shadow duration-300">
-        <CardHeader><CardTitle className="text-base">Profil utilisateur</CardTitle><CardDescription>Vos informations personnelles</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Nom complet</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
-            <div className="space-y-2"><Label>E-mail</Label><Input value={user?.email || ''} disabled /></div>
-            <div className="space-y-2"><Label>Téléphone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
-            <div className="space-y-2"><Label>Rôle</Label><Input value={ROLE_LABELS[user?.role || ''] || user?.role || ''} disabled /></div>
-          </div>
-          <Button onClick={handleSave} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving}>
-            {saving ? <RefreshCw className="size-4 animate-spin" /> : 'Enregistrer'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {tenantLoading ? <Skeleton className="h-40 rounded-xl" /> : tenant && (
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader><CardTitle className="text-base">Informations du cabinet</CardTitle><CardDescription>Détails de votre organisation</CardDescription></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><p className="text-xs text-slate-500 dark:text-slate-400">Nom</p><p className="text-sm font-medium text-slate-900 dark:text-white">{tenant.name}</p></div>
-              <div><p className="text-xs text-slate-500 dark:text-slate-400">Plan</p><Badge variant="outline" className="rounded-full">{tenant.plan}</Badge></div>
-              <div><p className="text-xs text-slate-500 dark:text-slate-400">Utilisateurs</p><p className="text-sm font-medium text-slate-900 dark:text-white">{tenant._count?.users || 0} / {tenant.maxUsers}</p></div>
-              <div><p className="text-xs text-slate-500 dark:text-slate-400">Stockage</p><p className="text-sm font-medium text-slate-900 dark:text-white">{tenant.maxStorageGb} Go</p></div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isRootAdmin && (
-        <Tabs defaultValue="tenants">
-          <TabsList><TabsTrigger value="tenants">Cabinets</TabsTrigger><TabsTrigger value="users">Utilisateurs</TabsTrigger><TabsTrigger value="currencies">Devises</TabsTrigger></TabsList>
-          <TabsContent value="tenants">
-            <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Tous les cabinets</CardTitle></CardHeader>
-              <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Plan</TableHead><TableHead>Utilisateurs</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader>
-                <TableBody>{tenants?.map(t => (
-                  <TableRow key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <TableCell className="font-medium text-slate-900 dark:text-white">{t.name}</TableCell><TableCell><Badge variant="outline" className="rounded-full">{t.plan}</Badge></TableCell>
-                    <TableCell>{t._count?.users || 0}</TableCell><TableCell><Badge className={cn('rounded-full px-2.5', t.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300')}>{t.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
-                ))}</TableBody></Table></div></CardContent></Card>
-          </TabsContent>
-          <TabsContent value="users">
-            <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Tous les utilisateurs</CardTitle></CardHeader>
-              <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader>
-                <TableBody>{allUsers?.map(u => (
-                  <TableRow key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <TableCell className="font-medium text-slate-900 dark:text-white">{u.name}</TableCell><TableCell className="text-slate-600 dark:text-slate-300">{u.email}</TableCell>
-                    <TableCell><Badge variant="outline" className="rounded-full">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>
-                    <TableCell><Badge className={cn('rounded-full px-2.5', u.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300')}>{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
-                ))}</TableBody></Table></div></CardContent></Card>
-          </TabsContent>
-          <TabsContent value="currencies">
-            <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Devises disponibles</CardTitle></CardHeader>
-              <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Nom</TableHead><TableHead>Symbole</TableHead></TableRow></TableHeader>
-                <TableBody>{currencies?.map(c => (
-                  <TableRow key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <TableCell className="font-mono font-medium text-slate-900 dark:text-white">{c.code}</TableCell>
-                    <TableCell>{c.name}</TableCell>
-                    <TableCell>{c.symbol}</TableCell></TableRow>
-                ))}</TableBody></Table></div></CardContent></Card>
-          </TabsContent>
-        </Tabs>
-      )}
-    </div>
+    <footer className="mt-auto border-t dark:border-slate-800 px-4 py-3 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-950">
+      <span className="flex items-center gap-1"><Scale className="size-3.5" />JurisLink</span>
+      <span>v1.0.0</span>
+    </footer>
   )
 }
 
-// ==================== Archives View ====================
-function ArchivesView() {
-  return <CasesView archiveMode />
-}
-
-// ==================== Main Layout ====================
-function AppLayout() {
-  const { currentView, isAuthenticated } = useAppStore()
-
-  if (!isAuthenticated) return <LoginPage />
-
-  const renderView = () => {
-    switch (currentView) {
-      case 'dashboard': return <DashboardView />
-      case 'clients': return <ClientsView />
-      case 'cases': return <CasesView />
-      case 'documents': return <DocumentsView />
-      case 'calendar': return <CalendarView />
-      case 'invoices': return <InvoicesView />
-      case 'messages': return <MessagesView />
-      case 'reports': return <ReportsView />
-      case 'audit-logs': return <AuditLogsView />
-      case 'settings': return <SettingsView />
-      case 'archives': return <ArchivesView />
-      default: return <DashboardView />
-    }
+// ==================== DASHBOARD ROUTER ====================
+function DashboardRouter() {
+  const { currentView } = useAppStore()
+  switch (currentView) {
+    case 'dashboard': return <DashboardView />
+    case 'cases': return <CasesView />
+    case 'clients': return <ClientsView />
+    case 'tasks': return <TasksView />
+    case 'documents': return <DocumentsView />
+    case 'calendar': return <CalendarView />
+    case 'invoices': return <InvoicesView />
+    case 'messages': return <MessagesView />
+    case 'reports': return <ReportsView />
+    case 'audit-logs': return <AuditLogsView />
+    case 'settings': return <SettingsView />
+    case 'archives': return <ArchivesView />
+    default: return <DashboardView />
   }
-
-  return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
-      <Sidebar />
-      <div className="flex-1 flex flex-col lg:ml-[260px] transition-all duration-300">
-        <Header />
-        <main className="flex-1">
-          <AnimatePresence mode="wait">
-            <motion.div key={currentView} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-              {renderView()}
-            </motion.div>
-          </AnimatePresence>
-        </main>
-        <footer className="mt-auto py-4 px-6">
-          <Separator className="mb-4" />
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p className="text-xs text-slate-400 dark:text-slate-500">© 2025 JurisLink — Gestion Juridique Intelligente</p>
-            <p className="text-xs text-slate-400 dark:text-slate-600">v2.0 • Tous droits réservés</p>
-          </div>
-        </footer>
-      </div>
-    </div>
-  )
 }
 
-// ==================== Page Component ====================
-export default function Home() {
+// ==================== MAIN APP ====================
+export default function App() {
+  const { isAuthenticated, currentView } = useAppStore()
   return (
     <QueryClientProvider client={queryClient}>
-      <AppLayout />
-      <Toaster position="top-right" richColors closeButton />
+      <TooltipProvider>
+        <div className='min-h-screen flex flex-col bg-white dark:bg-slate-950'>
+          <AnimatePresence mode='wait'>
+            {!isAuthenticated ? (
+              <LoginPage key='login' />
+            ) : (
+              <motion.div key={currentView} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className='flex-1 flex flex-col'>
+                <Sidebar />
+                <div className='lg:pl-[260px] flex-1 flex flex-col'>
+                  <Header />
+                  <main className='flex-1'><DashboardRouter /></main>
+                  <Footer />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <Toaster richColors position='top-right' />
+        </div>
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }

@@ -58,6 +58,10 @@ export async function POST(request: Request) {
         nextDueDate: body.nextDueDate ? new Date(body.nextDueDate) : null,
         tenantId: body.tenantId,
         clientId: body.clientId,
+        adversary: body.adversary,
+        jurisdiction: body.jurisdiction,
+        amountInDispute: body.amountInDispute,
+        billingType: body.billingType,
       },
     })
     return NextResponse.json(caze, { status: 201 })
