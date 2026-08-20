@@ -52,5 +52,10 @@ prompt
 server.log
 # Skills directory
 /skills/tool-results/
+tool-results/
+*.db
+*.db-journal
+/db/
+agent-ctx/
 download/
 dev.log
