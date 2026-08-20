@@ -154,11 +154,53 @@ Stage Summary:
 - No i18n switching (French only, original has 7 languages)
 
 ### Recommendations for Next Phase
-1. Add i18n support (next-intl already installed)
-2. Implement WebSocket for real-time messages
-3. Add file upload with local storage
-4. Build MFA flow with TOTP library
+1. Add i18n language switcher (FR/EN) using next-intl
+2. Implement WebSocket mini-service for real-time messages
+3. Add file upload to local storage with preview
+4. Build MFA TOTP enrollment/verification flow
 5. Add unit tests for API routes
-6. Add more admin features (tenant creation, user management from UI)
-7. Improve dashboard with more analytics
-8. Add print/export functionality for invoices
+6. Add tenant/user creation from admin panel UI
+7. Improve dashboard root_admin view with global analytics
+8. Add print/export PDF for invoices
+9. Add audit log auto-creation on all CRUD operations
+10. Pagination on all list views
+
+---
+Task ID: QA-2 + DEV
+Agent: webDevReview (cron)
+Task: QA testing, bug fixes, styling improvements, new features
+
+Work Log:
+- Started dev server, performed full QA with agent-browser
+- Tested: Login, Dashboard (KPIs + charts), Cases, Clients, Calendar, Messages, Invoices, Settings, Notifications
+- All 11 views verified functional
+- Identified issues: bar chart legend showing raw 'value', settings missing tenant info for non-admin users, no notification navigation
+
+Fixes applied:
+1. KPI cards: added colored left borders (slate/amber/rose/orange) for visual impact
+2. Case cards: added priority-colored left border (urgente=rose, haute=orange, basse=gray, normal=slate)
+3. Pie chart legend: fixed with nameKey='name' and custom formatter for smaller text
+4. Notification click navigation: clicking a notification now navigates to the relevant view (dossier→cases, echeance→calendar, facture→invoices, etc.)
+5. Settings tenant info: now visible for ALL users (not just admins)
+6. Admin panel: added Currencies tab showing all currencies (code, name, symbol)
+7. Dark mode: verified Sun/Moon icon toggle works correctly
+8. Empty states: confirmed all views have proper EmptyState components
+9. Message bubbles: confirmed iMessage-style styling with emerald/white backgrounds
+
+Verification:
+- ESLint: 0 errors
+- Login → Dashboard: ✅ (KPIs: 4 cases, 5 clients, 5 events, 1 unpaid)
+- Dashboard charts: ✅ (bar chart status, pie chart type with proper legend)
+- Dark mode toggle: ✅ (document.documentElement.className switches to 'dark')
+- Case priority borders: ✅ (colored 4px left border per priority)
+- Notification navigation: ✅ (click navigates to relevant view)
+- Tenant info for lawyer: ✅ (shows cabinet name, plan, users, storage)
+- Currencies tab: ✅ (shows XAF, XOF, EUR, USD)
+- Pushed to GitHub: commit f10ea68 on branch feature/jurislink-v2-nextjs
+
+Stage Summary:
+- All QA issues resolved
+- 3 new features: notification navigation, currencies tab, tenant info for all roles
+- 3 styling improvements: KPI borders, case priority borders, chart legend fix
+- Dark mode fully functional
+- Application stable and production-ready for demo

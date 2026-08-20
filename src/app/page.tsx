@@ -451,7 +451,7 @@ function Header() {
                   <DropdownMenuItem key={n.id} className={cn('flex flex-col items-start gap-1 p-3 cursor-pointer rounded-md mx-1 my-0.5',
                     !n.isRead && 'bg-amber-50 dark:bg-amber-500/10'
                   )}
-                    onClick={() => markNotifRead(n.id)}>
+                    onClick={() => { markNotifRead(n.id); const viewMap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', message: 'messages', securite: 'settings' }; const target = viewMap[n.category]; if (target) useAppStore.getState().setCurrentView(target); }}>
                     <div className="flex items-center gap-2 w-full">
                       {!n.isRead && <span className="size-2 bg-amber-500 rounded-full shrink-0" />}
                       <span className={cn('text-sm font-medium', !n.isRead ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300')}>{n.title}</span>
@@ -530,8 +530,9 @@ function DashboardView() {
           const Icon = kpi.icon
           return (
             <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-                <CardContent className="p-4 flex items-center gap-4">
+              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden relative">
+                <div className={cn('absolute left-0 top-0 bottom-0 w-1', i === 0 ? 'bg-slate-500' : i === 1 ? 'bg-amber-500' : i === 2 ? 'bg-rose-500' : 'bg-orange-500')} />
+                <CardContent className="p-4 pl-5 flex items-center gap-4">
                   <div className={cn('p-3 rounded-xl', kpi.bg)}><Icon className={cn('size-6', kpi.color)} /></div>
                   <div>
                     <p className="text-2xl font-bold text-slate-900 dark:text-white">{kpi.value}</p>
@@ -560,9 +561,9 @@ function DashboardView() {
         <Card className="hover:shadow-lg transition-shadow duration-300">
           <CardHeader><CardTitle className="text-base">Dossiers par type</CardTitle></CardHeader>
           <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
-            <PieChart><Pie data={typeData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" label>
+            <PieChart><Pie data={typeData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" nameKey="name" label>
               {typeData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-            </Pie><Legend /><RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} /></PieChart>
+            </Pie><Legend formatter={(value: string) => <span className="text-xs text-slate-600 dark:text-slate-300">{value}</span>} /><RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} /></PieChart>
           </ResponsiveContainer></div></CardContent>
         </Card>
       </div>
@@ -816,7 +817,8 @@ function CasesView({ archiveMode = false }: { archiveMode?: boolean }) {
         <div className="space-y-3">
           {cases?.map(c => (
             <Collapsible key={c.id} open={expanded === c.id} onOpenChange={(o) => setExpanded(o ? c.id : null)}>
-              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+              <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+                <div className={cn('absolute left-0 top-0 bottom-0 w-1 rounded-l-lg', c.priority === 'urgente' ? 'bg-rose-500' : c.priority === 'haute' ? 'bg-orange-500' : c.priority === 'basse' ? 'bg-slate-300 dark:bg-slate-600' : 'bg-slate-400 dark:bg-slate-500')} />
                 <CollapsibleTrigger asChild>
                   <div className="p-4 flex flex-col md:flex-row md:items-center gap-3 cursor-pointer">
                     <div className="flex-1 min-w-0">
@@ -1619,6 +1621,12 @@ function SettingsView() {
     enabled: user?.role === 'root_admin'
   })
 
+  const { data: currencies } = useQuery<CurrencyItem[]>({
+    queryKey: ['currencies-all'],
+    queryFn: () => fetch('/api/currencies').then(r => r.json()),
+    enabled: user?.role === 'root_admin'
+  })
+
   const handleSave = async () => {
     if (!user?.id) return
     setSaving(true)
@@ -1653,7 +1661,7 @@ function SettingsView() {
         </CardContent>
       </Card>
 
-      {isAdmin && tenantLoading ? <Skeleton className="h-40 rounded-xl" /> : isAdmin && tenant && (
+      {tenantLoading ? <Skeleton className="h-40 rounded-xl" /> : tenant && (
         <Card className="hover:shadow-lg transition-shadow duration-300">
           <CardHeader><CardTitle className="text-base">Informations du cabinet</CardTitle><CardDescription>Détails de votre organisation</CardDescription></CardHeader>
           <CardContent>
@@ -1669,7 +1677,7 @@ function SettingsView() {
 
       {isRootAdmin && (
         <Tabs defaultValue="tenants">
-          <TabsList><TabsTrigger value="tenants">Cabinets</TabsTrigger><TabsTrigger value="users">Utilisateurs</TabsTrigger></TabsList>
+          <TabsList><TabsTrigger value="tenants">Cabinets</TabsTrigger><TabsTrigger value="users">Utilisateurs</TabsTrigger><TabsTrigger value="currencies">Devises</TabsTrigger></TabsList>
           <TabsContent value="tenants">
             <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Tous les cabinets</CardTitle></CardHeader>
               <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Plan</TableHead><TableHead>Utilisateurs</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader>
@@ -1687,6 +1695,16 @@ function SettingsView() {
                     <TableCell className="font-medium text-slate-900 dark:text-white">{u.name}</TableCell><TableCell className="text-slate-600 dark:text-slate-300">{u.email}</TableCell>
                     <TableCell><Badge variant="outline" className="rounded-full">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>
                     <TableCell><Badge className={cn('rounded-full px-2.5', u.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300')}>{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
+                ))}</TableBody></Table></div></CardContent></Card>
+          </TabsContent>
+          <TabsContent value="currencies">
+            <Card className="hover:shadow-lg transition-shadow duration-300"><CardHeader><CardTitle className="text-base">Devises disponibles</CardTitle></CardHeader>
+              <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Nom</TableHead><TableHead>Symbole</TableHead></TableRow></TableHeader>
+                <TableBody>{currencies?.map(c => (
+                  <TableRow key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <TableCell className="font-mono font-medium text-slate-900 dark:text-white">{c.code}</TableCell>
+                    <TableCell>{c.name}</TableCell>
+                    <TableCell>{c.symbol}</TableCell></TableRow>
                 ))}</TableBody></Table></div></CardContent></Card>
           </TabsContent>
         </Tabs>
