@@ -1,0 +1,1640 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+     4→import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { AnimatePresence, motion } from 'framer-motion'
+     6→import {
+     7→  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
+     8→} from 'recharts'
+     9→import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, isSameMonth } from 'date-fns'
+    10→import { fr } from 'date-fns/locale'
+    11→import { toast } from 'sonner'
+    12→import { useAppStore, type ViewName, type UserInfo } from '@/store/appStore'
+    13→import { cn } from '@/lib/utils'
+    14→
+    15→// ==================== shadcn/ui imports ====================
+    16→import { Button } from '@/components/ui/button'
+    17→import { Input } from '@/components/ui/input'
+    18→import { Label } from '@/components/ui/label'
+    19→import { Textarea } from '@/components/ui/textarea'
+    20→import { Checkbox } from '@/components/ui/checkbox'
+    21→import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction, CardFooter } from '@/components/ui/card'
+    22→import { Badge } from '@/components/ui/badge'
+    23→import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+    24→import {
+    25→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption
+    26→} from '@/components/ui/table'
+    27→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    28→import {
+    29→  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose
+    30→} from '@/components/ui/dialog'
+    31→import {
+    32→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger
+    33→} from '@/components/ui/dropdown-menu'
+    34→import {
+    35→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+    36→} from '@/components/ui/select'
+    37→import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+    38→import { ScrollArea } from '@/components/ui/scroll-area'
+    39→import { Separator } from '@/components/ui/separator'
+    40→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    41→import { Skeleton } from '@/components/ui/skeleton'
+    42→import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+    43→import { Toaster } from '@/components/ui/sonner'
+    44→
+    45→// ==================== lucide icons ====================
+    46→import {
+    47→  LayoutDashboard, Briefcase, Users, FileText, Calendar, Receipt, MessageSquare, BarChart3,
+    48→  Shield, Settings, Menu, X, Search, Bell, LogOut, User, ChevronDown, ChevronRight,
+    49→  ChevronLeft, Plus, Edit, Trash2, Eye, Lock, Clock, Send, ArrowLeft, Download,
+    50→  Filter, MoreHorizontal, Archive, AlertTriangle, CheckCircle2, Circle, Phone, Mail,
+    51→  Building2, RefreshCw, TrendingUp, DollarSign, FileCheck, FileWarning, Activity
+    52→} from 'lucide-react'
+    53→
+    54→// ==================== Types ====================
+    55→interface Client {
+    56→  id: string; firstName: string; lastName: string; company?: string | null; email?: string | null;
+    57→  phone?: string | null; address?: string | null; notes?: string | null; isActive: boolean;
+    58→  tenantId: string; createdAt: string; _count?: { cases: number; invoices: number };
+    59→}
+    60→interface CaseItem {
+    61→  id: string; reference: string; title: string; description?: string | null; type: string;
+    62→  status: string; priority: string; isSecret: boolean; nextDueDate?: string | null;
+    63→  closingDate?: string | null; createdAt: string; tenantId: string; clientId: string;
+    64→  client?: Client; assignments?: CaseAssignment[]; notes?: CaseNote[]; documents?: Doc[]; events?: EventItem[];
+    65→}
+    66→interface CaseAssignment { id: string; userId: string; caseId: string; user?: UserItem }
+    67→interface CaseNote { id: string; content: string; createdAt: string; userId?: string | null; user?: UserItem }
+    68→interface Doc {
+    69→  id: string; name: string; fileName: string; fileType: string; fileSize: number; filePath: string;
+    70→  version: number; description?: string | null; createdAt: string; tenantId: string; caseId?: string | null;
+    71→  userId?: string | null; case?: CaseItem;
+    72→}
+    73→interface EventItem {
+    74→  id: string; title: string; description?: string | null; startTime: string; endTime?: string | null;
+    75→  eventType: string; criticality: string; location?: string | null; createdAt: string;
+    76→  tenantId: string; caseId?: string | null; case?: CaseItem; assignments?: EventAssignment[];
+    77→}
+    78→interface EventAssignment { id: string; userId: string; eventId: string; user?: UserItem }
+    79→interface Invoice {
+    80→  id: string; reference: string; amount: number; status: string; dueDate?: string | null;
+    81→  paidDate?: string | null; paidAmount?: number | null; notes?: string | null; createdAt: string;
+    82→  tenantId: string; clientId: string; client?: Client; caseId?: string | null; case?: CaseItem; currencyCode: string;
+    83→}
+    84→interface Message {
+    85→  id: string; content: string; isRead: boolean; createdAt: string; tenantId: string;
+    86→  senderId: string; receiverId: string; sender?: UserItem; receiver?: UserItem;
+    87→}
+    88→interface Notification {
+    89→  id: string; title: string; message: string; category: string; isRead: boolean;
+    90→  resourceType?: string | null; resourceId?: string | null; createdAt: string;
+    91→}
+    92→interface AuditLogItem {
+    93→  id: string; action: string; resourceType?: string | null; resourceId?: string | null;
+    94→  metadata?: string | null; ipAddress?: string | null; userAgent?: string | null;
+    95→  createdAt: string; tenantId: string; userId?: string | null; user?: UserItem;
+    96→}
+    97→interface UserItem {
+    98→  id: string; email: string; name: string; role: string; tenantId?: string | null;
+    99→  phone?: string | null; avatarUrl?: string | null; preferredLanguage?: string; isActive?: boolean;
+   100→}
+   101→interface TenantItem {
+   102→  id: string; name: string; slug: string; plan: string; maxUsers: number; maxStorageGb: number;
+   103→  isActive: boolean; createdAt: string; _count?: { users: number; clients: number; cases: number };
+   104→}
+   105→interface DashboardStats {
+   106→  totalCases: number; activeCases: number; totalClients: number; upcomingEvents: number;
+   107→  unpaidInvoices: number; totalRevenue: number; paidInvoices: number;
+   108→  casesByStatus: Record<string, number>; casesByType: Record<string, number>;
+   109→  recentActivity: AuditLogItem[]; upcomingEventsList: EventItem[];
+   110→}
+   111→interface CurrencyItem { id: string; code: string; name: string; symbol: string }
+   112→
+   113→// ==================== Query Client ====================
+   114→const queryClient = new QueryClient({
+   115→  defaultOptions: { queries: { staleTime: 30000, retry: 1 } }
+   116→})
+   117→
+   118→// ==================== Constants ====================
+   119→const STATUS_COLORS: Record<string, string> = {
+   120→  nouveau: 'bg-slate-100 text-slate-700', ouvert: 'bg-cyan-100 text-cyan-700',
+   121→  en_cours: 'bg-amber-100 text-amber-700', en_attente: 'bg-orange-100 text-orange-700',
+   122→  clos: 'bg-emerald-100 text-emerald-700', archive: 'bg-gray-100 text-gray-600',
+   123→  non_paye: 'bg-rose-100 text-rose-700', partiel: 'bg-orange-100 text-orange-700',
+   124→  paye: 'bg-emerald-100 text-emerald-700', annule: 'bg-gray-100 text-gray-600',
+   125→}
+   126→const STATUS_LABELS: Record<string, string> = {
+   127→  nouveau: 'Nouveau', ouvert: 'Ouvert', en_cours: 'En cours', en_attente: 'En attente',
+   128→  clos: 'Clos', archive: 'Archivé', non_paye: 'Non payé', partiel: 'Partiel',
+   129→  paye: 'Payé', annule: 'Annulé',
+   130→}
+   131→const PRIORITY_COLORS: Record<string, string> = {
+   132→  basse: 'bg-gray-100 text-gray-600', normal: 'bg-slate-100 text-slate-700',
+   133→  haute: 'bg-orange-100 text-orange-700', urgente: 'bg-rose-100 text-rose-700',
+   134→}
+   135→const PRIORITY_LABELS: Record<string, string> = { basse: 'Basse', normal: 'Normal', haute: 'Haute', urgente: 'Urgente' }
+   136→const TYPE_LABELS: Record<string, string> = { civil: 'Civil', penal: 'Pénal', commercial: 'Commercial', social: 'Social', administratif: 'Administratif' }
+   137→const EVENT_TYPE_LABELS: Record<string, string> = { audience: 'Audience', rdv: 'Rendez-vous', echeance: 'Échéance', depot: 'Dépôt', autre: 'Autre' }
+   138→const CRIT_COLORS: Record<string, string> = { basse: 'bg-slate-200', normal: 'bg-amber-200', haute: 'bg-orange-300', urgente: 'bg-rose-400' }
+   139→const ROLE_LABELS: Record<string, string> = { root_admin: 'Admin Racine', firm_admin: 'Admin Cabinet', lawyer: 'Avocat', secretary: 'Secrétaire', client: 'Client' }
+   140→const CHART_COLORS = ['#334155', '#d97706', '#059669', '#dc2626', '#0891b2', '#7c3aed']
+   141→
+   142→const NAV_ITEMS: { view: ViewName; label: string; icon: React.ElementType; adminOnly?: boolean }[] = [
+   143→  { view: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+   144→  { view: 'cases', label: 'Dossiers', icon: Briefcase },
+   145→  { view: 'clients', label: 'Clients', icon: Users },
+   146→  { view: 'documents', label: 'Documents', icon: FileText },
+   147→  { view: 'calendar', label: 'Calendrier', icon: Calendar },
+   148→  { view: 'invoices', label: 'Factures', icon: Receipt },
+   149→  { view: 'messages', label: 'Messages', icon: MessageSquare },
+   150→  { view: 'reports', label: 'Rapports', icon: BarChart3 },
+   151→  { view: 'audit-logs', label: "Journal d'audit", icon: Shield, adminOnly: true },
+   152→  { view: 'settings', label: 'Paramètres', icon: Settings },
+   153→]
+   154→
+   155→// ==================== Helpers ====================
+   156→function fmtDate(d: string | null | undefined) {
+   157→  if (!d) return '—'
+   158→  try { return format(parseISO(d), 'dd/MM/yyyy', { locale: fr }) } catch { return '—' }
+   159→}
+   160→function fmtMoney(amount: number, code: string = 'XAF') {
+   161→  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(amount)
+   162→}
+   163→function fmtFileSize(bytes: number) {
+   164→  if (bytes < 1024) return bytes + ' o'
+   165→  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko'
+   166→  return (bytes / 1048576).toFixed(1) + ' Mo'
+   167→}
+   168→function initials(name: string) {
+   169→  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+   170→}
+   171→
+   172→// ==================== Login Page ====================
+   173→function LoginPage() {
+   174→  const { login } = useAppStore()
+   175→  const [email, setEmail] = useState('')
+   176→  const [password, setPassword] = useState('')
+   177→  const [loading, setLoading] = useState(false)
+   178→
+   179→  const handleSubmit = async (e: React.FormEvent) => {
+   180→    e.preventDefault()
+   181→    if (!email || !password) { toast.error('Veuillez remplir tous les champs'); return }
+   182→    setLoading(true)
+   183→    try {
+   184→      const res = await fetch('/api/auth/login', {
+   185→        method: 'POST', headers: { 'Content-Type': 'application/json' },
+   186→        body: JSON.stringify({ email, password })
+   187→      })
+   188→      const data = await res.json()
+   189→      if (!res.ok) { toast.error(data.error || 'Erreur de connexion'); return }
+   190→      login(data)
+   191→      toast.success(`Bienvenue, ${data.name} !`)
+   192→    } catch {
+   193→      toast.error('Erreur de connexion au serveur')
+   194→    } finally { setLoading(false) }
+   195→  }
+   196→
+   197→  return (
+   198→    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+   199→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
+   200→        <Card className="shadow-xl border-slate-200">
+   201→          <CardHeader className="text-center pb-2">
+   202→            <div className="mx-auto mb-4 flex items-center justify-center gap-2">
+   203→              <span className="text-3xl text-amber-600">⬡</span>
+   204→              <span className="text-2xl font-bold text-slate-900 tracking-tight">JurisLink</span>
+   205→            </div>
+   206→            <CardTitle className="text-xl text-slate-800">Connexion</CardTitle>
+   207→            <CardDescription>Gestion juridique intelligente</CardDescription>
+   208→          </CardHeader>
+   209→          <CardContent>
+   210→            <form onSubmit={handleSubmit} className="space-y-4">
+   211→              <div className="space-y-2">
+   212→                <Label htmlFor="email">Adresse e-mail</Label>
+   213→                <Input id="email" type="email" placeholder="email@jurislink.com" value={email} onChange={e => setEmail(e.target.value)} />
+   214→              </div>
+   215→              <div className="space-y-2">
+   216→                <Label htmlFor="password">Mot de passe</Label>
+   217→                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+   218→              </div>
+   219→              <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800" disabled={loading}>
+   220→                {loading ? <RefreshCw className="size-4 animate-spin" /> : 'Se connecter'}
+   221→              </Button>
+   222→            </form>
+   223→          </CardContent>
+   224→          <CardFooter className="justify-center">
+   225→            <p className="text-xs text-slate-400">Démo : ngassa@jurislink.com / Admin@123</p>
+   226→          </CardFooter>
+   227→        </Card>
+   228→      </motion.div>
+   229→    </div>
+   230→  )
+   231→}
+   232→
+   233→// ==================== Sidebar ====================
+   234→function Sidebar() {
+   235→  const { currentView, setCurrentView, user, sidebarOpen, setSidebarOpen } = useAppStore()
+   236→  const isAdmin = user?.role === 'firm_admin' || user?.role === 'root_admin'
+   237→
+   238→  return (
+   239→    <>
+   240→      {/* Mobile overlay */}
+   241→      {sidebarOpen && <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+   242→      <aside className={cn(
+   243→        'fixed top-0 left-0 z-50 h-full bg-slate-900 text-white transition-all duration-300 flex flex-col',
+   244→        'w-[280px]',
+   245→        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-[72px] lg:hover:w-[280px]'
+   246→      )}>
+   247→        <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-700/50 shrink-0">
+   248→          <span className="text-2xl text-amber-500">⬡</span>
+   249→          <span className={cn('text-lg font-bold tracking-tight whitespace-nowrap transition-opacity',
+   250→            'lg:opacity-0 lg:group-hover:opacity-100', !sidebarOpen && 'lg:opacity-0')
+   251→          }>
+   252→            <span className="text-white">Juris</span><span className="text-amber-500">Link</span>
+   253→          </span>
+   254→          <Button variant="ghost" size="icon" className="ml-auto text-slate-400 hover:text-white lg:hidden" onClick={() => setSidebarOpen(false)}>
+   255→            <X className="size-5" />
+   256→          </Button>
+   257→        </div>
+   258→        <ScrollArea className="flex-1 py-4">
+   259→          <nav className="space-y-1 px-3">
+   260→            {NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => {
+   261→              const Icon = item.icon
+   262→              const active = currentView === item.view
+   263→              return (
+   264→                <button key={item.view} onClick={() => { setCurrentView(item.view); setSidebarOpen(false) }}
+   265→                  className={cn(
+   266→                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+   267→                    active ? 'bg-amber-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+   268→                  )}>
+   269→                  <Icon className="size-5 shrink-0" />
+   270→                  <span className={cn('whitespace-nowrap', !sidebarOpen && 'lg:hidden lg:group-hover:inline')}>{item.label}</span>
+   271→                </button>
+   272→              )
+   273→            })}
+   274→          </nav>
+   275→        </ScrollArea>
+   276→        <div className="p-4 border-t border-slate-700/50">
+   277→          <div className="flex items-center gap-3">
+   278→            <Avatar className="size-8 shrink-0">
+   279→              <AvatarFallback className="bg-amber-600 text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback>
+   280→            </Avatar>
+   281→            <div className={cn('min-w-0', !sidebarOpen && 'lg:hidden lg:group-hover:block')}>
+   282→              <p className="text-sm font-medium truncate">{user?.name}</p>
+   283→              <p className="text-xs text-slate-400 truncate">{ROLE_LABELS[user?.role || ''] || user?.role}</p>
+   284→            </div>
+   285→          </div>
+   286→        </div>
+   287→      </aside>
+   288→    </>
+   289→  )
+   290→}
+   291→
+   292→// ==================== Header ====================
+   293→function Header() {
+   294→  const { currentView, user, logout, setCurrentView } = useAppStore()
+   295→  const [search, setSearch] = useState('')
+   296→  const [notifOpen, setNotifOpen] = useState(false)
+   297→
+   298→  const viewLabel = NAV_ITEMS.find(n => n.view === currentView)?.label || 'JurisLink'
+   299→
+   300→  const { data: notifications } = useQuery<Notification[]>({
+   301→    queryKey: ['notifications', user?.tenantId, user?.id],
+   302→    queryFn: () => fetch(`/api/notifications?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
+   303→    enabled: !!user?.tenantId
+   304→  })
+   305→  const unreadCount = notifications?.filter(n => !n.isRead).length || 0
+   306→
+   307→  const { data: messages } = useQuery<Message[]>({
+   308→    queryKey: ['messages-unread', user?.tenantId, user?.id],
+   309→    queryFn: () => fetch(`/api/messages?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
+   310→    enabled: !!user?.tenantId
+   311→  })
+   312→  const unreadMsgCount = messages?.filter(m => !m.isRead && m.receiverId === user?.id).length || 0
+   313→
+   314→  const markAllRead = async () => {
+   315→    if (!user?.tenantId || !user?.id) return
+   316→    await fetch('/api/notifications/read-all', {
+   317→      method: 'POST', headers: { 'Content-Type': 'application/json' },
+   318→      body: JSON.stringify({ tenantId: user.tenantId, userId: user.id })
+   319→    })
+   320→    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+   321→    setNotifOpen(false)
+   322→  }
+   323→
+   324→  const markNotifRead = async (id: string) => {
+   325→    await fetch(`/api/notifications/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isRead: true }) })
+   326→    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+   327→  }
+   328→
+   329→  return (
+   330→    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 h-16 flex items-center px-4 md:px-6 gap-4">
+   331→      <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => useAppStore.getState().toggleSidebar()}>
+   332→        <Menu className="size-5" />
+   333→      </Button>
+   334→      <h1 className="text-lg font-semibold text-slate-900 hidden sm:block">{viewLabel}</h1>
+   335→      <div className="flex-1 max-w-md mx-auto">
+   336→        <div className="relative">
+   337→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+   338→          <Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
+   339→            className="pl-9 bg-slate-50 border-slate-200 h-9" />
+   340→        </div>
+   341→      </div>
+   342→      <div className="flex items-center gap-2">
+   343→        <TooltipProvider>
+   344→          <Tooltip>
+   345→            <TooltipTrigger asChild>
+   346→              <Button variant="ghost" size="icon" className="relative" onClick={() => setCurrentView('messages')}>
+   347→                <MessageSquare className="size-5 text-slate-600" />
+   348→                {unreadMsgCount > 0 && (
+   349→                  <span className="absolute -top-0.5 -right-0.5 size-4 bg-amber-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+   350→                    {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
+   351→                  </span>
+   352→                )}
+   353→              </Button>
+   354→            </TooltipTrigger>
+   355→            <TooltipContent>Messages</TooltipContent>
+   356→          </Tooltip>
+   357→        </TooltipProvider>
+   358→        <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
+   359→          <DropdownMenuTrigger asChild>
+   360→            <Button variant="ghost" size="icon" className="relative">
+   361→              <Bell className="size-5 text-slate-600" />
+   362→              {unreadCount > 0 && (
+   363→                <span className="absolute -top-0.5 -right-0.5 size-4 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+   364→                  {unreadCount > 9 ? '9+' : unreadCount}
+   365→                </span>
+   366→              )}
+   367→            </Button>
+   368→          </DropdownMenuTrigger>
+   369→          <DropdownMenuContent align="end" className="w-80">
+   370→            <DropdownMenuLabel className="flex items-center justify-between">
+   371→              Notifications
+   372→              {unreadCount > 0 && <Button variant="ghost" size="sm" className="text-xs h-6" onClick={markAllRead}>Tout marquer lu</Button>}
+   373→            </DropdownMenuLabel>
+   374→            <DropdownMenuSeparator />
+   375→            {notifications && notifications.length > 0 ? (
+   376→              <ScrollArea className="max-h-72">
+   377→                {notifications.slice(0, 10).map(n => (
+   378→                  <DropdownMenuItem key={n.id} className={cn('flex flex-col items-start gap-1 p-3 cursor-pointer', !n.isRead && 'bg-amber-50')}
+   379→                    onClick={() => markNotifRead(n.id)}>
+   380→                    <span className="text-sm font-medium">{n.title}</span>
+   381→                    <span className="text-xs text-slate-500 line-clamp-2">{n.message}</span>
+   382→                    <span className="text-[10px] text-slate-400">{fmtDate(n.createdAt)}</span>
+   383→                  </DropdownMenuItem>
+   384→                ))}
+   385→              </ScrollArea>
+   386→            ) : <p className="text-sm text-slate-400 p-4 text-center">Aucune notification</p>}
+   387→          </DropdownMenuContent>
+   388→        </DropdownMenu>
+   389→        <DropdownMenu>
+   390→          <DropdownMenuTrigger asChild>
+   391→            <Button variant="ghost" className="gap-2">
+   392→              <Avatar className="size-7">
+   393→                <AvatarFallback className="bg-amber-600 text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback>
+   394→              </Avatar>
+   395→              <span className="hidden md:block text-sm">{user?.name}</span>
+   396→              <ChevronDown className="size-3" />
+   397→            </Button>
+   398→          </DropdownMenuTrigger>
+   399→          <DropdownMenuContent align="end">
+   400→            <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
+   401→            <DropdownMenuSeparator />
+   402→            <DropdownMenuItem onClick={() => setCurrentView('settings')}><User className="size-4 mr-2" />Profil</DropdownMenuItem>
+   403→            <DropdownMenuItem onClick={() => setCurrentView('settings')}><Settings className="size-4 mr-2" />Paramètres</DropdownMenuItem>
+   404→            <DropdownMenuSeparator />
+   405→            <DropdownMenuItem onClick={logout} className="text-rose-600"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem>
+   406→          </DropdownMenuContent>
+   407→        </DropdownMenu>
+   408→      </div>
+   409→    </header>
+   410→  )
+   411→}
+   412→
+   413→// ==================== Dashboard View ====================
+   414→function DashboardView() {
+   415→  const { user } = useAppStore()
+   416→  const { data: stats, isLoading } = useQuery<DashboardStats>({
+   417→    queryKey: ['dashboard-stats', user?.tenantId],
+   418→    queryFn: () => fetch(`/api/dashboard/stats?tenantId=${user!.tenantId}`).then(r => r.json()),
+   419→    enabled: !!user?.tenantId
+   420→  })
+   421→
+   422→  if (isLoading) return <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-lg" />)}</div>
+   423→
+   424→  const statusData = stats?.casesByStatus ? Object.entries(stats.casesByStatus).map(([k, v]) => ({ name: STATUS_LABELS[k] || k, value: v })) : []
+   425→  const typeData = stats?.casesByType ? Object.entries(stats.casesByType).map(([k, v]) => ({ name: TYPE_LABELS[k] || k, value: v })) : []
+   426→
+   427→  const kpis = [
+   428→    { label: 'Dossiers actifs', value: stats?.activeCases || 0, icon: Briefcase, color: 'text-slate-700', bg: 'bg-slate-50' },
+   429→    { label: 'Clients', value: stats?.totalClients || 0, icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
+   430→    { label: 'Échéances', value: stats?.upcomingEvents || 0, icon: Clock, color: 'text-rose-600', bg: 'bg-rose-50' },
+   431→    { label: 'Factures impayées', value: stats?.unpaidInvoices || 0, icon: Receipt, color: 'text-orange-600', bg: 'bg-orange-50' },
+   432→  ]
+   433→
+   434→  return (
+   435→    <div className="p-4 md:p-6 space-y-6">
+   436→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   437→        {kpis.map((kpi, i) => {
+   438→          const Icon = kpi.icon
+   439→          return (
+   440→            <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
+   441→              <Card className="hover:shadow-md transition-shadow">
+   442→                <CardContent className="p-4 flex items-center gap-4">
+   443→                  <div className={cn('p-3 rounded-lg', kpi.bg)}><Icon className={cn('size-6', kpi.color)} /></div>
+   444→                  <div>
+   445→                    <p className="text-2xl font-bold text-slate-900">{kpi.value}</p>
+   446→                    <p className="text-sm text-slate-500">{kpi.label}</p>
+   447→                  </div>
+   448→                </CardContent>
+   449→              </Card>
+   450→            </motion.div>
+   451→          )
+   452→        })}
+   453→      </div>
+   454→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   455→        <Card><CardHeader><CardTitle className="text-base">Dossiers par statut</CardTitle></CardHeader>
+   456→          <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
+   457→            <BarChart data={statusData}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+   458→              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+   459→              <YAxis tick={{ fontSize: 12 }} />
+   460→              <RechartsTooltip />
+   461→              <Bar dataKey="value" fill="#334155" radius={[4, 4, 0, 0]} />
+   462→            </BarChart>
+   463→          </ResponsiveContainer></div></CardContent>
+   464→        </Card>
+   465→        <Card><CardHeader><CardTitle className="text-base">Dossiers par type</CardTitle></CardHeader>
+   466→          <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
+   467→            <PieChart><Pie data={typeData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" label>
+   468→              {typeData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+   469→            </Pie><Legend /><RechartsTooltip /></PieChart>
+   470→          </ResponsiveContainer></div></CardContent>
+   471→        </Card>
+   472→      </div>
+   473→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   474→        <Card>
+   475→          <CardHeader><CardTitle className="text-base">Échéances prochaines</CardTitle></CardHeader>
+   476→          <CardContent className="space-y-3">
+   477→            {stats?.upcomingEventsList && stats.upcomingEventsList.length > 0 ? stats.upcomingEventsList.slice(0, 5).map(ev => (
+   478→              <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
+   479→                <div className={cn('w-1 h-10 rounded-full shrink-0', CRIT_COLORS[ev.criticality] || 'bg-slate-300')} />
+   480→                <div className="min-w-0 flex-1">
+   481→                  <p className="text-sm font-medium text-slate-900 truncate">{ev.title}</p>
+   482→                  <p className="text-xs text-slate-500">{EVENT_TYPE_LABELS[ev.eventType] || ev.eventType} • {fmtDate(ev.startTime)}</p>
+   483→                </div>
+   484→              </div>
+   485→            )) : <p className="text-sm text-slate-400">Aucune échéance à venir</p>}
+   486→          </CardContent>
+   487→        </Card>
+   488→        <Card>
+   489→          <CardHeader><CardTitle className="text-base">Activité récente</CardTitle></CardHeader>
+   490→          <CardContent className="space-y-3">
+   491→            {stats?.recentActivity && stats.recentActivity.length > 0 ? stats.recentActivity.slice(0, 10).map(log => (
+   492→              <div key={log.id} className="flex items-start gap-3">
+   493→                <div className="size-2 mt-1.5 rounded-full bg-amber-500 shrink-0" />
+   494→                <div className="min-w-0">
+   495→                  <p className="text-sm text-slate-700"><span className="font-medium">{log.user?.name || 'Système'}</span> {log.action}</p>
+   496→                  <p className="text-xs text-slate-400">{fmtDate(log.createdAt)}</p>
+   497→                </div>
+   498→              </div>
+   499→            )) : <p className="text-sm text-slate-400">Aucune activité récente</p>}
+   500→          </CardContent>
+   501→        </Card>
+   502→      </div>
+   503→    </div>
+   504→  )
+   505→}
+   506→
+   507→// ==================== Clients View ====================
+   508→function ClientsView() {
+   509→  const { user } = useAppStore()
+   510→  const qc = useQueryClient()
+   511→  const [search, setSearch] = useState('')
+   512→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   513→  const [open, setOpen] = useState(false)
+   514→  const [editing, setEditing] = useState<Client | null>(null)
+   515→  const [form, setForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', notes: '' })
+   516→
+   517→  const { data: clients, isLoading } = useQuery<Client[]>({
+   518→    queryKey: ['clients', user?.tenantId, search, statusFilter],
+   519→    queryFn: () => {
+   520→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+   521→      if (search) p.set('search', search)
+   522→      if (statusFilter !== 'all') p.set('status', statusFilter)
+   523→      return fetch(`/api/clients?${p}`).then(r => r.json())
+   524→    },
+   525→    enabled: !!user?.tenantId
+   526→  })
+   527→
+   528→  const mutation = useMutation({
+   529→    mutationFn: async (body: Record<string, string>) => {
+   530→      if (editing) {
+   531→        return fetch(`/api/clients/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+   532→      }
+   533→      return fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId }) }).then(r => r.json())
+   534→    },
+   535→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success(editing ? 'Client modifié' : 'Client créé'); setOpen(false); setEditing(null) },
+   536→    onError: () => toast.error('Erreur lors de l\'enregistrement')
+   537→  })
+   538→
+   539→  const deleteMutation = useMutation({
+   540→    mutationFn: (id: string) => fetch(`/api/clients/${id}`, { method: 'DELETE' }),
+   541→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client supprimé') },
+   542→    onError: () => toast.error('Erreur lors de la suppression')
+   543→  })
+   544→
+   545→  const openCreate = () => { setEditing(null); setForm({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', notes: '' }); setOpen(true) }
+   546→  const openEdit = (c: Client) => { setEditing(c); setForm({ firstName: c.firstName, lastName: c.lastName, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '', notes: c.notes || '' }); setOpen(true) }
+   547→
+   548→  const handleSubmit = (e: React.FormEvent) => {
+   549→    e.preventDefault()
+   550→    if (!form.firstName || !form.lastName) { toast.error('Nom et prénom requis'); return }
+   551→    mutation.mutate(form)
+   552→  }
+   553→
+   554→  return (
+   555→    <div className="p-4 md:p-6 space-y-4">
+   556→      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+   557→        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+   558→          <div className="relative flex-1 sm:max-w-xs">
+   559→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+   560→            <Input placeholder="Rechercher un client..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+   561→          </div>
+   562→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   563→            <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Statut" /></SelectTrigger>
+   564→            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="active">Actif</SelectItem><SelectItem value="inactive">Inactif</SelectItem></SelectContent>
+   565→          </Select>
+   566→        </div>
+   567→        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Nouveau client</Button>
+   568→      </div>
+   569→
+   570→      {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div> : (
+   571→        <Card>
+   572→          <Table><TableHeader><TableRow>
+   573→            <TableHead>Nom complet</TableHead><TableHead className="hidden md:table-cell">Société</TableHead>
+   574→            <TableHead className="hidden lg:table-cell">Email</TableHead><TableHead className="hidden lg:table-cell">Téléphone</TableHead>
+   575→            <TableHead>Dossiers</TableHead><TableHead>Statut</TableHead><TableHead className="w-10"></TableHead>
+   576→          </TableRow></TableHeader><TableBody>
+   577→            {clients?.map(c => (
+   578→              <TableRow key={c.id}>
+   579→                <TableCell className="font-medium">{c.firstName} {c.lastName}</TableCell>
+   580→                <TableCell className="hidden md:table-cell">{c.company || '—'}</TableCell>
+   581→                <TableCell className="hidden lg:table-cell">{c.email || '—'}</TableCell>
+   582→                <TableCell className="hidden lg:table-cell">{c.phone || '—'}</TableCell>
+   583→                <TableCell>{c._count?.cases || 0}</TableCell>
+   584→                <TableCell><Badge variant={c.isActive ? 'default' : 'secondary'} className={c.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}>{c.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell>
+   585→                <TableCell>
+   586→                  <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+   587→                    <DropdownMenuContent align="end">
+   588→                      <DropdownMenuItem onClick={() => openEdit(c)}><Edit className="size-4 mr-2" />Modifier</DropdownMenuItem>
+   589→                      <DropdownMenuItem className="text-rose-600" onClick={() => deleteMutation.mutate(c.id)}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
+   590→                    </DropdownMenuContent>
+   591→                  </DropdownMenu>
+   592→                </TableCell>
+   593→              </TableRow>
+   594→            ))}
+   595→            {(!clients || clients.length === 0) && <TableRow><TableCell colSpan={7} className="text-center text-slate-400 py-8">Aucun client trouvé</TableCell></TableRow>}
+   596→          </TableBody></Table>
+   597→        </Card>
+   598→      )}
+   599→
+   600→      <Dialog open={open} onOpenChange={setOpen}>
+   601→        <DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? 'Modifier le client' : 'Nouveau client'}</DialogTitle>
+   602→          <DialogDescription>{editing ? 'Modifiez les informations du client' : 'Ajoutez un nouveau client'}</DialogDescription></DialogHeader>
+   603→          <form onSubmit={handleSubmit} className="space-y-4">
+   604→            <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Prénom *</Label><Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} required /></div>
+   605→              <div className="space-y-2"><Label>Nom *</Label><Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} required /></div></div>
+   606→            <div className="space-y-2"><Label>Société</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
+   607→            <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
+   608→              <div className="space-y-2"><Label>Téléphone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div></div>
+   609→            <div className="space-y-2"><Label>Adresse</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
+   610→            <div className="space-y-2"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
+   611→            <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+   612→              <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
+   613→          </form>
+   614→        </DialogContent>
+   615→      </Dialog>
+   616→    </div>
+   617→  )
+   618→}
+   619→
+   620→// ==================== Cases View ====================
+   621→function CasesView({ archiveMode = false }: { archiveMode?: boolean }) {
+   622→  const { user } = useAppStore()
+   623→  const qc = useQueryClient()
+   624→  const [search, setSearch] = useState('')
+   625→  const [statusFilter, setStatusFilter] = useState('all')
+   626→  const [typeFilter, setTypeFilter] = useState('all')
+   627→  const [priorityFilter, setPriorityFilter] = useState('all')
+   628→  const [open, setOpen] = useState(false)
+   629→  const [editing, setEditing] = useState<CaseItem | null>(null)
+   630→  const [expanded, setExpanded] = useState<string | null>(null)
+   631→  const [noteText, setNoteText] = useState('')
+   632→  const [form, setForm] = useState({ title: '', type: 'civil', priority: 'normal', status: 'nouveau', description: '', clientId: '', isSecret: false, assignedUserIds: '' as string })
+   633→
+   634→  const { data: clients } = useQuery<Client[]>({
+   635→    queryKey: ['clients-list', user?.tenantId], queryFn: () => fetch(`/api/clients?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+   636→  })
+   637→  const { data: users } = useQuery<UserItem[]>({
+   638→    queryKey: ['users-list', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+   639→  })
+   640→
+   641→  const statuses = archiveMode ? 'clos,archive' : ''
+   642→  const { data: cases, isLoading } = useQuery<CaseItem[]>({
+   643→    queryKey: ['cases', user?.tenantId, search, statusFilter, typeFilter, priorityFilter, archiveMode],
+   644→    queryFn: () => {
+   645→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+   646→      if (search) p.set('search', search)
+   647→      if (statusFilter !== 'all') p.set('status', statusFilter)
+   648→      else if (statuses) p.set('status', statuses)
+   649→      if (typeFilter !== 'all') p.set('type', typeFilter)
+   650→      if (priorityFilter !== 'all') p.set('priority', priorityFilter)
+   651→      return fetch(`/api/cases?${p}`).then(r => r.json())
+   652→    },
+   653→    enabled: !!user?.tenantId
+   654→  })
+   655→
+   656→  const mutation = useMutation({
+   657→    mutationFn: async (body: Record<string, unknown>) => {
+   658→      if (editing) {
+   659→        return fetch(`/api/cases/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+   660→      }
+   661→      return fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId }) }).then(r => r.json())
+   662→    },
+   663→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success(editing ? 'Dossier modifié' : 'Dossier créé'); setOpen(false); setEditing(null) },
+   664→    onError: () => toast.error('Erreur')
+   665→  })
+   666→
+   667→  const deleteMutation = useMutation({
+   668→    mutationFn: (id: string) => fetch(`/api/cases/${id}`, { method: 'DELETE' }),
+   669→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success('Dossier supprimé') },
+   670→    onError: () => toast.error('Erreur')
+   671→  })
+   672→
+   673→  const noteMutation = useMutation({
+   674→    mutationFn: ({ caseId, content }: { caseId: string; content: string }) =>
+   675→      fetch(`/api/cases/${caseId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, userId: user!.id, tenantId: user!.tenantId }) }).then(r => r.json()),
+   676→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); setNoteText(''); toast.success('Note ajoutée') },
+   677→    onError: () => toast.error('Erreur')
+   678→  })
+   679→
+   680→  const openCreate = () => { setEditing(null); setForm({ title: '', type: 'civil', priority: 'normal', status: 'nouveau', description: '', clientId: '', isSecret: false, assignedUserIds: '' }); setOpen(true) }
+   681→  const openEdit = (c: CaseItem) => {
+   682→    setEditing(c); setForm({
+   683→      title: c.title, type: c.type, priority: c.priority, status: c.status,
+   684→      description: c.description || '', clientId: c.clientId, isSecret: c.isSecret,
+   685→      assignedUserIds: c.assignments?.map(a => a.userId).join(',') || ''
+   686→    }); setOpen(true)
+   687→  }
+   688→  const handleSubmit = (e: React.FormEvent) => {
+   689→    e.preventDefault()
+   690→    if (!form.title || !form.clientId) { toast.error('Titre et client requis'); return }
+   691→    const assignedUserIds = form.assignedUserIds ? form.assignedUserIds.split(',') : []
+   692→    mutation.mutate({ ...form, assignedUserIds })
+   693→  }
+   694→
+   695→  const expandedCase = cases?.find(c => c.id === expanded)
+   696→
+   697→  return (
+   698→    <div className="p-4 md:p-6 space-y-4">
+   699→      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+   700→        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto flex-wrap">
+   701→          <div className="relative flex-1 sm:max-w-xs">
+   702→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+   703→            <Input placeholder="Rechercher un dossier..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+   704→          </div>
+   705→          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Statut" /></SelectTrigger>
+   706→            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
+   707→          <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Type" /></SelectTrigger>
+   708→            <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
+   709→          <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Priorité" /></SelectTrigger>
+   710→            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
+   711→        </div>
+   712→        {!archiveMode && <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Nouveau dossier</Button>}
+   713→      </div>
+   714→
+   715→      {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div> : (
+   716→        <div className="space-y-3">
+   717→          {cases?.map(c => (
+   718→            <Collapsible key={c.id} open={expanded === c.id} onOpenChange={(o) => setExpanded(o ? c.id : null)}>
+   719→              <Card className="hover:shadow-md transition-shadow">
+   720→                <CollapsibleTrigger asChild>
+   721→                  <div className="p-4 flex flex-col md:flex-row md:items-center gap-3 cursor-pointer">
+   722→                    <div className="flex-1 min-w-0">
+   723→                      <div className="flex items-center gap-2 flex-wrap">
+   724→                        <span className="text-xs text-slate-400 font-mono">{c.reference}</span>
+   725→                        {c.isSecret && <Lock className="size-3.5 text-amber-600" />}
+   726→                        <Badge className={STATUS_COLORS[c.status] || ''}>{STATUS_LABELS[c.status] || c.status}</Badge>
+   727→                        <Badge className={PRIORITY_COLORS[c.priority] || ''}>{PRIORITY_LABELS[c.priority] || c.priority}</Badge>
+   728→                      </div>
+   729→                      <p className="font-medium text-slate-900 mt-1 truncate">{c.title}</p>
+   730→                      <p className="text-sm text-slate-500">{c.client?.firstName} {c.client?.lastName} {c.client?.company ? `• ${c.client.company}` : ''}</p>
+   731→                    </div>
+   732→                    <div className="flex items-center gap-2 shrink-0">
+   733→                      <span className="text-xs text-slate-400">{TYPE_LABELS[c.type] || c.type}</span>
+   734→                      {c.nextDueDate && <span className="text-xs text-slate-500 flex items-center gap-1"><Clock className="size-3" />{fmtDate(c.nextDueDate)}</span>}
+   735→                      {!archiveMode && (
+   736→                        <DropdownMenu><DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+   737→                          <DropdownMenuContent align="end">
+   738→                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(c) }}><Edit className="size-4 mr-2" />Modifier</DropdownMenuItem>
+   739→                            <DropdownMenuItem className="text-rose-600" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(c.id) }}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
+   740→                          </DropdownMenuContent>
+   741→                        </DropdownMenu>
+   742→                      )}
+   743→                      <ChevronDown className={cn('size-4 text-slate-400 transition-transform', expanded === c.id && 'rotate-180')} />
+   744→                    </div>
+   745→                  </div>
+   746→                </CollapsibleTrigger>
+   747→                <CollapsibleContent>
+   748→                  {expandedCase && (
+   749→                    <div className="border-t border-slate-100 p-4 space-y-4">
+   750→                      {expandedCase.description && <p className="text-sm text-slate-600">{expandedCase.description}</p>}
+   751→                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+   752→                        {expandedCase.assignments?.map(a => (
+   753→                          <Badge key={a.id} variant="outline" className="text-xs">{a.user?.name || 'Avocat'}</Badge>
+   754→                        ))}
+   755→                      </div>
+   756→                      {expandedCase.documents && expandedCase.documents.length > 0 && (
+   757→                        <div><p className="text-xs font-medium text-slate-500 mb-2">Documents ({expandedCase.documents.length})</p>
+   758→                          <div className="flex flex-wrap gap-2">{expandedCase.documents.map(d => (
+   759→                            <Badge key={d.id} variant="outline" className="text-xs gap-1"><FileText className="size-3" />{d.name}</Badge>
+   760→                          ))}</div></div>
+   761→                      )}
+   762→                      <div>
+   763→                        <p className="text-xs font-medium text-slate-500 mb-2">Notes</p>
+   764→                        <div className="space-y-2 max-h-40 overflow-y-auto">
+   765→                          {expandedCase.notes?.map(n => (
+   766→                            <div key={n.id} className="bg-slate-50 rounded-lg p-2 text-sm"><p className="text-slate-700">{n.content}</p>
+   767→                              <p className="text-xs text-slate-400 mt-1">{n.user?.name || ''} — {fmtDate(n.createdAt)}</p></div>
+   768→                          ))}
+   769→                        </div>
+   770→                        {!archiveMode && (
+   771→                          <div className="flex gap-2 mt-2">
+   772→                            <Input placeholder="Ajouter une note..." value={noteText} onChange={e => setNoteText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && noteText.trim()) noteMutation.mutate({ caseId: expandedCase!.id, content: noteText.trim() }) }} className="text-sm" />
+   773→                            <Button size="icon" onClick={() => { if (noteText.trim()) noteMutation.mutate({ caseId: expandedCase!.id, content: noteText.trim() }) }} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Send className="size-4" /></Button>
+   774→                          </div>
+   775→                        )}
+   776→                      </div>
+   777→                    </div>
+   778→                  )}
+   779→                </CollapsibleContent>
+   780→              </Card>
+   781→            </Collapsible>
+   782→          ))}
+   783→          {(!cases || cases.length === 0) && <Card className="p-8 text-center text-slate-400">Aucun dossier trouvé</Card>}
+   784→        </div>
+   785→      )}
+   786→
+   787→      {!archiveMode && <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   788→        <DialogHeader><DialogTitle>{editing ? 'Modifier le dossier' : 'Nouveau dossier'}</DialogTitle>
+   789→          <DialogDescription>{editing ? 'Modifiez les informations' : 'Créez un nouveau dossier'}</DialogDescription></DialogHeader>
+   790→        <form onSubmit={handleSubmit} className="space-y-4">
+   791→          <div className="space-y-2"><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required /></div>
+   792→          <div className="grid grid-cols-2 gap-4">
+   793→            <div className="space-y-2"><Label>Type</Label><Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+   794→              <SelectContent><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select></div>
+   795→            <div className="space-y-2"><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+   796→              <SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
+   797→          </div>
+   798→          <div className="space-y-2"><Label>Statut</Label><Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+   799→            <SelectContent><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select></div>
+   800→          <div className="space-y-2"><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+   801→            <SelectContent>{clients?.map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}{c.company ? ` (${c.company})` : ''}</SelectItem>)}</SelectContent></Select></div>
+   802→          <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
+   803→          <div className="flex items-center gap-2"><Checkbox checked={form.isSecret} onCheckedChange={v => setForm(f => ({ ...f, isSecret: !!v }))} />
+   804→            <Label>Confidentiel (secret)</Label></div>
+   805→          <div className="space-y-2"><Label>Avocats assignés</Label><Select value={form.assignedUserIds} onValueChange={v => setForm(f => ({ ...f, assignedUserIds: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+   806→            <SelectContent>{users?.filter(u => u.role === 'lawyer' || u.role === 'firm_admin').map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
+   807→          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+   808→            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
+   809→        </form>
+   810→      </DialogContent></Dialog>}
+   811→    </div>
+   812→  )
+   813→}
+   814→
+   815→// ==================== Documents View ====================
+   816→function DocumentsView() {
+   817→  const { user } = useAppStore()
+   818→  const qc = useQueryClient()
+   819→  const [search, setSearch] = useState('')
+   820→  const [caseFilter, setCaseFilter] = useState('all')
+   821→  const [open, setOpen] = useState(false)
+   822→  const [form, setForm] = useState({ name: '', description: '', caseId: '' })
+   823→
+   824→  const { data: cases } = useQuery<CaseItem[]>({
+   825→    queryKey: ['cases-docs', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+   826→  })
+   827→  const { data: documents, isLoading } = useQuery<Doc[]>({
+   828→    queryKey: ['documents', user?.tenantId, search, caseFilter],
+   829→    queryFn: () => {
+   830→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+   831→      if (search) p.set('search', search)
+   832→      return fetch(`/api/documents?${p}`).then(r => r.json())
+   833→    },
+   834→    enabled: !!user?.tenantId
+   835→  })
+   836→
+   837→  const mutation = useMutation({
+   838→    mutationFn: (body: Record<string, string>) =>
+   839→      fetch('/api/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId, userId: user!.id, fileName: body.name, fileType: 'pdf', filePath: '/uploads/' + body.name, fileSize: 0 }) }).then(r => r.json()),
+   840→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success('Document ajouté'); setOpen(false) },
+   841→    onError: () => toast.error('Erreur')
+   842→  })
+   843→
+   844→  const deleteMutation = useMutation({
+   845→    mutationFn: (id: string) => fetch(`/api/documents/${id}`, { method: 'DELETE' }),
+   846→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success('Document supprimé') },
+   847→    onError: () => toast.error('Erreur')
+   848→  })
+   849→
+   850→  const filtered = caseFilter === 'all' ? documents : documents?.filter(d => d.caseId === caseFilter)
+   851→
+   852→  // Group by client > case
+   853→  const grouped = useMemo(() => {
+   854→    const map = new Map<string, { clientName: string; cases: { caseName: string; docs: Doc[] }[] }>()
+   855→    filtered?.forEach(d => {
+   856→      const clientName = d.case?.client ? `${d.case.client.firstName} ${d.case.client.lastName}` : 'Sans client'
+   857→      const caseName = d.case?.title || 'Sans dossier'
+   858→      const key = `${clientName}::${d.caseId || 'none'}`
+   859→      if (!map.has(key)) {
+   860→        map.set(key, { clientName, cases: [] })
+   861→      }
+   862→      const entry = map.get(key)!
+   863→      let caseEntry = entry.cases.find(c => c.caseName === caseName)
+   864→      if (!caseEntry) { caseEntry = { caseName, docs: [] }; entry.cases.push(caseEntry) }
+   865→      caseEntry.docs.push(d)
+   866→    })
+   867→    return map
+   868→  }, [filtered])
+   869→
+   870→  return (
+   871→    <div className="p-4 md:p-6 space-y-4">
+   872→      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+   873→        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+   874→          <div className="relative flex-1 sm:max-w-xs">
+   875→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+   876→            <Input placeholder="Rechercher un document..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+   877→          </div>
+   878→          <Select value={caseFilter} onValueChange={setCaseFilter}><SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Filtrer par dossier" /></SelectTrigger>
+   879→            <SelectContent><SelectItem value="all">Tous les dossiers</SelectItem>
+   880→              {cases?.map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select>
+   881→        </div>
+   882→        <Button onClick={() => { setForm({ name: '', description: '', caseId: '' }); setOpen(true) }} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"><Plus className="size-4" />Ajouter un document</Button>
+   883→      </div>
+   884→
+   885→      {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div> : (
+   886→        <div className="space-y-6">
+   887→          {Array.from(grouped.entries()).map(([key, group]) => (
+   888→            <div key={key}>
+   889→              <h3 className="font-medium text-slate-800 mb-2 flex items-center gap-2"><Users className="size-4" />{group.clientName}</h3>
+   890→              {group.cases.map((caseGroup, ci) => (
+   891→                <div key={ci} className="ml-4 mb-3">
+   892→                  <p className="text-sm text-slate-500 mb-2"><Briefcase className="size-3 inline mr-1" />{caseGroup.caseName}</p>
+   893→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   894→                    {caseGroup.docs.map(d => (
+   895→                      <Card key={d.id} className="hover:shadow-md transition-shadow">
+   896→                        <CardContent className="p-4 flex items-start gap-3">
+   897→                          <div className="p-2 rounded-lg bg-slate-100"><FileText className="size-5 text-slate-600" /></div>
+   898→                          <div className="flex-1 min-w-0">
+   899→                            <p className="text-sm font-medium text-slate-900 truncate">{d.name}</p>
+   900→                            <p className="text-xs text-slate-500">{d.fileType.toUpperCase()} • {fmtFileSize(d.fileSize)}</p>
+   901→                            <p className="text-xs text-slate-400">{fmtDate(d.createdAt)}</p>
+   902→                          </div>
+   903→                          <div className="flex gap-1 shrink-0">
+   904→                            <Button variant="ghost" size="icon" className="size-8"><Download className="size-3.5" /></Button>
+   905→                            <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => deleteMutation.mutate(d.id)}><Trash2 className="size-3.5" /></Button>
+   906→                          </div>
+   907→                        </CardContent>
+   908→                      </Card>
+   909→                    ))}
+   910→                  </div>
+   911→                </div>
+   912→              ))}
+   913→              <Separator className="mt-4" />
+   914→            </div>
+   915→          ))}
+   916→          {grouped.size === 0 && <Card className="p-8 text-center text-slate-400">Aucun document trouvé</Card>}
+   917→        </div>
+   918→      )}
+   919→
+   920→      <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg">
+   921→        <DialogHeader><DialogTitle>Ajouter un document</DialogTitle><DialogDescription>Enregistrez les métadonnées du document</DialogDescription></DialogHeader>
+   922→        <form onSubmit={e => { e.preventDefault(); if (!form.name) { toast.error('Nom requis'); return } mutation.mutate(form) }} className="space-y-4">
+   923→          <div className="space-y-2"><Label>Nom du document *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required /></div>
+   924→          <div className="space-y-2"><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+   925→            <SelectContent>{cases?.map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select></div>
+   926→          <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
+   927→          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+   928→            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : 'Ajouter'}</Button></DialogFooter>
+   929→        </form>
+   930→      </DialogContent></Dialog>
+   931→    </div>
+   932→  )
+   933→}
+   934→
+   935→// ==================== Calendar View ====================
+   936→function CalendarView() {
+   937→  const { user } = useAppStore()
+   938→  const qc = useQueryClient()
+   939→  const [currentMonth, setCurrentMonth] = useState(new Date())
+   940→  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+   941→  const [open, setOpen] = useState(false)
+   942→  const [form, setForm] = useState({ title: '', description: '', date: '', time: '', eventType: 'audience', criticality: 'normal', caseId: '', location: '', assignedUserIds: '' })
+   943→
+   944→  const monthStr = format(currentMonth, 'yyyy-MM')
+   945→  const { data: events, isLoading } = useQuery<EventItem[]>({
+   946→    queryKey: ['events', user?.tenantId, monthStr],
+   947→    queryFn: () => fetch(`/api/events?tenantId=${user!.tenantId}&month=${monthStr}`).then(r => r.json()),
+   948→    enabled: !!user?.tenantId
+   949→  })
+   950→  const { data: cases } = useQuery<CaseItem[]>({
+   951→    queryKey: ['cases-cal', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+   952→  })
+   953→  const { data: users } = useQuery<UserItem[]>({
+   954→    queryKey: ['users-cal', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+   955→  })
+   956→
+   957→  const mutation = useMutation({
+   958→    mutationFn: (body: Record<string, unknown>) =>
+   959→      fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId, assignedUserIds: body.assignedUserIds ? (body.assignedUserIds as string).split(',') : [] }) }).then(r => r.json()),
+   960→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['events'] }); toast.success('Événement créé'); setOpen(false) },
+   961→    onError: () => toast.error('Erreur')
+   962→  })
+   963→
+   964→  const days = useMemo(() => {
+   965→    const monthStart = startOfMonth(currentMonth)
+   966→    const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+   967→    const calEnd = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 })
+   968→    return eachDayOfInterval({ start: calStart, end: calEnd })
+   969→  }, [currentMonth])
+   970→
+   971→  const dayEvents = (day: Date) => events?.filter(e => isSameDay(parseISO(e.startTime), day)) || []
+   972→  const selectedDayEvents = selectedDay ? dayEvents(selectedDay) : []
+   973→
+   974→  const handleDayClick = (day: Date) => {
+   975→    setSelectedDay(day)
+   976→    setForm(f => ({ ...f, date: format(day, 'yyyy-MM-dd') }))
+   977→  }
+   978→
+   979→  const handleSubmit = (e: React.FormEvent) => {
+   980→    e.preventDefault()
+   981→    if (!form.title || !form.date) { toast.error('Titre et date requis'); return }
+   982→    mutation.mutate({ ...form, startTime: form.date + 'T' + (form.time || '09:00') + ':00.000Z' })
+   983→  }
+   984→
+   985→  const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+   986→
+   987→  return (
+   988→    <div className="p-4 md:p-6 space-y-4">
+   989→      <div className="flex items-center gap-3 flex-wrap">
+   990→        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}><ChevronLeft className="size-4" /></Button>
+   991→        <h2 className="text-lg font-semibold text-slate-900 capitalize min-w-[180px] text-center">{format(currentMonth, 'MMMM yyyy', { locale: fr })}</h2>
+   992→        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}><ChevronRight className="size-4" /></Button>
+   993→        <Button variant="outline" size="sm" onClick={() => { setCurrentMonth(new Date()); setSelectedDay(new Date()) }}>Aujourd'hui</Button>
+   994→        <Button className="bg-amber-600 hover:bg-amber-700 text-white ml-auto" onClick={() => { setForm({ title: '', description: '', date: selectedDay ? format(selectedDay, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'), time: '09:00', eventType: 'audience', criticality: 'normal', caseId: '', location: '', assignedUserIds: '' }); setOpen(true) }}>
+   995→          <Plus className="size-4" />Nouvel événement
+   996→        </Button>
+   997→      </div>
+   998→
+   999→      {isLoading ? <Skeleton className="h-96" /> : (
+  1000→        <div className="grid grid-cols-7 gap-px bg-slate-200 rounded-lg overflow-hidden border border-slate-200">
+  1001→          {weekDays.map(d => <div key={d} className="bg-slate-50 p-2 text-center text-xs font-medium text-slate-600">{d}</div>)}
+  1002→          {days.map(day => {
+  1003→            const evts = dayEvents(day)
+  1004→            const isCurrentMonth = isSameMonth(day, currentMonth)
+  1005→            return (
+  1006→              <div key={day.toISOString()} onClick={() => handleDayClick(day)}
+  1007→                className={cn('bg-white p-1.5 min-h-[80px] md:min-h-[100px] cursor-pointer hover:bg-slate-50 transition-colors',
+  1008→                  !isCurrentMonth && 'bg-slate-50',
+  1009→                  isToday(day) && 'bg-amber-50',
+  1010→                  selectedDay && isSameDay(day, selectedDay) && 'ring-2 ring-amber-500 ring-inset'
+  1011→                )}>
+  1012→                <span className={cn('text-xs font-medium',
+  1013→                  isCurrentMonth ? 'text-slate-900' : 'text-slate-400',
+  1014→                  isToday(day) && 'text-amber-600 font-bold'
+  1015→                )}>{format(day, 'd')}</span>
+  1016→                <div className="mt-1 space-y-0.5">
+  1017→                  {evts.slice(0, 2).map(ev => (
+  1018→                    <div key={ev.id} className={cn('text-[10px] leading-tight px-1 py-0.5 rounded truncate', CRIT_COLORS[ev.criticality] || 'bg-slate-200', 'text-slate-800')}>
+  1019→                      {ev.title}
+  1020→                    </div>
+  1021→                  ))}
+  1022→                  {evts.length > 2 && <p className="text-[10px] text-slate-400">+{evts.length - 2} autres</p>}
+  1023→                </div>
+  1024→              </div>
+  1025→            )
+  1026→          })}
+  1027→        </div>
+  1028→      )}
+  1029→
+  1030→      {selectedDay && (
+  1031→        <Card>
+  1032→          <CardHeader className="pb-2"><CardTitle className="text-base">{format(selectedDay, 'EEEE dd MMMM yyyy', { locale: fr })}</CardTitle></CardHeader>
+  1033→          <CardContent className="space-y-2">
+  1034→            {selectedDayEvents.length > 0 ? selectedDayEvents.map(ev => (
+  1035→              <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
+  1036→                <div className={cn('w-1.5 h-10 rounded-full shrink-0', CRIT_COLORS[ev.criticality] || 'bg-slate-300')} />
+  1037→                <div className="flex-1 min-w-0">
+  1038→                  <p className="text-sm font-medium text-slate-900">{ev.title}</p>
+  1039→                  <p className="text-xs text-slate-500">{EVENT_TYPE_LABELS[ev.eventType] || ev.eventType} • {format(parseISO(ev.startTime), 'HH:mm')}{ev.location ? ` • ${ev.location}` : ''}</p>
+  1040→                  {ev.case && <p className="text-xs text-slate-400">Dossier : {ev.case.reference}</p>}
+  1041→                </div>
+  1042→              </div>
+  1043→            )) : <p className="text-sm text-slate-400">Aucun événement ce jour</p>}
+  1044→          </CardContent>
+  1045→        </Card>
+  1046→      )}
+  1047→
+  1048→      <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg">
+  1049→        <DialogHeader><DialogTitle>Nouvel événement</DialogTitle><DialogDescription>Créez un événement au calendrier</DialogDescription></DialogHeader>
+  1050→        <form onSubmit={handleSubmit} className="space-y-4">
+  1051→          <div className="space-y-2"><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required /></div>
+  1052→          <div className="grid grid-cols-2 gap-4">
+  1053→            <div className="space-y-2"><Label>Date *</Label><Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></div>
+  1054→            <div className="space-y-2"><Label>Heure</Label><Input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} /></div>
+  1055→          </div>
+  1056→          <div className="grid grid-cols-2 gap-4">
+  1057→            <div className="space-y-2"><Label>Type</Label><Select value={form.eventType} onValueChange={v => setForm(f => ({ ...f, eventType: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+  1058→              <SelectContent><SelectItem value="audience">Audience</SelectItem><SelectItem value="rdv">Rendez-vous</SelectItem><SelectItem value="echeance">Échéance</SelectItem><SelectItem value="depot">Dépôt</SelectItem><SelectItem value="autre">Autre</SelectItem></SelectContent></Select></div>
+  1059→            <div className="space-y-2"><Label>Criticité</Label><Select value={form.criticality} onValueChange={v => setForm(f => ({ ...f, criticality: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+  1060→              <SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
+  1061→          </div>
+  1062→          <div className="space-y-2"><Label>Dossier lié</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
+  1063→            <SelectContent><SelectItem value="">Aucun</SelectItem>{cases?.map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select></div>
+  1064→          <div className="space-y-2"><Label>Lieu</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} /></div>
+  1065→          <div className="space-y-2"><Label>Personnes assignées</Label><Select value={form.assignedUserIds} onValueChange={v => setForm(f => ({ ...f, assignedUserIds: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+  1066→            <SelectContent>{users?.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
+  1067→          <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
+  1068→          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+  1069→            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : 'Créer'}</Button></DialogFooter>
+  1070→        </form>
+  1071→      </DialogContent></Dialog>
+  1072→    </div>
+  1073→  )
+  1074→}
+  1075→
+  1076→// ==================== Invoices View ====================
+  1077→function InvoicesView() {
+  1078→  const { user } = useAppStore()
+  1079→  const qc = useQueryClient()
+  1080→  const [search, setSearch] = useState('')
+  1081→  const [statusFilter, setStatusFilter] = useState('all')
+  1082→  const [open, setOpen] = useState(false)
+  1083→  const [form, setForm] = useState({ clientId: '', caseId: '', amount: '', currencyCode: 'XAF', dueDate: '', notes: '' })
+  1084→
+  1085→  const { data: clients } = useQuery<Client[]>({
+  1086→    queryKey: ['clients-inv', user?.tenantId], queryFn: () => fetch(`/api/clients?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+  1087→  })
+  1088→  const { data: cases } = useQuery<CaseItem[]>({
+  1089→    queryKey: ['cases-inv', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+  1090→  })
+  1091→  const { data: invoices, isLoading } = useQuery<Invoice[]>({
+  1092→    queryKey: ['invoices', user?.tenantId, search, statusFilter],
+  1093→    queryFn: () => {
+  1094→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+  1095→      if (search) p.set('search', search)
+  1096→      if (statusFilter !== 'all') p.set('status', statusFilter)
+  1097→      return fetch(`/api/invoices?${p}`).then(r => r.json())
+  1098→    },
+  1099→    enabled: !!user?.tenantId
+  1100→  })
+  1101→
+  1102→  const mutation = useMutation({
+  1103→    mutationFn: (body: Record<string, string>) =>
+  1104→      fetch('/api/invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user!.tenantId, amount: parseFloat(body.amount) || 0 }) }).then(r => r.json()),
+  1105→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture créée'); setOpen(false) },
+  1106→    onError: () => toast.error('Erreur')
+  1107→  })
+  1108→
+  1109→  const deleteMutation = useMutation({
+  1110→    mutationFn: (id: string) => fetch(`/api/invoices/${id}`, { method: 'DELETE' }),
+  1111→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture supprimée') },
+  1112→    onError: () => toast.error('Erreur')
+  1113→  })
+  1114→
+  1115→  const handleSubmit = (e: React.FormEvent) => {
+  1116→    e.preventDefault()
+  1117→    if (!form.clientId || !form.amount) { toast.error('Client et montant requis'); return }
+  1118→    mutation.mutate(form)
+  1119→  }
+  1120→
+  1121→  return (
+  1122→    <div className="p-4 md:p-6 space-y-4">
+  1123→      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+  1124→        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+  1125→          <div className="relative flex-1 sm:max-w-xs">
+  1126→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+  1127→            <Input placeholder="Rechercher une facture..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+  1128→          </div>
+  1129→          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Statut" /></SelectTrigger>
+  1130→            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent></Select>
+  1131→        </div>
+  1132→        <Button onClick={() => { setForm({ clientId: '', caseId: '', amount: '', currencyCode: 'XAF', dueDate: '', notes: '' }); setOpen(true) }} className="bg-amber-600 hover:bg-amber-700 text-white shrink-0">
+  1133→          <Plus className="size-4" />Nouvelle facture
+  1134→        </Button>
+  1135→      </div>
+  1136→
+  1137→      {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div> : (
+  1138→        <Card>
+  1139→          <div className="overflow-x-auto">
+  1140→            <Table><TableHeader><TableRow>
+  1141→              <TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead className="hidden md:table-cell">Dossier</TableHead>
+  1142→              <TableHead>Montant</TableHead><TableHead>Statut</TableHead><TableHead className="hidden lg:table-cell">Échéance</TableHead><TableHead className="w-10"></TableHead>
+  1143→            </TableRow></TableHeader><TableBody>
+  1144→              {invoices?.map(inv => (
+  1145→                <TableRow key={inv.id}>
+  1146→                  <TableCell className="font-mono text-xs">{inv.reference}</TableCell>
+  1147→                  <TableCell className="font-medium">{inv.client?.firstName} {inv.client?.lastName}</TableCell>
+  1148→                  <TableCell className="hidden md:table-cell">{inv.case?.reference || '—'}</TableCell>
+  1149→                  <TableCell className="font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell>
+  1150→                  <TableCell><Badge className={STATUS_COLORS[inv.status] || ''}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell>
+  1151→                  <TableCell className="hidden lg:table-cell">{fmtDate(inv.dueDate)}</TableCell>
+  1152→                  <TableCell>
+  1153→                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+  1154→                      <DropdownMenuContent align="end">
+  1155→                        <DropdownMenuItem className="text-rose-600" onClick={() => deleteMutation.mutate(inv.id)}><Trash2 className="size-4 mr-2" />Supprimer</DropdownMenuItem>
+  1156→                      </DropdownMenuContent>
+  1157→                    </DropdownMenu>
+  1158→                  </TableCell>
+  1159→                </TableRow>
+  1160→              ))}
+  1161→              {(!invoices || invoices.length === 0) && <TableRow><TableCell colSpan={7} className="text-center text-slate-400 py-8">Aucune facture trouvée</TableCell></TableRow>}
+  1162→            </TableBody></Table>
+  1163→          </div>
+  1164→        </Card>
+  1165→      )}
+  1166→
+  1167→      <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-lg">
+  1168→        <DialogHeader><DialogTitle>Nouvelle facture</DialogTitle><DialogDescription>Créez une facture pour un client</DialogDescription></DialogHeader>
+  1169→        <form onSubmit={handleSubmit} className="space-y-4">
+  1170→          <div className="space-y-2"><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+  1171→            <SelectContent>{clients?.map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}{c.company ? ` (${c.company})` : ''}</SelectItem>)}</SelectContent></Select></div>
+  1172→          <div className="space-y-2"><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
+  1173→            <SelectContent><SelectItem value="">Aucun</SelectItem>{cases?.filter(c => c.clientId === form.clientId).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} - {c.title}</SelectItem>)}</SelectContent></Select></div>
+  1174→          <div className="grid grid-cols-2 gap-4">
+  1175→            <div className="space-y-2"><Label>Montant *</Label><Input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required /></div>
+  1176→            <div className="space-y-2"><Label>Devise</Label><Select value={form.currencyCode} onValueChange={v => setForm(f => ({ ...f, currencyCode: v }))}><SelectTrigger><SelectValue /></SelectTrigger>
+  1177→              <SelectContent><SelectItem value="XAF">XAF</SelectItem><SelectItem value="XOF">XOF</SelectItem><SelectItem value="EUR">EUR</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></div>
+  1178→          </div>
+  1179→          <div className="space-y-2"><Label>Date d'échéance</Label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
+  1180→          <div className="space-y-2"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} /></div>
+  1181→          <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+  1182→            <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={mutation.isPending}>{mutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : 'Créer'}</Button></DialogFooter>
+  1183→        </form>
+  1184→      </DialogContent></Dialog>
+  1185→    </div>
+  1186→  )
+  1187→}
+  1188→
+  1189→// ==================== Messages View ====================
+  1190→function MessagesView() {
+  1191→  const { user } = useAppStore()
+  1192→  const qc = useQueryClient()
+  1193→  const [selectedContact, setSelectedContact] = useState<string | null>(null)
+  1194→  const [messageText, setMessageText] = useState('')
+  1195→  const [showContacts, setShowContacts] = useState(true)
+  1196→  const messagesEndRef = useRef<HTMLDivElement>(null)
+  1197→
+  1198→  const { data: messages, isLoading } = useQuery<Message[]>({
+  1199→    queryKey: ['messages', user?.tenantId, user?.id],
+  1200→    queryFn: () => fetch(`/api/messages?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
+  1201→    enabled: !!user?.tenantId,
+  1202→    refetchInterval: 5000
+  1203→  })
+  1204→
+  1205→  const sendMutation = useMutation({
+  1206→    mutationFn: (content: string) => fetch('/api/messages', {
+  1207→      method: 'POST', headers: { 'Content-Type': 'application/json' },
+  1208→      body: JSON.stringify({ content, senderId: user!.id, receiverId: selectedContact, tenantId: user!.tenantId })
+  1209→    }).then(r => r.json()),
+  1210→    onSuccess: () => { qc.invalidateQueries({ queryKey: ['messages'] }); setMessageText('') },
+  1211→    onError: () => toast.error('Erreur d\'envoi')
+  1212→  })
+  1213→
+  1214→  // Build contacts list (unique users from messages)
+  1215→  const contacts = useMemo(() => {
+  1216→    const map = new Map<string, { id: string; name: string; lastMessage: string; lastTime: string; unread: number }>()
+  1217→    messages?.forEach(m => {
+  1218→      const other = m.senderId === user?.id ? m.receiver : m.sender
+  1219→      if (!other) return
+  1220→      const existing = map.get(other.id)
+  1221→      if (!existing || new Date(m.createdAt) > new Date(existing.lastTime)) {
+  1222→        map.set(other.id, { id: other.id, name: other.name, lastMessage: m.content, lastTime: m.createdAt, unread: existing?.unread || 0 })
+  1223→      }
+  1224→      if (m.receiverId === user?.id && !m.isRead && m.senderId !== selectedContact) {
+  1225→        const e = map.get(other.id)
+  1226→        if (e) e.unread++
+  1227→      }
+  1228→    })
+  1229→    return Array.from(map.values()).sort((a, b) => new Date(b.lastTime).getTime() - new Date(a.lastTime).getTime())
+  1230→  }, [messages, user?.id, selectedContact])
+  1231→
+  1232→  const conversation = useMemo(() => {
+  1233→    if (!selectedContact || !messages) return []
+  1234→    return messages.filter(m =>
+  1235→      (m.senderId === selectedContact && m.receiverId === user?.id) ||
+  1236→      (m.receiverId === selectedContact && m.senderId === user?.id)
+  1237→    ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  1238→  }, [messages, selectedContact, user?.id])
+  1239→
+  1240→  const selectedContactName = contacts.find(c => c.id === selectedContact)?.name
+  1241→
+  1242→  // Mark messages as read
+  1243→  useEffect(() => {
+  1244→    if (!selectedContact || !messages) return
+  1245→    const unread = messages.filter(m => m.senderId === selectedContact && m.receiverId === user?.id && !m.isRead)
+  1246→    unread.forEach(m => {
+  1247→      fetch(`/api/messages/${m.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isRead: true }) })
+  1248→    })
+  1249→    if (unread.length > 0) qc.invalidateQueries({ queryKey: ['messages'] })
+  1250→  }, [selectedContact, messages, user?.id, qc])
+  1251→
+  1252→  // Scroll to bottom
+  1253→  useEffect(() => {
+  1254→    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  1255→  }, [conversation.length])
+  1256→
+  1257→  const handleSend = () => {
+  1258→    if (!messageText.trim() || !selectedContact) return
+  1259→    sendMutation.mutate(messageText.trim())
+  1260→  }
+  1261→
+  1262→  return (
+  1263→    <div className="h-[calc(100vh-8rem)] flex border border-slate-200 rounded-lg overflow-hidden">
+  1264→      {/* Contacts panel */}
+  1265→      <div className={cn('w-full md:w-80 border-r border-slate-200 flex flex-col bg-white',
+  1266→        !showContacts && 'hidden md:flex'
+  1267→      )}>
+  1268→        <div className="p-4 border-b border-slate-100">
+  1269→          <div className="relative">
+  1270→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+  1271→            <Input placeholder="Contacts..." className="pl-9 h-9" />
+  1272→          </div>
+  1273→        </div>
+  1274→        <ScrollArea className="flex-1">
+  1275→          {contacts.map(c => (
+  1276→            <button key={c.id} onClick={() => { setSelectedContact(c.id); setShowContacts(false) }}
+  1277→              className={cn('w-full flex items-center gap-3 p-4 text-left hover:bg-slate-50 transition-colors border-b border-slate-50',
+  1278→                selectedContact === c.id && 'bg-amber-50'
+  1279→              )}>
+  1280→              <Avatar className="size-10 shrink-0"><AvatarFallback className="bg-slate-200 text-slate-600 text-sm">{initials(c.name)}</AvatarFallback></Avatar>
+  1281→              <div className="flex-1 min-w-0">
+  1282→                <div className="flex items-center justify-between">
+  1283→                  <p className="text-sm font-medium text-slate-900 truncate">{c.name}</p>
+  1284→                  <span className="text-[10px] text-slate-400">{fmtDate(c.lastTime)}</span>
+  1285→                </div>
+  1286→                <p className="text-xs text-slate-500 truncate">{c.lastMessage}</p>
+  1287→              </div>
+  1288→              {c.unread > 0 && <span className="size-5 bg-amber-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0">{c.unread}</span>}
+  1289→            </button>
+  1290→          ))}
+  1291→          {contacts.length === 0 && <p className="text-sm text-slate-400 p-4 text-center">Aucune conversation</p>}
+  1292→        </ScrollArea>
+  1293→      </div>
+  1294→
+  1295→      {/* Chat panel */}
+  1296→      <div className={cn('flex-1 flex flex-col bg-slate-50', showContacts && 'hidden md:flex')}>
+  1297→        {selectedContact ? (
+  1298→          <>
+  1299→            <div className="p-4 bg-white border-b border-slate-200 flex items-center gap-3">
+  1300→              <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setShowContacts(true)}><ArrowLeft className="size-5" /></Button>
+  1301→              <Avatar className="size-8"><AvatarFallback className="bg-slate-200 text-slate-600 text-xs">{initials(selectedContactName || '')}</AvatarFallback></Avatar>
+  1302→              <span className="font-medium text-slate-900">{selectedContactName}</span>
+  1303→            </div>
+  1304→            <ScrollArea className="flex-1 p-4">
+  1305→              <div className="space-y-3 max-w-2xl mx-auto">
+  1306→                {isLoading ? [...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-48 rounded-2xl" />) :
+  1307→                  conversation.map(m => {
+  1308→                    const isMine = m.senderId === user?.id
+  1309→                    return (
+  1310→                      <div key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
+  1311→                        <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5',
+  1312→                          isMine ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-white text-slate-900 rounded-bl-md shadow-sm'
+  1313→                        )}>
+  1314→                          <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+  1315→                          <p className={cn('text-[10px] mt-1', isMine ? 'text-emerald-200' : 'text-slate-400')}>{format(parseISO(m.createdAt), 'HH:mm')}</p>
+  1316→                        </div>
+  1317→                      </div>
+  1318→                    )
+  1319→                  })
+  1320→                }
+  1321→                <div ref={messagesEndRef} />
+  1322→              </div>
+  1323→            </ScrollArea>
+  1324→            <div className="p-4 bg-white border-t border-slate-200">
+  1325→              <div className="flex gap-2 max-w-2xl mx-auto">
+  1326→                <Input placeholder="Écrire un message..." value={messageText} onChange={e => setMessageText(e.target.value)}
+  1327→                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }} className="flex-1" />
+  1328→                <Button onClick={handleSend} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={sendMutation.isPending || !messageText.trim()}>
+  1329→                  {sendMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
+  1330→                </Button>
+  1331→              </div>
+  1332→            </div>
+  1333→          </>
+  1334→        ) : (
+  1335→          <div className="flex-1 flex items-center justify-center text-slate-400">
+  1336→            <div className="text-center"><MessageSquare className="size-12 mx-auto mb-3 opacity-30" /><p className="text-sm">Sélectionnez une conversation</p></div>
+  1337→          </div>
+  1338→        )}
+  1339→      </div>
+  1340→    </div>
+  1341→  )
+  1342→}
+  1343→
+  1344→// ==================== Reports View ====================
+  1345→function ReportsView() {
+  1346→  const { user } = useAppStore()
+  1347→
+  1348→  const { data: invoices, isLoading } = useQuery<Invoice[]>({
+  1349→    queryKey: ['invoices-report', user?.tenantId], queryFn: () => fetch(`/api/invoices?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId
+  1350→  })
+  1351→
+  1352→  const stats = useMemo(() => {
+  1353→    if (!invoices) return { totalRevenue: 0, paidTotal: 0, unpaidTotal: 0, paidCount: 0, unpaidCount: 0, rate: 0 }
+  1354→    const paid = invoices.filter(i => i.status === 'paye')
+  1355→    const unpaid = invoices.filter(i => i.status === 'non_paye' || i.status === 'partiel')
+  1356→    const paidTotal = paid.reduce((s, i) => s + i.amount, 0)
+  1357→    const unpaidTotal = unpaid.reduce((s, i) => s + i.amount, 0)
+  1358→    return { totalRevenue: paidTotal, paidTotal, unpaidTotal, paidCount: paid.length, unpaidCount: unpaid.length, rate: invoices.length > 0 ? (paid.length / invoices.length) * 100 : 0 }
+  1359→  }, [invoices])
+  1360→
+  1361→  const monthlyData = useMemo(() => {
+  1362→    if (!invoices) return []
+  1363→    const map = new Map<string, number>()
+  1364→    invoices.filter(i => i.status === 'paye').forEach(i => {
+  1365→      const month = i.paidDate ? format(parseISO(i.paidDate), 'MMM yyyy', { locale: fr }) : format(parseISO(i.createdAt), 'MMM yyyy', { locale: fr })
+  1366→      map.set(month, (map.get(month) || 0) + i.amount)
+  1367→    })
+  1368→    return Array.from(map.entries()).map(([name, value]) => ({ name, value }))
+  1369→  }, [invoices])
+  1370→
+  1371→  const topClients = useMemo(() => {
+  1372→    if (!invoices) return []
+  1373→    const map = new Map<string, { name: string; total: number; count: number }>()
+  1374→    invoices.forEach(i => {
+  1375→      const name = i.client ? `${i.client.firstName} ${i.client.lastName}` : 'Inconnu'
+  1376→      const existing = map.get(name) || { name, total: 0, count: 0 }
+  1377→      existing.total += i.amount
+  1378→      existing.count++
+  1379→      map.set(name, existing)
+  1380→    })
+  1381→    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 10)
+  1382→  }, [invoices])
+  1383→
+  1384→  const kpis = [
+  1385→    { label: 'Total revenus', value: fmtMoney(stats.totalRevenue), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  1386→    { label: 'Factures payées', value: stats.paidCount.toString(), icon: FileCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  1387→    { label: 'Factures impayées', value: stats.unpaidCount.toString(), icon: FileWarning, color: 'text-rose-600', bg: 'bg-rose-50' },
+  1388→    { label: 'Taux de recouvrement', value: stats.rate.toFixed(1) + '%', icon: TrendingUp, color: 'text-amber-600', bg: 'bg-amber-50' },
+  1389→  ]
+  1390→
+  1391→  return (
+  1392→    <div className="p-4 md:p-6 space-y-6">
+  1393→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1394→        {kpis.map((kpi, i) => {
+  1395→          const Icon = kpi.icon
+  1396→          return <Card key={i}><CardContent className="p-4 flex items-center gap-4">
+  1397→            <div className={cn('p-3 rounded-lg', kpi.bg)}><Icon className={cn('size-6', kpi.color)} /></div>
+  1398→            <div><p className="text-2xl font-bold text-slate-900">{kpi.value}</p><p className="text-sm text-slate-500">{kpi.label}</p></div>
+  1399→          </CardContent></Card>
+  1400→        })}
+  1401→      </div>
+  1402→      <Card><CardHeader><CardTitle className="text-base">Revenus par mois</CardTitle></CardHeader>
+  1403→        <CardContent><div className="h-64"><ResponsiveContainer width="100%" height="100%">
+  1404→          <BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1405→            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+  1406→            <YAxis tick={{ fontSize: 11 }} />
+  1407→            <RechartsTooltip />
+  1408→            <Bar dataKey="value" fill="#059669" radius={[4, 4, 0, 0]} />
+  1409→          </BarChart>
+  1410→        </ResponsiveContainer></div></CardContent>
+  1411→      </Card>
+  1412→      <Card><CardHeader><CardTitle className="text-base">Top clients par facturation</CardTitle></CardHeader>
+  1413→        <CardContent>
+  1414→          {isLoading ? <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div> : (
+  1415→            <Table><TableHeader><TableRow><TableHead>Client</TableHead><TableHead>Factures</TableHead><TableHead className="text-right">Montant total</TableHead></TableRow></TableHeader>
+  1416→              <TableBody>{topClients.map((c, i) => (
+  1417→                <TableRow key={i}><TableCell className="font-medium">{c.name}</TableCell><TableCell>{c.count}</TableCell>
+  1418→                  <TableCell className="text-right font-medium">{fmtMoney(c.total)}</TableCell></TableRow>
+  1419→              ))}
+  1420→                {topClients.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-slate-400 py-8">Aucune donnée</TableCell></TableRow>}
+  1421→              </TableBody></Table>
+  1422→          )}
+  1423→        </CardContent>
+  1424→      </Card>
+  1425→    </div>
+  1426→  )
+  1427→}
+  1428→
+  1429→// ==================== Audit Logs View ====================
+  1430→function AuditLogsView() {
+  1431→  const { user } = useAppStore()
+  1432→  const [actionFilter, setActionFilter] = useState('all')
+  1433→  const [resourceFilter, setResourceFilter] = useState('all')
+  1434→
+  1435→  const { data: logs, isLoading } = useQuery<AuditLogItem[]>({
+  1436→    queryKey: ['audit-logs', user?.tenantId, actionFilter, resourceFilter],
+  1437→    queryFn: () => {
+  1438→      const p = new URLSearchParams({ tenantId: user!.tenantId })
+  1439→      if (actionFilter !== 'all') p.set('action', actionFilter)
+  1440→      if (resourceFilter !== 'all') p.set('resourceType', resourceFilter)
+  1441→      return fetch(`/api/audit-logs?${p}`).then(r => r.json())
+  1442→    },
+  1443→    enabled: !!user?.tenantId
+  1444→  })
+  1445→
+  1446→  return (
+  1447→    <div className="p-4 md:p-6 space-y-4">
+  1448→      <div className="flex flex-col sm:flex-row gap-3">
+  1449→        <div className="space-y-2"><Label className="text-xs">Action</Label>
+  1450→          <Select value={actionFilter} onValueChange={setActionFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Action" /></SelectTrigger>
+  1451→            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="CREATE">Création</SelectItem><SelectItem value="UPDATE">Modification</SelectItem><SelectItem value="DELETE">Suppression</SelectItem><SelectItem value="LOGIN">Connexion</SelectItem></SelectContent></Select></div>
+  1452→        <div className="space-y-2"><Label className="text-xs">Ressource</Label>
+  1453→          <Select value={resourceFilter} onValueChange={setResourceFilter}><SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Ressource" /></SelectTrigger>
+  1454→            <SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="User">Utilisateur</SelectItem></SelectContent></Select></div>
+  1455→      </div>
+  1456→      <Card>
+  1457→        {isLoading ? <div className="p-4 space-y-2">{[...Array(10)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div> : (
+  1458→          <div className="overflow-x-auto">
+  1459→            <Table><TableHeader><TableRow>
+  1460→              <TableHead>Date</TableHead><TableHead>Utilisateur</TableHead><TableHead>Action</TableHead>
+  1461→              <TableHead>Ressource</TableHead><TableHead className="hidden lg:table-cell">Détails</TableHead>
+  1462→            </TableRow></TableHeader><TableBody>
+  1463→              {logs?.slice(0, 50).map(log => (
+  1464→                <TableRow key={log.id}>
+  1465→                  <TableCell className="text-xs text-slate-500 whitespace-nowrap">{fmtDate(log.createdAt)}</TableCell>
+  1466→                  <TableCell className="text-sm font-medium">{log.user?.name || 'Système'}</TableCell>
+  1467→                  <TableCell><Badge variant="outline" className="text-xs">{log.action}</Badge></TableCell>
+  1468→                  <TableCell className="text-sm text-slate-600">{log.resourceType || '—'}</TableCell>
+  1469→                  <TableCell className="hidden lg:table-cell text-xs text-slate-400 max-w-[200px] truncate">{log.metadata ? JSON.stringify(JSON.parse(log.metadata)).slice(0, 80) : '—'}</TableCell>
+  1470→                </TableRow>
+  1471→              ))}
+  1472→              {(!logs || logs.length === 0) && <TableRow><TableCell colSpan={5} className="text-center text-slate-400 py-8">Aucun log trouvé</TableCell></TableRow>}
+  1473→            </TableBody></Table>
+  1474→          </div>
+  1475→        )}
+  1476→      </Card>
+  1477→    </div>
+  1478→  )
+  1479→}
+  1480→
+  1481→// ==================== Settings View ====================
+  1482→function SettingsView() {
+  1483→  const { user } = useAppStore()
+  1484→  const qc = useQueryClient()
+  1485→  const [name, setName] = useState(user?.name || '')
+  1486→  const [phone, setPhone] = useState(user?.phone || '')
+  1487→  const [saving, setSaving] = useState(false)
+  1488→
+  1489→  const { data: tenant } = useQuery<TenantItem>({
+  1490→    queryKey: ['tenant', user?.tenantId],
+  1491→    queryFn: () => fetch(`/api/tenants/${user!.tenantId}`).then(r => r.json()),
+  1492→    enabled: !!user?.tenantId
+  1493→  })
+  1494→
+  1495→  const { data: tenants } = useQuery<TenantItem[]>({
+  1496→    queryKey: ['tenants-all'],
+  1497→    queryFn: () => fetch('/api/tenants').then(r => r.json()),
+  1498→    enabled: user?.role === 'root_admin'
+  1499→  })
+  1500→
+  1501→  const { data: allUsers } = useQuery<UserItem[]>({
+  1502→    queryKey: ['users-all'],
+  1503→    queryFn: () => fetch('/api/users').then(r => r.json()),
+  1504→    enabled: user?.role === 'root_admin'
+  1505→  })
+  1506→
+  1507→  const handleSave = async () => {
+  1508→    if (!user?.id) return
+  1509→    setSaving(true)
+  1510→    try {
+  1511→      await fetch(`/api/users/${user.id}`, {
+  1512→        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+  1513→        body: JSON.stringify({ name, phone })
+  1514→      })
+  1515→      qc.invalidateQueries({ queryKey: ['users'] })
+  1516→      toast.success('Profil mis à jour')
+  1517→    } catch { toast.error('Erreur') }
+  1518→    setSaving(false)
+  1519→  }
+  1520→
+  1521→  const isAdmin = user?.role === 'firm_admin' || user?.role === 'root_admin'
+  1522→  const isRootAdmin = user?.role === 'root_admin'
+  1523→
+  1524→  return (
+  1525→    <div className="p-4 md:p-6 space-y-6 max-w-4xl">
+  1526→      <Card>
+  1527→        <CardHeader><CardTitle className="text-base">Profil utilisateur</CardTitle><CardDescription>Vos informations personnelles</CardDescription></CardHeader>
+  1528→        <CardContent className="space-y-4">
+  1529→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1530→            <div className="space-y-2"><Label>Nom complet</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
+  1531→            <div className="space-y-2"><Label>E-mail</Label><Input value={user?.email || ''} disabled /></div>
+  1532→            <div className="space-y-2"><Label>Téléphone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
+  1533→            <div className="space-y-2"><Label>Rôle</Label><Input value={ROLE_LABELS[user?.role || ''] || user?.role || ''} disabled /></div>
+  1534→          </div>
+  1535→          <Button onClick={handleSave} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving}>
+  1536→            {saving ? <RefreshCw className="size-4 animate-spin" /> : 'Enregistrer'}
+  1537→          </Button>
+  1538→        </CardContent>
+  1539→      </Card>
+  1540→
+  1541→      {isAdmin && tenant && (
+  1542→        <Card>
+  1543→          <CardHeader><CardTitle className="text-base">Informations du cabinet</CardTitle><CardDescription>Détails de votre organisation</CardDescription></CardHeader>
+  1544→          <CardContent>
+  1545→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1546→              <div><p className="text-xs text-slate-500">Nom</p><p className="text-sm font-medium">{tenant.name}</p></div>
+  1547→              <div><p className="text-xs text-slate-500">Plan</p><Badge variant="outline">{tenant.plan}</Badge></div>
+  1548→              <div><p className="text-xs text-slate-500">Utilisateurs</p><p className="text-sm font-medium">{tenant._count?.users || 0} / {tenant.maxUsers}</p></div>
+  1549→              <div><p className="text-xs text-slate-500">Stockage</p><p className="text-sm font-medium">{tenant.maxStorageGb} Go</p></div>
+  1550→            </div>
+  1551→          </CardContent>
+  1552→        </Card>
+  1553→      )}
+  1554→
+  1555→      {isRootAdmin && (
+  1556→        <Tabs defaultValue="tenants">
+  1557→          <TabsList><TabsTrigger value="tenants">Cabinets</TabsTrigger><TabsTrigger value="users">Utilisateurs</TabsTrigger></TabsList>
+  1558→          <TabsContent value="tenants">
+  1559→            <Card><CardHeader><CardTitle className="text-base">Tous les cabinets</CardTitle></CardHeader>
+  1560→              <CardContent><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Plan</TableHead><TableHead>Utilisateurs</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader>
+  1561→                <TableBody>{tenants?.map(t => (
+  1562→                  <TableRow key={t.id}><TableCell className="font-medium">{t.name}</TableCell><TableCell><Badge variant="outline">{t.plan}</Badge></TableCell>
+  1563→                    <TableCell>{t._count?.users || 0}</TableCell><TableCell><Badge className={t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}>{t.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
+  1564→                ))}</TableBody></Table></CardContent></Card>
+  1565→          </TabsContent>
+  1566→          <TabsContent value="users">
+  1567→            <Card><CardHeader><CardTitle className="text-base">Tous les utilisateurs</CardTitle></CardHeader>
+  1568→              <CardContent><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader>
+  1569→                <TableBody>{allUsers?.map(u => (
+  1570→                  <TableRow key={u.id}><TableCell className="font-medium">{u.name}</TableCell><TableCell>{u.email}</TableCell>
+  1571→                    <TableCell><Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>
+  1572→                    <TableCell><Badge className={u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}>{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
+  1573→                ))}</TableBody></Table></CardContent></Card>
+  1574→          </TabsContent>
+  1575→        </Tabs>
+  1576→      )}
+  1577→    </div>
+  1578→  )
+  1579→}
+  1580→
+  1581→// ==================== Archives View ====================
+  1582→function ArchivesView() {
+  1583→  return <CasesView archiveMode />
+  1584→}
+  1585→
+  1586→// ==================== Main Layout ====================
+  1587→function AppLayout() {
+  1588→  const { currentView, sidebarOpen, isAuthenticated } = useAppStore()
+  1589→
+  1590→  if (!isAuthenticated) return <LoginPage />
+  1591→
+  1592→  const renderView = () => {
+  1593→    switch (currentView) {
+  1594→      case 'dashboard': return <DashboardView />
+  1595→      case 'clients': return <ClientsView />
+  1596→      case 'cases': return <CasesView />
+  1597→      case 'documents': return <DocumentsView />
+  1598→      case 'calendar': return <CalendarView />
+  1599→      case 'invoices': return <InvoicesView />
+  1600→      case 'messages': return <MessagesView />
+  1601→      case 'reports': return <ReportsView />
+  1602→      case 'audit-logs': return <AuditLogsView />
+  1603→      case 'settings': return <SettingsView />
+  1604→      case 'archives': return <ArchivesView />
+  1605→      default: return <DashboardView />
+  1606→    }
+  1607→  }
+  1608→
+  1609→  return (
+  1610→    <div className="min-h-screen flex flex-col bg-slate-50">
+  1611→      <Sidebar />
+  1612→      <div className={cn('flex-1 flex flex-col transition-all duration-300',
+  1613→        sidebarOpen ? 'lg:ml-[280px]' : 'lg:ml-[72px]'
+  1614→      )}>
+  1615→        <Header />
+  1616→        <main className="flex-1">
+  1617→          <AnimatePresence mode="wait">
+  1618→            <motion.div key={currentView} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+  1619→              {renderView()}
+  1620→            </motion.div>
+  1621→          </AnimatePresence>
+  1622→        </main>
+  1623→        <footer className="mt-auto border-t border-slate-200 bg-white py-4 px-6 text-center">
+  1624→          <p className="text-xs text-slate-400">© 2025 JurisLink — Gestion Juridique Intelligente</p>
+  1625→        </footer>
+  1626→      </div>
+  1627→    </div>
+  1628→  )
+  1629→}
+  1630→
+  1631→// ==================== Page Component ====================
+  1632→export default function Home() {
+  1633→  return (
+  1634→    <QueryClientProvider client={queryClient}>
+  1635→      <AppLayout />
+  1636→      <Toaster position="top-right" richColors closeButton />
+  1637→    </QueryClientProvider>
+  1638→  )
+  1639→}
+  1640→
