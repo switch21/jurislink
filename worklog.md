@@ -340,3 +340,106 @@ Stage Summary:
 - Frontend: Dashboard financial comparison section added, version v2.1.0
 - Known limitation: OOM prevents adding more Prisma models beyond 15
 - Remaining objectifs.md items: MFA, mobile, WhatsApp, offline, AI integration (frontend)
+
+---
+Task ID: 3
+Agent: subagent
+Task: Update frontend mutations to use apiFetch with auth headers
+
+Work Log:
+- Replaced 15 POST/PUT/DELETE fetch calls with apiFetch
+- Removed redundant Content-Type headers (apiFetch adds them)
+- Verified lint: 0 errors
+
+Stage Summary:
+- All write operations now send x-user-id and x-tenant-id headers
+- RBAC enforcement active for all mutations
+
+---
+Task ID: 5
+Agent: subagent
+Task: Add auto audit log creation on CRUD operations
+
+Work Log:
+- Added createAuditLog import to 17 route files
+- Added audit logging after successful POST/PUT/DELETE operations
+- Skipped GET requests (read-only)
+- Verified lint: 0 errors
+
+Stage Summary:
+- All write operations now create audit log entries
+- Actions: *_CREATED, *_UPDATED, *_DELETED for cases, clients, tasks, documents, events, invoices, users, tenants, messages
+
+---
+Task ID: 6-a
+Agent: subagent
+Task: Add pagination to all list API routes
+
+Work Log:
+- Updated 9 API routes with page/limit query params
+- Each route returns { data, total, page, limit, totalPages }
+- Default limit=20, max=100
+- Verified lint: 0 errors
+
+Stage Summary:
+- All list endpoints now support pagination
+- Backward compatible: without page/limit params, returns first 20 items
+
+---
+Task ID: 6-b
+Agent: subagent
+Task: Update frontend to handle paginated API responses
+
+Work Log:
+- Added Pagination component with page navigation (ChevronLeft/ChevronRight, page numbers, ellipsis)
+- Updated all list queryFn to unwrap .data from responses (18 queries updated)
+- Search parallel fetches use Array.isArray(d) ? d : (d.data || d) pattern
+- Tasks query preserves backward compat with d.tasks || d.data || d
+- Added page state + totalPages state to 5 views: Tasks, Cases, Clients, Invoices, Audit Logs
+- Each paginated view sends page & limit=20 params and extracts totalPages from response
+- Filter changes reset page to 1 in all paginated views
+- Pagination UI rendered below list content, before dialogs
+- Verified lint: 0 errors
+
+Stage Summary:
+- Frontend now handles { data, total, page, limit, totalPages } responses
+- 5 views have pagination controls (Tasks, Cases, Clients, Invoices, Audit Logs)
+- Backward compatible with array responses via d.data || d fallback
+- Non-paginated endpoints unchanged (dashboard, notifications, messages count, case detail, tenant, currencies)
+
+---
+Task ID: 8
+Agent: subagent
+Task: Document file upload system — upload API, download API, frontend integration
+
+Work Log:
+- Created `/src/app/api/documents/upload/route.ts`:
+  - POST endpoint accepting FormData (file + metadata fields: name, folder, caseId, tags, description, tenantId)
+  - File validation: allowed MIME types (pdf, doc, docx, xls, xlsx, jpg, png, txt, zip, rar) + extension fallback regex, max 10MB
+  - File naming: `{tenantId}_{caseId or 'gen'}_{timestamp}_{safeFileName}`
+  - Saves to `/uploads/` directory (auto-creates via mkdir recursive)
+  - Creates Document record in DB via Prisma with all metadata + filePath
+  - RBAC protected via `withPermission('document', ..., 'create')`
+  - Audit log on upload (DOCUMENT_UPLOADED action)
+- Created `/src/app/api/documents/download/route.ts`:
+  - GET endpoint with `filePath` query param (relative path like `/uploads/xxx.pdf`)
+  - Security: resolves paths and verifies they stay within `uploads/` directory (path traversal prevention)
+  - Returns file with proper Content-Type (from extension MIME map), Content-Disposition (attachment), Content-Length, Cache-Control
+  - RBAC protected via `withPermission('document', ..., 'view')`
+- Updated DocumentsView in `src/app/page.tsx`:
+  - Added "Ajouter" button with create dialog
+  - Dialog has: file input (accepts allowed types), name, folder, case selector, tags (comma-separated), description
+  - Dual submit behavior: if file selected → FormData POST to `/api/documents/upload`; if no file → JSON POST to `/api/documents` (existing metadata-only behavior)
+  - File input sets placeholder for name field when file is selected
+  - Download button (Download icon with tooltip) on each document row that has a local filePath
+- Added `uploads/` to `.gitignore`
+
+Verification:
+- ESLint (`bun run lint`): 0 errors
+- TypeScript: no errors in new route files (pre-existing errors in payments routes and page.tsx unrelated)
+
+Stage Summary:
+- 2 new API route files (upload, download)
+- 1 existing view enhanced (DocumentsView with file upload dialog + download buttons)
+- Files stored locally in `uploads/` directory with tenant-prefixed names
+- Resolves known limitation: "No file upload to storage — metadata only" from original project status

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withPermission, enforceTenantIsolation } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withPermission('case', async (request, auth) => {
   try {
@@ -23,18 +24,24 @@ export const GET = withPermission('case', async (request, auth) => {
       ]
     }
 
-    const cases = await db.case.findMany({
-      where,
-      include: {
-        client: { select: { id: true, firstName: true, lastName: true } },
-        assignments: {
-          include: { user: { select: { id: true, name: true } } },
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
+    const [data, total] = await Promise.all([
+      db.case.findMany({
+        where,
+        include: {
+          client: { select: { id: true, firstName: true, lastName: true } },
+          assignments: {
+            include: { user: { select: { id: true, name: true } } },
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    })
-    return NextResponse.json(cases)
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.case.count({ where }),
+    ])
+    return NextResponse.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) })
   } catch (error) {
     console.error('List cases error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -62,6 +69,9 @@ export const POST = withPermission('case', async (request, auth) => {
         billingType: body.billingType,
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'CASE_CREATED', resourceType: 'case', resourceId: caze.id, metadata: { reference: caze.reference, title: caze.title } })
+    }
     return NextResponse.json(caze, { status: 201 })
   } catch (error) {
     console.error('Create case error:', error)

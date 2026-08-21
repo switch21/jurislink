@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withAuth, enforceTenantIsolation } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withAuth(async (request, auth) => {
   try {
@@ -22,15 +23,22 @@ export const GET = withAuth(async (request, auth) => {
       ]
     }
 
-    const messages = await db.message.findMany({
-      where,
-      include: {
-        sender: { select: { id: true, name: true, avatarUrl: true } },
-        receiver: { select: { id: true, name: true, avatarUrl: true } },
-      },
-      orderBy: { createdAt: 'asc' }, take: 200,
-    })
-    return NextResponse.json(messages)
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
+    const [data, total] = await Promise.all([
+      db.message.findMany({
+        where,
+        include: {
+          sender: { select: { id: true, name: true, avatarUrl: true } },
+          receiver: { select: { id: true, name: true, avatarUrl: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.message.count({ where }),
+    ])
+    return NextResponse.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) })
   } catch (error) {
     console.error('List messages error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -48,6 +56,9 @@ export const POST = withAuth(async (request, auth) => {
         receiverId: body.receiverId,
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'MESSAGE_SENT', resourceType: 'message', resourceId: message.id, metadata: { receiverId: message.receiverId } })
+    }
     return NextResponse.json(message, { status: 201 })
   } catch (error) {
     console.error('Send message error:', error)

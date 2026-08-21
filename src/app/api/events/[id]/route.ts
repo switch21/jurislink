@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withPermission } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withPermission('event', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -22,7 +23,7 @@ export const GET = withPermission('event', async (_request, _auth, { params }: {
   }
 })
 
-export const PUT = withPermission('event', async (request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const PUT = withPermission('event', async (request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const body = await request.json()
@@ -35,6 +36,9 @@ export const PUT = withPermission('event', async (request, _auth, { params }: { 
         eventType: body.eventType, criticality: body.criticality, location: body.location,
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'EVENT_UPDATED', resourceType: 'event', resourceId: id })
+    }
     return NextResponse.json(event)
   } catch (error) {
     console.error('Update event error:', error)
@@ -42,10 +46,13 @@ export const PUT = withPermission('event', async (request, _auth, { params }: { 
   }
 })
 
-export const DELETE = withPermission('event', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const DELETE = withPermission('event', async (_request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     await db.event.delete({ where: { id } })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'EVENT_DELETED', resourceType: 'event', resourceId: id })
+    }
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete event error:', error)

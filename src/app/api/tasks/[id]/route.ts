@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withPermission } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withPermission('task', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -24,7 +25,7 @@ export const GET = withPermission('task', async (_request, _auth, { params }: { 
   }
 })
 
-export const PUT = withPermission('task', async (request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const PUT = withPermission('task', async (request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const body = await request.json()
@@ -51,6 +52,9 @@ export const PUT = withPermission('task', async (request, _auth, { params }: { p
         event: { select: { id: true, title: true } },
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'TASK_UPDATED', resourceType: 'task', resourceId: id })
+    }
     return NextResponse.json(task)
   } catch (error) {
     console.error('Update task error:', error)
@@ -58,10 +62,13 @@ export const PUT = withPermission('task', async (request, _auth, { params }: { p
   }
 })
 
-export const DELETE = withPermission('task', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const DELETE = withPermission('task', async (_request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     await db.task.delete({ where: { id } })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'TASK_DELETED', resourceType: 'task', resourceId: id })
+    }
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete task error:', error)

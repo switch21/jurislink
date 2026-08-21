@@ -50,7 +50,7 @@ import {
   Building2, RefreshCw, TrendingUp, DollarSign, FileCheck, FileWarning, Activity,
   Sun, Moon, Inbox, FolderOpen, Scale, ClipboardList, Zap, AlertOctagon,
   ChevronUp, ExternalLink, Timer, Target, Flag, Folder, Tag, MapPin, Banknote, Gavel,
-  UserCheck, Check, CircleDot, ArrowUpRight, ArrowDownRight, Minus, AlertCircle, Wallet, Brain
+  UserCheck, Check, CircleDot, ArrowUpRight, ArrowDownRight, Minus, AlertCircle, Wallet, Brain, Printer
 } from 'lucide-react'
 
 // ==================== Types ====================
@@ -127,15 +127,64 @@ interface DashboardStats {
   urgentTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null; assigneeName: string | null }>;
   upcomingEventsEnhanced: Array<{ id: string; title: string; startTime: string; eventType: string; criticality: string; location?: string | null; caseReference: string | null; assignments: Array<{ userId: string; userName: string }> }>;
   myTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null }>;
+  financial?: Record<string, number | undefined>;
 }
 interface ConflictResult {
   type: string; case: { id: string; reference: string; title: string; clientName: string }; description: string;
 }
 interface CurrencyItem { id: string; code: string; name: string; symbol: string }
+interface PaymentItem { id: string; amount: number; method: string; status: string; invoiceId: string; receivedAt: string }
 
 
 // ==================== Query Client ====================
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } })
+
+// ==================== Session Timeout ====================
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
+const WARNING_BEFORE_MS = 5 * 60 * 1000 // warn 5 min before
+function useSessionTimeout(logout: () => void, isAuthenticated: boolean) {
+  const [showWarning, setShowWarning] = useState(false)
+  const [remaining, setRemaining] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const warningRef = useRef<ReturnType<typeof setInterval>>()
+  const lastActivity = useRef(Date.now())
+
+  const resetTimer = useCallback(() => {
+    lastActivity.current = Date.now()
+    setShowWarning(false)
+    if (warningRef.current) { clearInterval(warningRef.current); warningRef.current = undefined }
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      setShowWarning(true)
+      setRemaining(WARNING_BEFORE_MS / 1000)
+      warningRef.current = setInterval(() => {
+        const elapsed = Date.now() - lastActivity.current
+        const left = Math.max(0, Math.ceil((SESSION_TIMEOUT_MS - elapsed) / 1000))
+        setRemaining(left)
+        if (left <= 0) {
+          if (warningRef.current) clearInterval(warningRef.current)
+          logout()
+          toast.info('Session expirée — veuillez vous reconnecter')
+        }
+      }, 1000)
+    }, SESSION_TIMEOUT_MS - WARNING_BEFORE_MS)
+  }, [logout])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'] as const
+    const onActivity = () => { if (showWarning) resetTimer() }
+    events.forEach(e => window.addEventListener(e, onActivity, { passive: true }))
+    resetTimer()
+    return () => {
+      events.forEach(e => window.removeEventListener(e, onActivity))
+      if (timerRef.current) clearTimeout(timerRef.current)
+      if (warningRef.current) clearInterval(warningRef.current)
+    }
+  }, [isAuthenticated, showWarning, resetTimer])
+
+  return { showWarning, remaining, stayLoggedIn: resetTimer }
+}
 
 // ==================== API Helper (sends auth headers) ====================
 function getStoredUser() {
@@ -149,6 +198,27 @@ function apiFetch(url: string, opts: RequestInit = {}) {
   if (u?.tenantId) headers.set('x-tenant-id', u.tenantId)
   if (!headers.has('Content-Type') && opts.body) headers.set('Content-Type', 'application/json')
   return fetch(url, { ...opts, headers }).then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `Erreur ${r.status}`) }; return r })
+}
+
+// ==================== Pagination Component ====================
+function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
+  if (totalPages <= 1) return null
+  const pages: number[] = []
+  const start = Math.max(1, page - 2)
+  const end = Math.min(totalPages, page + 2)
+  for (let i = start; i <= end; i++) pages.push(i)
+  return (
+    <div className='flex items-center justify-between px-2 py-3 border-t'>
+      <span className='text-sm text-muted-foreground'>Page {page} sur {totalPages}</span>
+      <div className='flex items-center gap-1'>
+        <Button variant='outline' size='sm' disabled={page <= 1} onClick={() => onPageChange(page - 1)}><ChevronLeft className='h-4 w-4' /></Button>
+        {start > 1 && <><Button variant='outline' size='sm' onClick={() => onPageChange(1)}>1</Button>{start > 2 && <span className='px-1'>...</span>}</>}
+        {pages.map(p => <Button key={p} variant={p === page ? 'default' : 'outline'} size='sm' onClick={() => onPageChange(p)}>{p}</Button>)}
+        {end < totalPages && <>{end < totalPages - 1 && <span className='px-1'>...</span>}<Button variant='outline' size='sm' onClick={() => onPageChange(totalPages)}>{totalPages}</Button></>}
+        <Button variant='outline' size='sm' disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}><ChevronRight className='h-4 w-4' /></Button>
+      </div>
+    </div>
+  )
 }
 
 // ==================== Constants ====================
@@ -346,12 +416,36 @@ function Sidebar() {
 }
 
 // ==================== Header ====================
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "à l'instant"
+  if (mins < 60) return `il y a ${mins}min`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `il y a ${hours}h`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `il y a ${days}j`
+  return format(new Date(dateStr), 'd MMM', { locale: fr })
+}
+const NOTIF_CATS: Array<{key: string; label: string; icon: typeof Briefcase}> = [
+  { key: 'all', label: 'Tous', icon: Bell },
+  { key: 'dossier', label: 'Dossiers', icon: Briefcase },
+  { key: 'echeance', label: 'Échéances', icon: Clock },
+  { key: 'document', label: 'Docs', icon: FileText },
+  { key: 'facture', label: 'Factures', icon: Receipt },
+  { key: 'message', label: 'Messages', icon: MessageSquare },
+  { key: 'securite', label: 'Sécurité', icon: Shield },
+  { key: 'tache', label: 'Tâches', icon: ClipboardList },
+]
+const PRIORITY_DOT: Record<string, string> = { critical: 'bg-rose-500', urgent: 'bg-orange-500', warning: 'bg-amber-500', info: 'bg-slate-300' }
+
 function Header() {
   const { currentView, user, logout, setCurrentView } = useAppStore()
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchResults, setSearchResults] = useState<{type: string; label: string; sub: string; view: ViewName; id: string}[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
+  const [notifCat, setNotifCat] = useState('all')
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const viewLabel = NAV_ITEMS.find(n => n.view === currentView)?.label || 'JurisLink'
 
@@ -360,16 +454,16 @@ function Header() {
     try {
       const base = `tenantId=${user.tenantId}&search=${encodeURIComponent(q.trim())}`
       const [casesRes, clientsRes, invoicesRes, tasksRes] = await Promise.all([
-        fetch(`/api/cases?${base}`).then(r => r.json()).catch(() => []),
-        fetch(`/api/clients?${base}`).then(r => r.json()).catch(() => []),
-        fetch(`/api/invoices?${base}`).then(r => r.json()).catch(() => []),
-        fetch(`/api/tasks?${base}`).then(r => r.json()).catch(() => ({ tasks: [] })),
+        fetch(`/api/cases?${base}`).then(r => r.json()).then(d => Array.isArray(d) ? d : (d.data || d)).catch(() => []),
+        fetch(`/api/clients?${base}`).then(r => r.json()).then(d => Array.isArray(d) ? d : (d.data || d)).catch(() => []),
+        fetch(`/api/invoices?${base}`).then(r => r.json()).then(d => Array.isArray(d) ? d : (d.data || d)).catch(() => []),
+        fetch(`/api/tasks?${base}`).then(r => r.json()).then(d => Array.isArray(d) ? d : (d.data || d)).catch(() => []),
       ])
       const results: {type: string; label: string; sub: string; view: ViewName; id: string}[] = []
-      for (const c of (casesRes.cases || casesRes || [])) results.push({ type: 'Dossier', label: c.reference, sub: c.title, view: 'cases', id: c.id })
-      for (const c of (clientsRes.clients || clientsRes || [])) results.push({ type: 'Client', label: `${c.firstName} ${c.lastName}`, sub: c.company || c.email || '', view: 'clients', id: c.id })
-      for (const i of (invoicesRes.invoices || invoicesRes || [])) results.push({ type: 'Facture', label: i.reference, sub: fmtMoney(i.amount, i.currencyCode), view: 'invoices', id: i.id })
-      for (const t of (tasksRes.tasks || [])) results.push({ type: 'Tâche', label: t.title, sub: PRIORITY_LABELS[t.priority] || '', view: 'tasks', id: t.id })
+      for (const c of (casesRes || [])) results.push({ type: 'Dossier', label: c.reference, sub: c.title, view: 'cases', id: c.id })
+      for (const c of (clientsRes || [])) results.push({ type: 'Client', label: `${c.firstName} ${c.lastName}`, sub: c.company || c.email || '', view: 'clients', id: c.id })
+      for (const i of (invoicesRes || [])) results.push({ type: 'Facture', label: i.reference, sub: fmtMoney(i.amount, i.currencyCode), view: 'invoices', id: i.id })
+      for (const t of (tasksRes || [])) results.push({ type: 'Tâche', label: t.title, sub: PRIORITY_LABELS[t.priority] || '', view: 'tasks', id: t.id })
       setSearchResults(results.slice(0, 10))
     } catch { /* ignore */ }
   }, [user])
@@ -379,6 +473,7 @@ function Header() {
   const { data: notifs } = useQuery({ queryKey: ['notifications', user?.tenantId], queryFn: () => fetch(`/api/notifications?tenantId=${user!.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId, refetchInterval: 30000 })
   const { data: msgCount } = useQuery({ queryKey: ['msg-count', user?.id], queryFn: () => fetch(`/api/messages?tenantId=${user!.tenantId}`).then(r => r.json()).then(d => (d.messages || []).filter((m: Message) => m.receiverId === user!.id && !m.isRead).length), enabled: !!user?.tenantId, refetchInterval: 10000 })
   const unreadCount = (notifs?.notifications || []).filter((n: Notification) => !n.isRead).length
+  const filteredNotifs = (notifs?.notifications || []).filter((n: Notification) => notifCat === 'all' || n.category === notifCat)
 
   return (
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700/50">
@@ -401,7 +496,7 @@ function Header() {
         </div>
         <div className="flex items-center gap-1">
           <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="relative" onClick={() => { setCurrentView('messages') }}><MessageSquare className="size-5" />{msgCount ? <span className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center font-bold">{msgCount > 9 ? '9+' : msgCount}</span> : null}</Button></TooltipTrigger><TooltipContent>Messages</TooltipContent></Tooltip></TooltipProvider>
-          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="size-5" />{unreadCount ? <span className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span> : null}</Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto"><DropdownMenuLabel>Notifications ({unreadCount})</DropdownMenuLabel><DropdownMenuSeparator />{(notifs?.notifications || []).slice(0, 8).map((n: Notification) => (<DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 p-3 cursor-pointer" onClick={() => { const vmap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', tache: 'tasks', message: 'messages' }; setCurrentView(vmap[n.category] || 'dashboard'); setNotifOpen(false) }}><p className={cn('text-sm font-medium', !n.isRead && 'text-slate-900 dark:text-white')}>{n.title}</p><p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{n.message}</p></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>
+          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="size-5" />{unreadCount ? <span className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span> : null}</Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-96 max-h-[28rem] overflow-hidden flex flex-col p-0"><div className="px-3 pt-3 pb-2"><p className="text-sm font-semibold mb-2">Notifications {unreadCount > 0 && <span className="text-rose-500">({unreadCount} non lues)</span>}</p><div className="flex flex-wrap gap-1">{NOTIF_CATS.map(c => { const Icon = c.icon; return <button key={c.key} onClick={() => setNotifCat(c.key)} className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-colors', notifCat === c.key ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700')}><Icon className="size-3" />{c.label}</button> })}</div></div><DropdownMenuSeparator /><div className="overflow-y-auto flex-1">{filteredNotifs.length === 0 ? <p className="text-sm text-center text-slate-400 py-6">Aucune notification</p> : filteredNotifs.slice(0, 10).map((n: Notification) => { const CatIcon = NOTIF_CATS.find(c => c.key === n.category)?.icon || Bell; return <DropdownMenuItem key={n.id} className={cn('flex items-start gap-3 p-3 cursor-pointer', !n.isRead && 'bg-amber-50/50 dark:bg-amber-900/10')} onClick={() => { const vmap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', tache: 'tasks', message: 'messages' }; setCurrentView(vmap[n.category] || 'dashboard'); setNotifOpen(false) }}><div className="mt-0.5 shrink-0"><CatIcon className="size-4 text-slate-400" /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={cn('size-1.5 rounded-full shrink-0', PRIORITY_DOT[n.priority || 'info'])} /><p className={cn('text-sm truncate', !n.isRead ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400')}>{n.title}</p></div><p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">{n.message}</p><p className="text-[10px] text-slate-400 mt-1">{timeAgo(n.createdAt)}</p></div></DropdownMenuItem> })}</div></DropdownMenuContent></DropdownMenu>
           <ThemeToggle />
           <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><LogOut className="size-5 text-slate-500" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={logout} className="text-rose-600 cursor-pointer"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
         </div>
@@ -418,7 +513,7 @@ function DashboardView() {
     queryFn: () => fetch(`/api/dashboard?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
     enabled: !!user?.tenantId, refetchInterval: 60000
   })
-// finData comes from stats.financial
+  const finData = stats?.financial as Record<string, number | undefined> | null | undefined
   const { theme } = useTheme()
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Bonjour' : now.getHours() < 18 ? 'Bon après-midi' : 'Bonsoir'
@@ -529,45 +624,49 @@ function TasksView() {
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<TaskItem | null>(null)
   const [form, setForm] = useState({ title: '', description: '', priority: 'normal', dueDate: '', userId: '', caseId: '' })
 
   const { data: tasksData, isLoading } = useQuery({
-    queryKey: ['tasks', user?.tenantId, statusFilter, priorityFilter],
+    queryKey: ['tasks', user?.tenantId, statusFilter, priorityFilter, page],
     queryFn: () => {
       const p = new URLSearchParams()
       if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (statusFilter !== 'all') p.set('status', statusFilter)
       if (priorityFilter !== 'all') p.set('priority', priorityFilter)
-      return fetch(`/api/tasks?${p}`).then(r => r.json()).then(d => d.tasks || d)
+      p.set('page', String(page))
+      p.set('limit', '20')
+      return fetch(`/api/tasks?${p}`).then(r => r.json()).then(d => { if (d.totalPages) setTotalPages(d.totalPages); return d.tasks || d.data || d })
     },
   })
 
   const { data: users } = useQuery({
     queryKey: ['users', user?.tenantId],
-    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d),
   })
 
   const { data: cases } = useQuery({
     queryKey: ['cases-mini', user?.tenantId],
-    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d),
   })
 
   const createMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId, creatorId: user?.id }) }).then(r => r.json()),
+    mutationFn: (body: Record<string, unknown>) => apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify({ ...body, tenantId: user?.tenantId, creatorId: user?.id }) }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche créée'); setDialogOpen(false); resetForm() },
     onError: () => toast.error('Erreur lors de la création'),
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/tasks/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    mutationFn: ({ id, ...body }: Record<string, unknown>) => apiFetch(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche mise à jour') },
     onError: () => toast.error('Erreur lors de la mise à jour'),
   })
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    mutationFn: (id: string) => apiFetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche supprimée') },
     onError: () => toast.error('Erreur lors de la suppression'),
   })
@@ -595,7 +694,7 @@ function TasksView() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1) }}>
           <SelectTrigger className="w-[160px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les statuts</SelectItem>
@@ -604,7 +703,7 @@ function TasksView() {
             <SelectItem value="terminee">Terminée</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+        <Select value={priorityFilter} onValueChange={v => { setPriorityFilter(v); setPage(1) }}>
           <SelectTrigger className="w-[150px] h-9 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toutes les priorités</SelectItem>
@@ -648,6 +747,8 @@ function TasksView() {
           </TableBody></Table>
         </div></CardContent></Card>}
 
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+
       <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>{editing ? 'Modifier la tâche' : 'Nouvelle tâche'}</DialogTitle></DialogHeader>
@@ -678,6 +779,8 @@ function CasesView() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [editing, setEditing] = useState<CaseItem | null>(null)
@@ -686,7 +789,7 @@ function CasesView() {
   const [form, setForm] = useState({ title: '', description: '', type: 'civil', status: 'nouveau', priority: 'normal', clientId: '', reference: '', nextDueDate: '', adversary: '', jurisdiction: '', amountInDispute: '', billingType: '' })
 
   const { data: cases, isLoading } = useQuery({
-    queryKey: ['cases', user?.tenantId, statusFilter, typeFilter, priorityFilter, search],
+    queryKey: ['cases', user?.tenantId, statusFilter, typeFilter, priorityFilter, search, page],
     queryFn: () => {
       const p = new URLSearchParams()
       if (user?.tenantId) p.set('tenantId', user.tenantId)
@@ -694,13 +797,15 @@ function CasesView() {
       if (typeFilter !== 'all') p.set('type', typeFilter)
       if (priorityFilter !== 'all') p.set('priority', priorityFilter)
       if (search) p.set('search', search)
-      return fetch(`/api/cases?${p}`).then(r => r.json())
+      p.set('page', String(page))
+      p.set('limit', '20')
+      return fetch(`/api/cases?${p}`).then(r => r.json()).then(d => { if (d.totalPages) setTotalPages(d.totalPages); return d.data || d })
     },
   })
 
   const { data: clients } = useQuery({
     queryKey: ['clients-mini', user?.tenantId],
-    queryFn: () => fetch(`/api/clients?tenantId=${user?.tenantId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/clients?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d),
   })
 
   const { data: caseDetail } = useQuery({
@@ -713,18 +818,18 @@ function CasesView() {
     mutationFn: async (body: Record<string, unknown>) => {
       if (body.adversary && body.clientId) {
         try {
-          const conflictRes = await fetch('/api/conflicts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: user?.tenantId, clientId: body.clientId, adversary: body.adversary }) }).then(r => r.json())
+          const conflictRes = await apiFetch('/api/conflicts', { method: 'POST', body: JSON.stringify({ tenantId: user?.tenantId, clientId: body.clientId, adversary: body.adversary }) }).then(r => r.json())
           if (conflictRes.conflicts?.length > 0) setConflicts(conflictRes.conflicts)
         } catch { /* ignore */ }
       }
-      return fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+      return apiFetch('/api/cases', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json())
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success('Dossier créé'); setDialogOpen(false); resetForm() },
     onError: () => toast.error('Erreur lors de la création'),
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/cases/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    mutationFn: ({ id, ...body }: Record<string, unknown>) => apiFetch(`/api/cases/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); qc.invalidateQueries({ queryKey: ['case-detail'] }); toast.success('Dossier mis à jour') },
     onError: () => toast.error('Erreur lors de la mise à jour'),
   })
@@ -760,10 +865,10 @@ function CasesView() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-xs" /></div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
-        <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Type" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
+        <div className="relative flex-1 min-w-[200px] max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} className="pl-8 h-9 text-xs" /></div>
+        <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1) }}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
+        <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(1) }}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Type" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
+        <Select value={priorityFilter} onValueChange={v => { setPriorityFilter(v); setPage(1) }}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
       </div>
 
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
@@ -788,6 +893,8 @@ function CasesView() {
             </Card>
           ))}
         </div>}
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -876,34 +983,38 @@ function ClientsView() {
   const { user } = useAppStore()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [form, setForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', city: '', country: 'Cameroun', notes: '', clientType: 'particulier', niu: '', riskLevel: 'faible', source: '', isActive: true })
 
   const { data: clients, isLoading } = useQuery({
-    queryKey: ['clients', user?.tenantId, search],
+    queryKey: ['clients', user?.tenantId, search, page],
     queryFn: () => {
       const p = new URLSearchParams()
       if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (search) p.set('search', search)
-      return fetch(`/api/clients?${p}`).then(r => r.json())
+      p.set('page', String(page))
+      p.set('limit', '20')
+      return fetch(`/api/clients?${p}`).then(r => r.json()).then(d => { if (d.totalPages) setTotalPages(d.totalPages); return d.data || d })
     },
   })
 
   const createMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId }) }).then(r => r.json()),
+    mutationFn: (body: Record<string, unknown>) => apiFetch('/api/clients', { method: 'POST', body: JSON.stringify({ ...body, tenantId: user?.tenantId }) }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client créé'); setDialogOpen(false); resetForm() },
     onError: () => toast.error('Erreur lors de la création'),
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/clients/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    mutationFn: ({ id, ...body }: Record<string, unknown>) => apiFetch(`/api/clients/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client mis à jour'); setDialogOpen(false); resetForm() },
     onError: () => toast.error('Erreur lors de la mise à jour'),
   })
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => fetch(`/api/clients/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    mutationFn: (id: string) => apiFetch(`/api/clients/${id}`, { method: 'DELETE' }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client supprimé') },
     onError: () => toast.error('Erreur lors de la suppression'),
   })
@@ -923,7 +1034,7 @@ function ClientsView() {
         <Button onClick={() => { resetForm(); setDialogOpen(true) }} size="sm"><Plus className="size-4 mr-1" />Nouveau client</Button>
       </div>
 
-      <div className="relative max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-xs" /></div>
+      <div className="relative max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} className="pl-8 h-9 text-xs" /></div>
 
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         (clients || []).length === 0 ? <EmptyState icon={Users} title="Aucun client" description="Ajoutez votre premier client" /> :
@@ -958,6 +1069,8 @@ function ClientsView() {
             ))}
           </TableBody></Table>
         </div></CardContent></Card>}
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -997,11 +1110,15 @@ function ClientsView() {
 // ==================== DOCUMENTS VIEW ====================
 function DocumentsView() {
   const { user } = useAppStore()
+  const qc = useQueryClient()
   const [caseFilter, setCaseFilter] = useState('all')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [form, setForm] = useState({ name: '', folder: '', caseId: '', tags: '', description: '' })
 
   const { data: cases } = useQuery({
     queryKey: ['cases-mini-docs', user?.tenantId],
-    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d),
   })
 
   const { data: docs, isLoading } = useQuery({
@@ -1010,8 +1127,34 @@ function DocumentsView() {
       const p = new URLSearchParams()
       if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (caseFilter !== 'all') p.set('caseId', caseFilter)
-      return fetch(`/api/documents?${p}`).then(r => r.json())
+      return fetch(`/api/documents?${p}`).then(r => r.json()).then(d => d.data || d)
     },
+  })
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      if (selectedFile) {
+        // Upload with file
+        const fd = new FormData()
+        fd.append('file', selectedFile)
+        if (form.name) fd.append('name', form.name)
+        if (form.folder) fd.append('folder', form.folder)
+        if (form.caseId) fd.append('caseId', form.caseId)
+        if (form.tags) fd.append('tags', form.tags)
+        if (form.description) fd.append('description', form.description)
+        fd.append('tenantId', user?.tenantId || '')
+        const u = JSON.parse(localStorage.getItem('jurislink-user') || '{}')
+        const headers: Record<string, string> = {}
+        if (u?.id) headers['x-user-id'] = u.id
+        if (u?.tenantId) headers['x-tenant-id'] = u.tenantId
+        return fetch('/api/documents/upload', { method: 'POST', headers, body: fd }).then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Erreur') }); return r.json() })
+      } else {
+        // Metadata only (existing behavior)
+        return apiFetch('/api/documents', { method: 'POST', body: JSON.stringify({ ...form, tenantId: user?.tenantId, caseId: form.caseId || undefined }) }).then(r => r.json())
+      }
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success(selectedFile ? 'Document téléversé' : 'Document créé'); setDialogOpen(false); setForm({ name: '', folder: '', caseId: '', tags: '', description: '' }); setSelectedFile(null) },
+    onError: (e: Error) => toast.error(e.message || 'Erreur'),
   })
 
   const grouped = useMemo(() => {
@@ -1026,7 +1169,10 @@ function DocumentsView() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Documents</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Documents</h2>
+        <Button size="sm" className="text-xs" onClick={() => setDialogOpen(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button>
+      </div>
       <Select value={caseFilter} onValueChange={setCaseFilter}>
         <SelectTrigger className="w-[220px] h-9 text-xs"><SelectValue placeholder="Filtrer par dossier" /></SelectTrigger>
         <SelectContent><SelectItem value="all">Tous les dossiers</SelectItem>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent>
@@ -1050,12 +1196,41 @@ function DocumentsView() {
                       </div>
                     </div>
                     <span className="text-[10px] text-slate-400 shrink-0">{fmtDate(d.createdAt)}</span>
+                    {d.filePath && !d.filePath.startsWith('http') && (
+                      <TooltipProvider><Tooltip><TooltipTrigger asChild>
+                        <a href={`/api/documents/download?filePath=${encodeURIComponent(d.filePath)}`} download className="shrink-0 p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                          <Download className="size-4" />
+                        </a>
+                      </TooltipTrigger><TooltipContent>Télécharger</TooltipContent></Tooltip></TooltipProvider>
+                    )}
                   </div>
                 ))}
               </CardContent>
             </Card>
           ))}
         </div>}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Ajouter un document</DialogTitle><DialogDescription>Remplissez les métadonnées et optionnellement joignez un fichier.</DialogDescription></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Fichier</Label>
+              <Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt,.zip,.rar" onChange={e => setSelectedFile(e.target.files?.[0] || null)} className="text-xs" />
+              <p className="text-[10px] text-slate-400 mt-1">PDF, Word, Excel, Images, TXT, ZIP, RAR — max 10 Mo</p>
+            </div>
+            <div><Label>Nom</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder={selectedFile?.name || 'Nom du document'} className="text-sm" /></div>
+            <div><Label>Dossier</Label><Input value={form.folder} onChange={e => setForm(f => ({ ...f, folder: e.target.value }))} placeholder="Ex: Contrats, Assignations" className="text-sm" /></div>
+            <div><Label>Dossier juridique</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger className="text-sm"><SelectValue placeholder="Lier à un dossier" /></SelectTrigger><SelectContent><SelectItem value="">Aucun</SelectItem>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label>Tags (séparés par des virgules)</Label><Input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="contrat,urgent" className="text-sm" /></div>
+            <div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="text-sm" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending}>{createMut.isPending ? '...' : selectedFile ? 'Téléverser' : 'Créer'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1068,7 +1243,7 @@ function CalendarView() {
 
   const { data: events, isLoading } = useQuery({
     queryKey: ['events', user?.tenantId, monthStr],
-    queryFn: () => fetch(`/api/events?tenantId=${user?.tenantId}&month=${monthStr}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/events?tenantId=${user?.tenantId}&month=${monthStr}`).then(r => r.json()).then(d => d.data || d),
   })
 
   const days = useMemo(() => {
@@ -1121,21 +1296,36 @@ function CalendarView() {
 }
 
 // ==================== INVOICES VIEW ====================
+function printInvoice(invId: string) {
+  const u = getStoredUser()
+  const headers: Record<string, string> = {}
+  if (u?.id) headers['x-user-id'] = u.id
+  if (u?.tenantId) headers['x-tenant-id'] = u.tenantId
+  fetch(`/api/invoices/${invId}/print`, { headers }).then(r => r.json()).then(d => {
+    const w = window.open('', '_blank')
+    if (!w) { toast.error('Popup bloqué'); return }
+    w.document.write(`<!DOCTYPE html><html><head><title>Facture ${d.invoice.reference}</title><style>body{font-family:Inter,system-ui,sans-serif;max-width:800px;margin:0 auto;padding:40px;color:#1e293b}h1{font-size:24px;margin:0}h2{font-size:18px;color:#64748b;margin:20px 0 10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:14px}th{background:#f8fafc;font-weight:600}.total-row{font-weight:700;border-top:2px solid #1e293b}.right{text-align:right}@media print{body{padding:20px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h1>${d.firm.name}</h1>${d.firm.address ? `<p>${d.firm.address}</p>` : ''}${d.firm.phone ? `<p>Tél: ${d.firm.phone}</p>` : ''}${d.firm.email ? `<p>${d.firm.email}</p>` : ''}</div><div style="text-align:right"><h2>FACTURE</h2><p><strong>${d.invoice.reference}</strong></p><p>${d.invoice.type === 'devis' ? 'Devis' : d.invoice.type === 'avoir' ? 'Avoir' : d.invoice.type === 'recu' ? 'Reçu' : 'Facture'}</p><p>${d.invoice.createdAt ? new Date(d.invoice.createdAt).toLocaleDateString('fr-FR') : ''}</p></div></div><hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0"/><div class="grid"><div><h2>Client</h2><p><strong>${d.client.name}</strong></p>${d.client.company ? `<p>${d.client.company}</p>` : ''}${d.client.address ? `<p>${d.client.address}</p>` : ''}${d.client.city ? `<p>${d.client.city}${d.client.country ? ', ' + d.client.country : ''}</p>` : ''}${d.client.niu ? `<p>NIU: ${d.client.niu}</p>` : ''}${d.client.email ? `<p>${d.client.email}</p>` : ''}</div><div><h2>Dossier</h2>${d.invoice.caseReference ? `<p>${d.invoice.caseReference} — ${d.invoice.caseTitle || ''}</p>` : '<p>—</p>'}</div></div><table><thead><tr><th>#</th><th>Description</th><th class="right">Montant</th></tr></thead><tbody>${d.lineItems.map(li => `<tr><td>${li.index}</td><td>${li.description}</td><td class="right">${Number(li.amount).toLocaleString('fr-FR')} ${d.invoice.currencyCode}</td></tr>`).join('')}<tr class="total-row"><td colspan="2">Total HT</td><td class="right">${d.tax.htTotal.toLocaleString('fr-FR')} ${d.invoice.currencyCode}</td></tr><tr><td colspan="2">TVA (${d.tax.tvaRatePercent})</td><td class="right">${d.tax.tvaAmount.toLocaleString('fr-FR')} ${d.invoice.currencyCode}</td></tr><tr class="total-row"><td colspan="2">Total TTC</td><td class="right">${d.tax.ttcTotal.toLocaleString('fr-FR')} ${d.invoice.currencyCode}</td></tr></tbody></table>${d.invoice.dueDate ? `<p>Échéance: <strong>${new Date(d.invoice.dueDate).toLocaleDateString('fr-FR')}</strong></p>` : ''}<p>Statut: <strong>${d.invoice.status === 'paye' ? 'Payée' : d.invoice.status === 'partiel' ? 'Partiellement payée' : d.invoice.status === 'non_paye' ? 'Non payée' : d.invoice.status}</strong></p>${d.payment.paidAmount > 0 ? `<p>Montant payé: ${d.payment.paidAmount.toLocaleString('fr-FR')} ${d.invoice.currencyCode}</p><p>Reste à payer: ${d.payment.remainingAmount.toLocaleString('fr-FR')} ${d.invoice.currencyCode}</p>` : ''}<hr style="margin:30px 0;border:none;border-top:1px solid #e2e8f0"/><p style="text-align:center;color:#94a3b8;font-size:12px">Généré par JurisLink V2 — ${new Date().toLocaleDateString('fr-FR')}</p><script>window.onload=()=>window.print()</script></body></html>`)
+    w.document.close()
+  }).catch(() => toast.error('Erreur lors de l\'impression'))
+}
+
 function InvoicesView() {
   const { user, setCurrentView } = useAppStore()
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [payDialogOpen, setPayDialogOpen] = useState(false)
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null)
   const [payForm, setPayForm] = useState({ amount: '', method: 'virement', notes: '' })
 
-  const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices', user?.tenantId, statusFilter], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); return fetch(`/api/invoices?${p}`).then(r => r.json()) } })
+  const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices', user?.tenantId, statusFilter, page], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); p.set('page', String(page)); p.set('limit', '20'); return fetch(`/api/invoices?${p}`).then(r => r.json()).then(d => { if (d.totalPages) setTotalPages(d.totalPages); return d.data || d }) } })
 
-  const { data: payments } = useQuery({ queryKey: ['payments-all', user?.tenantId], queryFn: () => fetch(`/api/payments?tenantId=${user?.tenantId}`).then(r => r.json()) })
+  const { data: payments } = useQuery({ queryKey: ['payments-all', user?.tenantId], queryFn: () => fetch(`/api/payments?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d) })
 
-  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/invoices/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Facture mise à jour') }, onError: () => toast.error('Erreur') })
+  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => apiFetch(`/api/invoices/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Facture mise à jour') }, onError: () => toast.error('Erreur') })
 
-  const payMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Paiement enregistré'); setPayDialogOpen(false); setPayForm({ amount: '', method: 'virement', notes: '' }) }, onError: () => toast.error('Erreur') })
+  const payMut = useMutation({ mutationFn: (body: Record<string, unknown>) => apiFetch('/api/payments', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Paiement enregistré'); setPayDialogOpen(false); setPayForm({ amount: '', method: 'virement', notes: '' }) }, onError: () => toast.error('Erreur') })
 
   const markStatus = (inv: Invoice, newStatus: string) => {
     const data: Record<string, unknown> = { id: inv.id, status: newStatus }
@@ -1151,14 +1341,16 @@ function InvoicesView() {
   return (
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Factures</h2><Button size="sm" variant="outline" className="text-xs" onClick={() => setCurrentView('finances')}><Wallet className="size-3.5 mr-1" />Paiements</Button></div>
-      <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous les statuts</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent></Select>
+      <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1) }}><SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous les statuts</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent></Select>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         (invoices || []).length === 0 ? <EmptyState icon={Receipt} title="Aucune facture" /> :
         <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
-          <Table><TableHeader><TableRow><TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead>Montant</TableHead><TableHead className="hidden md:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Payé</TableHead><TableHead className="w-44">Actions</TableHead></TableRow></TableHeader><TableBody>
-            {(invoices || []).map((inv: Invoice, i: number) => { const pmts = getInvPayments(inv.id); return (<TableRow key={inv.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}><TableCell className="font-medium text-sm">{inv.reference}</TableCell><TableCell className="text-sm text-slate-500 dark:text-slate-400">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell><TableCell className="text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm"><span className={invPayTotal(inv.id) >= inv.amount ? 'text-emerald-600 font-medium' : 'text-amber-600'}>{fmtMoney(invPayTotal(inv.id), inv.currencyCode)}</span>{pmts.length > 0 && <span className="text-xs text-slate-400 ml-1">({pmts.length})</span>}</TableCell><TableCell><div className="flex gap-1 flex-wrap">{(inv.status === 'non_paye' || inv.status === 'partiel') && <><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'paye')}>Payée</Button><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'partiel')}>Partielle</Button><Button size="sm" className="text-[10px] h-7" onClick={() => openPayDialog(inv)}><Banknote className="size-3 mr-1" />Paiement</Button></>}{pmts.length > 0 && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><ChevronDown className="size-3" /></Button></DropdownMenuTrigger><DropdownMenuContent className="w-64 max-h-48 overflow-y-auto"><DropdownMenuLabel className="text-xs">Paiements ({pmts.length})</DropdownMenuLabel><DropdownMenuSeparator />{pmts.map((p: PaymentItem) => (<DropdownMenuItem key={p.id} className="text-xs flex flex-col items-start gap-0.5"><span className="font-medium">{fmtMoney(p.amount)} — {METHOD_LABELS[p.method] || p.method}</span><span className="text-slate-400">{fmtDate(p.receivedAt)}</span></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>}</div></TableCell></TableRow>) })}
+          <Table><TableHeader><TableRow><TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead>Montant</TableHead><TableHead className="hidden md:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Payé</TableHead><TableHead className="w-52">Actions</TableHead></TableRow></TableHeader><TableBody>
+            {(invoices || []).map((inv: Invoice, i: number) => { const pmts = getInvPayments(inv.id); return (<TableRow key={inv.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}><TableCell className="font-medium text-sm">{inv.reference}</TableCell><TableCell className="text-sm text-slate-500 dark:text-slate-400">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell><TableCell className="text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm"><span className={invPayTotal(inv.id) >= inv.amount ? 'text-emerald-600 font-medium' : 'text-amber-600'}>{fmtMoney(invPayTotal(inv.id), inv.currencyCode)}</span>{pmts.length > 0 && <span className="text-xs text-slate-400 ml-1">({pmts.length})</span>}</TableCell><TableCell><div className="flex gap-1 flex-wrap"><TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="size-7" onClick={() => printInvoice(inv.id)}><Printer className="size-3.5" /></Button></TooltipTrigger><TooltipContent>Imprimer</TooltipContent></Tooltip></TooltipProvider>{(inv.status === 'non_paye' || inv.status === 'partiel') && <><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'paye')}>Payée</Button><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'partiel')}>Partielle</Button><Button size="sm" className="text-[10px] h-7" onClick={() => openPayDialog(inv)}><Banknote className="size-3 mr-1" />Paiement</Button></>}{pmts.length > 0 && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><ChevronDown className="size-3" /></Button></DropdownMenuTrigger><DropdownMenuContent className="w-64 max-h-48 overflow-y-auto"><DropdownMenuLabel className="text-xs">Paiements ({pmts.length})</DropdownMenuLabel><DropdownMenuSeparator />{pmts.map((p: PaymentItem) => (<DropdownMenuItem key={p.id} className="text-xs flex flex-col items-start gap-0.5"><span className="font-medium">{fmtMoney(p.amount)} — {METHOD_LABELS[p.method] || p.method}</span><span className="text-slate-400">{fmtDate(p.receivedAt)}</span></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>}</div></TableCell></TableRow>) })}
           </TableBody></Table>
         </div></CardContent></Card>}
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}><DialogContent><DialogHeader><DialogTitle>Enregistrer un paiement</DialogTitle><DialogDescription>{payInvoice?.reference} — {payInvoice?.client ? `${payInvoice.client.firstName} ${payInvoice.client.lastName}` : ''}</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Montant</Label><Input type="number" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} /></div><div><Label>Mode</Label><Select value={payForm.method} onValueChange={v => setPayForm(f => ({ ...f, method: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="virement">Virement</SelectItem><SelectItem value="especes">Espèces</SelectItem><SelectItem value="mobile_money">Mobile Money</SelectItem><SelectItem value="carte">Carte</SelectItem></SelectContent></Select></div><div><Label>Notes</Label><Textarea value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div></div><DialogFooter><Button variant="outline" onClick={() => setPayDialogOpen(false)}>Annuler</Button><Button onClick={() => payMut.mutate({ amount: parseFloat(payForm.amount), method: payForm.method, notes: payForm.notes, tenantId: user?.tenantId, invoiceId: payInvoice?.id, clientId: payInvoice?.clientId, userId: user?.id, status: 'valide', validatedBy: user?.id, validatedAt: new Date().toISOString() })} disabled={!payForm.amount || parseFloat(payForm.amount) <= 0}>{payMut.isPending ? '...' : 'Enregistrer'}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
@@ -1174,7 +1366,7 @@ function MessagesView() {
 
   const { data: contacts } = useQuery({
     queryKey: ['users-contacts', user?.tenantId],
-    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d),
   })
 
   const { data: messages } = useQuery({
@@ -1184,13 +1376,13 @@ function MessagesView() {
       if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (user?.id) p.set('userId', user.id)
       if (selectedContact) p.set('contactId', selectedContact)
-      return fetch(`/api/messages?${p}`).then(r => r.json())
+      return fetch(`/api/messages?${p}`).then(r => r.json()).then(d => d.data || d)
     },
     refetchInterval: 5000,
   })
 
   const sendMut = useMutation({
-    mutationFn: (content: string) => fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, tenantId: user?.tenantId, senderId: user?.id, receiverId: selectedContact }) }).then(r => r.json()),
+    mutationFn: (content: string) => apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ content, tenantId: user?.tenantId, senderId: user?.id, receiverId: selectedContact }) }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['messages'] }); setNewMessage('') },
     onError: () => toast.error("Erreur d'envoi"),
   })
@@ -1256,7 +1448,7 @@ function ReportsView() {
 
   const { data: invoices } = useQuery({
     queryKey: ['invoices-report', user?.tenantId],
-    queryFn: () => fetch(`/api/invoices?tenantId=${user?.tenantId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/invoices?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d),
   })
 
   const stats = useMemo(() => {
@@ -1333,15 +1525,19 @@ function ReportsView() {
 function AuditLogsView() {
   const { user } = useAppStore()
   const [resourceType, setResourceType] = useState('all')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const isAdmin = user?.role === 'root_admin' || user?.role === 'firm_admin' || user?.role === 'associate'
 
   const { data: logs, isLoading } = useQuery({
-    queryKey: ['audit-logs', user?.tenantId, resourceType],
+    queryKey: ['audit-logs', user?.tenantId, resourceType, page],
     queryFn: () => {
       const p = new URLSearchParams()
       if (user?.tenantId) p.set('tenantId', user.tenantId)
       if (resourceType !== 'all') p.set('resourceType', resourceType)
-      return fetch(`/api/audit-logs?${p}`).then(r => r.json())
+      p.set('page', String(page))
+      p.set('limit', '20')
+      return fetch(`/api/audit-logs?${p}`).then(r => r.json()).then(d => { if (d.totalPages) setTotalPages(d.totalPages); return d.data || d })
     },
     enabled: isAdmin,
   })
@@ -1351,7 +1547,7 @@ function AuditLogsView() {
   return (
     <div className="p-4 md:p-6 space-y-4">
       <h2 className="text-lg font-semibold">Journal d'audit</h2>
-      <Select value={resourceType} onValueChange={setResourceType}>
+      <Select value={resourceType} onValueChange={v => { setResourceType(v); setPage(1) }}>
         <SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue placeholder="Type de ressource" /></SelectTrigger>
         <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="User">Utilisateur</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="Task">Tâche</SelectItem></SelectContent>
       </Select>
@@ -1377,6 +1573,8 @@ function AuditLogsView() {
             ))}
           </TableBody></Table>
         </div></CardContent></Card>}
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   )
 }
@@ -1401,7 +1599,7 @@ function SettingsView() {
 
   const { data: usersList } = useQuery({
     queryKey: ['settings-users', user?.tenantId],
-    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()).then(d => d.data || d),
     enabled: isAdmin,
   })
 
@@ -1412,19 +1610,19 @@ function SettingsView() {
   })
 
   const updateProfile = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch(`/api/users/${user?.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    mutationFn: (body: Record<string, unknown>) => apiFetch(`/api/users/${user?.id}`, { method: 'PUT', body: JSON.stringify(body) }).then(r => r.json()),
     onSuccess: () => { toast.success('Profil mis à jour'); qc.invalidateQueries({ queryKey: ['tenant'] }) },
     onError: () => toast.error('Erreur'),
   })
 
   const createUserMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    mutationFn: (body: Record<string, unknown>) => apiFetch('/api/users', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json()),
     onSuccess: () => { toast.success('Utilisateur créé'); qc.invalidateQueries({ queryKey: ['settings-users'] }); setShowNewUser(false); setNewUser({ name: '', email: '', role: 'lawyer', password: '' }) },
     onError: () => toast.error('Erreur lors de la création'),
   })
 
   const createCurrencyMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/currencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    mutationFn: (body: Record<string, unknown>) => apiFetch('/api/currencies', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json()),
     onSuccess: () => { toast.success('Devise ajoutée'); qc.invalidateQueries({ queryKey: ['currencies'] }); setShowNewCurrency(false); setNewCurrency({ code: '', name: '', symbol: '' }) },
     onError: () => toast.error('Erreur'),
   })
@@ -1481,7 +1679,7 @@ function ArchivesView() {
 
   const { data: cases, isLoading } = useQuery({
     queryKey: ['archived-cases', user?.tenantId],
-    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}&status=archive`).then(r => r.json()),
+    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}&status=archive`).then(r => r.json()).then(d => d.data || d),
   })
 
   return (
@@ -1537,7 +1735,8 @@ function DashboardRouter() {
 
 // ==================== MAIN APP ====================
 export default function App() {
-  const { isAuthenticated, currentView } = useAppStore()
+  const { isAuthenticated, currentView, logout } = useAppStore()
+  const { showWarning, remaining, stayLoggedIn } = useSessionTimeout(logout, isAuthenticated)
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -1553,6 +1752,20 @@ export default function App() {
           </>}
         </div>
           <Toaster richColors position='top-right' />
+          {showWarning && (
+            <Dialog open={showWarning} onOpenChange={() => {}}>
+              <DialogContent className='sm:max-w-md' onPointerDownOutside={e => e.preventDefault()}>
+                <DialogHeader>
+                  <DialogTitle className='flex items-center gap-2'><Timer className='h-5 w-5 text-amber-500' /> Session expire bientôt</DialogTitle>
+                  <DialogDescription>Votre session va expirer dans <span className='font-bold text-amber-600'>{remaining}</span> secondes pour cause d'inactivité.</DialogDescription>
+                </DialogHeader>
+                <DialogFooter className='gap-2 sm:gap-0'>
+                  <Button variant='outline' onClick={logout}>Se déconnecter</Button>
+                  <Button onClick={stayLoggedIn}>Rester connecté</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </TooltipProvider>
     </QueryClientProvider>

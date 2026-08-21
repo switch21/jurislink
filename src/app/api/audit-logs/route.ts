@@ -15,12 +15,19 @@ export const GET = withPermission('audit', async (request, auth) => {
     if (action) where.action = action
     if (resourceType) where.resourceType = resourceType
 
-    const auditLogs = await db.auditLog.findMany({
-      where,
-      include: { user: { select: { id: true, name: true, email: true } } },
-      orderBy: { createdAt: 'desc' }, take: 100,
-    })
-    return NextResponse.json(auditLogs)
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
+    const [data, total] = await Promise.all([
+      db.auditLog.findMany({
+        where,
+        include: { user: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.auditLog.count({ where }),
+    ])
+    return NextResponse.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) })
   } catch (error) {
     console.error('List audit logs error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

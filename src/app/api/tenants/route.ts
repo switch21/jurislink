@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withPermission } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withPermission('setting', async () => {
   try {
@@ -15,7 +16,7 @@ export const GET = withPermission('setting', async () => {
   }
 })
 
-export const POST = withPermission('setting', async (request) => {
+export const POST = withPermission('setting', async (request, auth) => {
   try {
     const body = await request.json()
     const tenant = await db.tenant.create({
@@ -25,6 +26,9 @@ export const POST = withPermission('setting', async (request) => {
         maxUsers: body.maxUsers, maxStorageGb: body.maxStorageGb,
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'TENANT_CREATED', resourceType: 'tenant', resourceId: tenant.id, metadata: { name: tenant.name } })
+    }
     return NextResponse.json(tenant, { status: 201 })
   } catch (error) {
     console.error('Create tenant error:', error)

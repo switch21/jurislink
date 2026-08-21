@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { withPermission } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withPermission('user', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -24,7 +25,7 @@ export const GET = withPermission('user', async (_request, _auth, { params }: { 
   }
 })
 
-export const PUT = withPermission('user', async (request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const PUT = withPermission('user', async (request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const body = await request.json()
@@ -41,6 +42,9 @@ export const PUT = withPermission('user', async (request, _auth, { params }: { p
         lastLoginAt: true, mfaEnabled: true, createdAt: true, updatedAt: true, tenantId: true,
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'USER_UPDATED', resourceType: 'user', resourceId: id })
+    }
     return NextResponse.json(user)
   } catch (error) {
     console.error('Update user error:', error)
@@ -48,10 +52,13 @@ export const PUT = withPermission('user', async (request, _auth, { params }: { p
   }
 })
 
-export const DELETE = withPermission('user', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const DELETE = withPermission('user', async (_request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     await db.user.delete({ where: { id } })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'USER_DELETED', resourceType: 'user', resourceId: id })
+    }
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete user error:', error)

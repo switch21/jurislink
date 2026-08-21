@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withPermission } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withPermission('case', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -13,7 +14,10 @@ export const GET = withPermission('case', async (_request, _auth, { params }: { 
         assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
         notes: { include: { user: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } },
         documents: { orderBy: { createdAt: 'desc' } },
-        events: { include: { assignments: { include: { user: { select: { id: true, name: true } } } }, orderBy: { startTime: 'desc' } },
+        events: {
+          include: { assignments: { include: { user: { select: { id: true, name: true } } } } },
+          orderBy: { startTime: 'desc' },
+        },
       },
     })
     if (!caze) {
@@ -26,7 +30,7 @@ export const GET = withPermission('case', async (_request, _auth, { params }: { 
   }
 })
 
-export const PUT = withPermission('case', async (request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const PUT = withPermission('case', async (request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const body = await request.json()
@@ -52,6 +56,9 @@ export const PUT = withPermission('case', async (request, _auth, { params }: { p
         billingType: body.billingType,
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'CASE_UPDATED', resourceType: 'case', resourceId: id })
+    }
     return NextResponse.json(caze)
   } catch (error) {
     console.error('Update case error:', error)
@@ -59,10 +66,13 @@ export const PUT = withPermission('case', async (request, _auth, { params }: { p
   }
 })
 
-export const DELETE = withPermission('case', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
+export const DELETE = withPermission('case', async (_request, auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     await db.case.delete({ where: { id } })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'CASE_DELETED', resourceType: 'case', resourceId: id })
+    }
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete case error:', error)

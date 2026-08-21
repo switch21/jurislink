@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { withPermission, enforceTenantIsolation } from '@/lib/rbac'
+import { createAuditLog } from '@/lib/auditLog'
 
 export const GET = withPermission('event', async (request, auth) => {
   try {
@@ -21,16 +22,22 @@ export const GET = withPermission('event', async (request, auth) => {
       where.assignments = { some: { userId } }
     }
 
-    const events = await db.event.findMany({
-      where,
-      include: {
-        assignments: { include: { user: { select: { id: true, name: true } } } },
-        case: { select: { id: true, reference: true, title: true } },
-      },
-      orderBy: { startTime: 'asc' },
-      take: 200,
-    })
-    return NextResponse.json(events)
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
+    const [data, total] = await Promise.all([
+      db.event.findMany({
+        where,
+        include: {
+          assignments: { include: { user: { select: { id: true, name: true } } } },
+          case: { select: { id: true, reference: true, title: true } },
+        },
+        orderBy: { startTime: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.event.count({ where }),
+    ])
+    return NextResponse.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) })
   } catch (error) {
     console.error('List events error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -49,6 +56,9 @@ export const POST = withPermission('event', async (request, auth) => {
         tenantId: auth.tenantId ?? body.tenantId, caseId: body.caseId,
       },
     })
+    if (auth.userId !== '__readonly__') {
+      createAuditLog({ tenantId: auth.tenantId!, userId: auth.userId, action: 'EVENT_CREATED', resourceType: 'event', resourceId: event.id, metadata: { title: event.title } })
+    }
     return NextResponse.json(event, { status: 201 })
   } catch (error) {
     console.error('Create event error:', error)

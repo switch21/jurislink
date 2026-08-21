@@ -58,4 +58,5 @@ tool-results/
 /db/
 agent-ctx/
 download/
+uploads/
 dev.log
