@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission, enforceTenantIsolation } from '@/lib/rbac'
 
-export async function GET(request: Request) {
+export const GET = withPermission('invoice', async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
-    const tenantId = searchParams.get('tenantId')
     const status = searchParams.get('status')
     const clientId = searchParams.get('clientId')
 
     const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    enforceTenantIsolation(auth, where)
     if (status) where.status = status
     if (clientId) where.clientId = clientId
 
@@ -27,24 +27,19 @@ export async function GET(request: Request) {
     console.error('List invoices error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withPermission('invoice', async (request, auth) => {
   try {
     const body = await request.json()
     const invoice = await db.invoice.create({
       data: {
-        reference: body.reference,
-        amount: body.amount,
-        status: body.status,
+        reference: body.reference, amount: body.amount, status: body.status,
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
         paidDate: body.paidDate ? new Date(body.paidDate) : null,
-        paidAmount: body.paidAmount,
-        notes: body.notes,
-        tenantId: body.tenantId,
-        clientId: body.clientId,
-        caseId: body.caseId,
-        currencyCode: body.currencyCode,
+        paidAmount: body.paidAmount, notes: body.notes, paymentMethod: body.paymentMethod,
+        tenantId: auth.tenantId ?? body.tenantId, clientId: body.clientId,
+        caseId: body.caseId, currencyCode: body.currencyCode,
       },
     })
     return NextResponse.json(invoice, { status: 201 })
@@ -52,4 +47,4 @@ export async function POST(request: Request) {
     console.error('Create invoice error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

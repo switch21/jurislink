@@ -325,6 +325,18 @@ model AuditLog {
 
 
 
+// ==================== PERMISSION ====================
+model Permission {
+  id       String @id @default(cuid())
+  role     String
+  resource String
+  action   String
+  allowed  Boolean @default(false)
+
+  @@unique([role, resource, action])
+  @@index([role])
+}
+
 // ==================== CURRENCY ====================
 model Currency {
   id     String @id @default(cuid())

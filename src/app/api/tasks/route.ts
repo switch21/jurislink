@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission, enforceTenantIsolation } from '@/lib/rbac'
 
-export async function GET(request: Request) {
+export const GET = withPermission('task', async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
-    const tenantId = searchParams.get('tenantId')
     const status = searchParams.get('status')
     const priority = searchParams.get('priority')
     const userId = searchParams.get('userId')
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search')
 
     const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    enforceTenantIsolation(auth, where)
     if (status) where.status = status
     if (priority) where.priority = priority
     if (userId) where.userId = userId
@@ -36,10 +36,8 @@ export async function GET(request: Request) {
       take: 100,
     })
 
-    // Completed vs total count for dashboard
     const countWhere: Record<string, unknown> = {}
-    if (tenantId) countWhere.tenantId = tenantId
-
+    enforceTenantIsolation(auth, countWhere)
     const [total, completed] = await Promise.all([
       db.task.count({ where: countWhere }),
       db.task.count({ where: { ...countWhere, status: 'terminee' } }),
@@ -50,21 +48,21 @@ export async function GET(request: Request) {
     console.error('List tasks error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withPermission('task', async (request, auth) => {
   try {
     const body = await request.json()
-    const { title, tenantId, description, priority, dueDate, userId, caseId, eventId, creatorId } = body
+    const { title, description, priority, dueDate, userId, caseId, eventId } = body
 
-    if (!title || !tenantId) {
-      return NextResponse.json({ error: 'title and tenantId are required' }, { status: 400 })
+    if (!title) {
+      return NextResponse.json({ error: 'title is required' }, { status: 400 })
     }
 
     const task = await db.task.create({
       data: {
         title,
-        tenantId,
+        tenantId: auth.tenantId!,
         description: description ?? null,
         priority: priority ?? 'normal',
         status: 'a_faire',
@@ -72,7 +70,7 @@ export async function POST(request: Request) {
         userId: userId ?? null,
         caseId: caseId ?? null,
         eventId: eventId ?? null,
-        creatorId: creatorId ?? null,
+        creatorId: auth.userId,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
@@ -86,4 +84,4 @@ export async function POST(request: Request) {
     console.error('Create task error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

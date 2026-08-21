@@ -1,22 +1,15 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission } from '@/lib/rbac'
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const GET = withPermission('event', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const event = await db.event.findUnique({
       where: { id },
       include: {
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
-        case: { select: { id: true, reference: true, title: true } },
-        tenant: true,
+        assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
+        case: { select: { id: true, reference: true, title: true } }, tenant: true,
       },
     })
     if (!event) {
@@ -27,25 +20,19 @@ export async function GET(
     console.error('Get event error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withPermission('event', async (request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const body = await request.json()
     const event = await db.event.update({
       where: { id },
       data: {
-        title: body.title,
-        description: body.description,
+        title: body.title, description: body.description,
         startTime: body.startTime ? new Date(body.startTime) : undefined,
         endTime: body.endTime ? new Date(body.endTime) : null,
-        eventType: body.eventType,
-        criticality: body.criticality,
-        location: body.location,
+        eventType: body.eventType, criticality: body.criticality, location: body.location,
       },
     })
     return NextResponse.json(event)
@@ -53,12 +40,9 @@ export async function PUT(
     console.error('Update event error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withPermission('event', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     await db.event.delete({ where: { id } })
@@ -67,4 +51,4 @@ export async function DELETE(
     console.error('Delete event error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

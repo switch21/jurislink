@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission } from '@/lib/rbac'
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const GET = withPermission('document', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const document = await db.document.findUnique({
@@ -23,34 +21,24 @@ export async function GET(
     console.error('Get document error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withPermission('document', async (request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const body = await request.json()
     const document = await db.document.update({
       where: { id },
-      data: {
-        name: body.name,
-        description: body.description,
-        version: body.version,
-      },
+      data: { name: body.name, description: body.description, version: body.version },
     })
     return NextResponse.json(document)
   } catch (error) {
     console.error('Update document error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withPermission('document', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     await db.document.delete({ where: { id } })
@@ -59,4 +47,4 @@ export async function DELETE(
     console.error('Delete document error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

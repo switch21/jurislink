@@ -137,6 +137,20 @@ interface CurrencyItem { id: string; code: string; name: string; symbol: string 
 // ==================== Query Client ====================
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } })
 
+// ==================== API Helper (sends auth headers) ====================
+function getStoredUser() {
+  if (typeof window === 'undefined') return null
+  try { return JSON.parse(localStorage.getItem('jurislink_user') || 'null') } catch { return null }
+}
+function apiFetch(url: string, opts: RequestInit = {}) {
+  const u = getStoredUser()
+  const headers = new Headers(opts.headers || {})
+  if (u?.id) headers.set('x-user-id', u.id)
+  if (u?.tenantId) headers.set('x-tenant-id', u.tenantId)
+  if (!headers.has('Content-Type') && opts.body) headers.set('Content-Type', 'application/json')
+  return fetch(url, { ...opts, headers }).then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `Erreur ${r.status}`) }; return r })
+}
+
 // ==================== Constants ====================
 const STATUS_COLORS: Record<string, string> = {
   nouveau: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',

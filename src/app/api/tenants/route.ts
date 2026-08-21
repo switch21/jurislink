@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission } from '@/lib/rbac'
 
-export async function GET() {
+export const GET = withPermission('setting', async () => {
   try {
     const tenants = await db.tenant.findMany({
-      include: {
-        _count: { select: { users: true } },
-      },
+      include: { _count: { select: { users: true } } },
       orderBy: { createdAt: 'desc' },
     })
     return NextResponse.json(tenants)
@@ -14,22 +13,16 @@ export async function GET() {
     console.error('List tenants error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withPermission('setting', async (request) => {
   try {
     const body = await request.json()
     const tenant = await db.tenant.create({
       data: {
-        name: body.name,
-        slug: body.slug,
-        logoUrl: body.logoUrl,
-        address: body.address,
-        phone: body.phone,
-        email: body.email,
-        plan: body.plan,
-        maxUsers: body.maxUsers,
-        maxStorageGb: body.maxStorageGb,
+        name: body.name, slug: body.slug, logoUrl: body.logoUrl, address: body.address,
+        phone: body.phone, email: body.email, plan: body.plan,
+        maxUsers: body.maxUsers, maxStorageGb: body.maxStorageGb,
       },
     })
     return NextResponse.json(tenant, { status: 201 })
@@ -37,4 +30,4 @@ export async function POST(request: Request) {
     console.error('Create tenant error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

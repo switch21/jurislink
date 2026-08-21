@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission } from '@/lib/rbac'
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const GET = withPermission('case', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const caze = await db.case.findUnique({
@@ -12,33 +10,12 @@ export async function GET(
       include: {
         client: true,
         tenant: true,
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
-        notes: {
-          include: {
-            user: { select: { id: true, name: true } },
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-        documents: {
-          orderBy: { createdAt: 'desc' },
-        },
-        events: {
-          include: {
-            assignments: {
-              include: {
-                user: { select: { id: true, name: true } },
-              },
-            },
-          },
-          orderBy: { startTime: 'desc' },
-        },
+        assignments: { include: { user: { select: { id: true, name: true, email: true } } } },
+        notes: { include: { user: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } },
+        documents: { orderBy: { createdAt: 'desc' } },
+        events: { include: { assignments: { include: { user: { select: { id: true, name: true } } } }, orderBy: { startTime: 'desc' } },
       },
     })
-
     if (!caze) {
       return NextResponse.json({ error: 'Case not found' }, { status: 404 })
     }
@@ -47,12 +24,9 @@ export async function GET(
     console.error('Get case error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withPermission('case', async (request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     const body = await request.json()
@@ -83,12 +57,9 @@ export async function PUT(
     console.error('Update case error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withPermission('case', async (_request, _auth, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params
     await db.case.delete({ where: { id } })
@@ -97,4 +68,4 @@ export async function DELETE(
     console.error('Delete case error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

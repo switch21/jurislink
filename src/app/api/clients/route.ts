@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission, enforceTenantIsolation } from '@/lib/rbac'
 
-export async function GET(request: Request) {
+export const GET = withPermission('client', async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
-    const tenantId = searchParams.get('tenantId')
     const search = searchParams.get('search')
     const status = searchParams.get('status')
 
     const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    enforceTenantIsolation(auth, where)
     if (status === 'active') where.isActive = true
     if (status === 'inactive') where.isActive = false
     if (search) {
@@ -23,9 +23,7 @@ export async function GET(request: Request) {
 
     const clients = await db.client.findMany({
       where,
-      include: {
-        _count: { select: { cases: true } },
-      },
+      include: { _count: { select: { cases: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     })
@@ -34,9 +32,9 @@ export async function GET(request: Request) {
     console.error('List clients error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withPermission('client', async (request, auth) => {
   try {
     const body = await request.json()
     const client = await db.client.create({
@@ -55,7 +53,7 @@ export async function POST(request: Request) {
         riskLevel: body.riskLevel,
         source: body.source,
         isActive: body.isActive ?? true,
-        tenantId: body.tenantId,
+        tenantId: auth.tenantId ?? body.tenantId,
       },
     })
     return NextResponse.json(client, { status: 201 })
@@ -63,4 +61,4 @@ export async function POST(request: Request) {
     console.error('Create client error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

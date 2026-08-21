@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission, enforceTenantIsolation } from '@/lib/rbac'
 
-export async function GET(request: Request) {
+export const GET = withPermission('document', async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
-    const tenantId = searchParams.get('tenantId')
     const caseId = searchParams.get('caseId')
 
     const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    enforceTenantIsolation(auth, where)
     if (caseId) where.caseId = caseId
 
     const documents = await db.document.findMany({
@@ -25,23 +25,17 @@ export async function GET(request: Request) {
     console.error('List documents error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withPermission('document', async (request, auth) => {
   try {
     const body = await request.json()
     const document = await db.document.create({
       data: {
-        name: body.name,
-        fileName: body.fileName,
-        fileType: body.fileType,
-        fileSize: body.fileSize,
-        filePath: body.filePath,
-        version: body.version,
-        description: body.description,
-        tenantId: body.tenantId,
-        caseId: body.caseId,
-        userId: body.userId,
+        name: body.name, fileName: body.fileName, fileType: body.fileType,
+        fileSize: body.fileSize, filePath: body.filePath, version: body.version,
+        description: body.description, folder: body.folder, tags: body.tags,
+        tenantId: auth.tenantId ?? body.tenantId, caseId: body.caseId, userId: auth.userId,
       },
     })
     return NextResponse.json(document, { status: 201 })
@@ -49,4 +43,4 @@ export async function POST(request: Request) {
     console.error('Create document error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

@@ -1,25 +1,24 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withAuth, enforceTenantIsolation } from '@/lib/rbac'
 
-export async function GET(request: Request) {
+export const GET = withAuth(async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
-    const tenantId = searchParams.get('tenantId')
-    const userId = searchParams.get('userId')
     const contactId = searchParams.get('contactId')
 
     const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    enforceTenantIsolation(auth, where)
 
-    if (userId && contactId) {
+    if (contactId) {
       where.OR = [
-        { senderId: userId, receiverId: contactId },
-        { senderId: contactId, receiverId: userId },
+        { senderId: auth.userId, receiverId: contactId },
+        { senderId: contactId, receiverId: auth.userId },
       ]
-    } else if (userId) {
+    } else {
       where.OR = [
-        { senderId: userId },
-        { receiverId: userId },
+        { senderId: auth.userId },
+        { receiverId: auth.userId },
       ]
     }
 
@@ -29,24 +28,23 @@ export async function GET(request: Request) {
         sender: { select: { id: true, name: true, avatarUrl: true } },
         receiver: { select: { id: true, name: true, avatarUrl: true } },
       },
-      orderBy: { createdAt: 'asc' },
-      take: 200,
+      orderBy: { createdAt: 'asc' }, take: 200,
     })
     return NextResponse.json(messages)
   } catch (error) {
     console.error('List messages error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request, auth) => {
   try {
     const body = await request.json()
     const message = await db.message.create({
       data: {
         content: body.content,
-        tenantId: body.tenantId,
-        senderId: body.senderId,
+        tenantId: auth.tenantId!,
+        senderId: auth.userId,
         receiverId: body.receiverId,
       },
     })
@@ -55,4 +53,4 @@ export async function POST(request: Request) {
     console.error('Send message error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})

@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { withPermission, enforceTenantIsolation } from '@/lib/rbac'
 
-export async function GET(request: Request) {
+export const GET = withPermission('case', async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
-    const tenantId = searchParams.get('tenantId')
     const search = searchParams.get('search')
     const status = searchParams.get('status')
     const type = searchParams.get('type')
     const priority = searchParams.get('priority')
 
     const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    enforceTenantIsolation(auth, where)
     if (status) where.status = status
     if (type) where.type = type
     if (priority) where.priority = priority
@@ -28,9 +28,7 @@ export async function GET(request: Request) {
       include: {
         client: { select: { id: true, firstName: true, lastName: true } },
         assignments: {
-          include: {
-            user: { select: { id: true, name: true } },
-          },
+          include: { user: { select: { id: true, name: true } } },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -41,9 +39,9 @@ export async function GET(request: Request) {
     console.error('List cases error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withPermission('case', async (request, auth) => {
   try {
     const body = await request.json()
     const caze = await db.case.create({
@@ -56,7 +54,7 @@ export async function POST(request: Request) {
         priority: body.priority,
         isSecret: body.isSecret,
         nextDueDate: body.nextDueDate ? new Date(body.nextDueDate) : null,
-        tenantId: body.tenantId,
+        tenantId: auth.tenantId ?? body.tenantId,
         clientId: body.clientId,
         adversary: body.adversary,
         jurisdiction: body.jurisdiction,
@@ -69,4 +67,4 @@ export async function POST(request: Request) {
     console.error('Create case error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
+})
