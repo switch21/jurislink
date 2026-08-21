@@ -248,6 +248,17 @@ export async function GET(request: Request) {
       urgentTasks: urgentTasksFormatted,
       upcomingEventsEnhanced: upcomingEventsFormatted,
       myTasks,
+      financial: {
+        revenueThisMonth: totalRevenue,
+        revenueLastMonth: 0,
+        collectedThisMonth: totalRevenue,
+        collectedLastMonth: 0,
+        toRecover: 0,
+        overdueInvoicesCount: unpaidInvoices,
+        topClients: [],
+        monthlyRevenue: [],
+        methodBreakdown: [],
+      },
     })
   } catch (error) {
     console.error('Dashboard stats error:', error)

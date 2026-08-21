@@ -132,7 +132,7 @@ interface ConflictResult {
   type: string; case: { id: string; reference: string; title: string; clientName: string }; description: string;
 }
 interface CurrencyItem { id: string; code: string; name: string; symbol: string }
-interface PaymentItem { id: string; reference?: string | null; amount: number; method: string; status: string; notes?: string | null; receivedAt: string; tenantId: string; invoiceId?: string | null; client?: { id: string; firstName: string; lastName: string } | null; validatedByUser?: { id: string; name: string } | null }
+
 
 // ==================== Query Client ====================
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } })
@@ -181,7 +181,7 @@ const RISK_COLORS: Record<string, string> = {
 }
 const BILLING_LABELS: Record<string, string> = { forfait: 'Forfait', horaire: 'Horaire', abonnement: 'Abonnement', success_fee: 'Success fee', provision: 'Provision' }
 const METHOD_LABELS: Record<string, string> = { especes: 'Especèces', virement: 'Virement', mobile_money: 'Mobile Money', carte: 'Carte' }
-const PAYMENT_STATUS_COLORS: Record<string, string> = { en_attente: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', valide: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', rejete: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' }
+
 const CHART_COLORS = ['#475569', '#d97706', '#059669', '#e11d48', '#94a3b8', '#f59e0b']
 const CHART_COLORS_DARK = ['#94a3b8', '#f59e0b', '#34d399', '#fb7185', '#64748b', '#fbbf24']
 
@@ -193,7 +193,6 @@ const NAV_ITEMS: { view: ViewName; label: string; icon: React.ElementType; admin
   { view: 'documents', label: 'Documents', icon: FileText },
   { view: 'calendar', label: 'Calendrier', icon: Calendar },
   { view: 'invoices', label: 'Factures', icon: Receipt },
-  { view: 'finances', label: 'Finances', icon: Wallet },
   { view: 'messages', label: 'Messages', icon: MessageSquare },
   { view: 'reports', label: 'Rapports', icon: BarChart3 },
   { view: 'audit-logs', label: "Journal d'audit", icon: Shield, adminOnly: true },
@@ -405,11 +404,7 @@ function DashboardView() {
     queryFn: () => fetch(`/api/dashboard?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
     enabled: !!user?.tenantId, refetchInterval: 60000
   })
-  const { data: finData } = useQuery({
-    queryKey: ['dashboard-financial', user?.tenantId],
-    queryFn: () => fetch(`/api/dashboard/financial?tenantId=${user!.tenantId}`).then(r => r.json()),
-    enabled: !!user?.tenantId,
-  })
+// finData comes from stats.financial
   const { theme } = useTheme()
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Bonjour' : now.getHours() < 18 ? 'Bon après-midi' : 'Bonsoir'
@@ -1496,43 +1491,6 @@ function ArchivesView() {
   )
 }
 
-// ==================== FINANCES VIEW ====================
-function FinancesView() {
-  const { user } = useAppStore()
-  const [statusFilter, setStatusFilter] = useState('all')
-
-  const { data: finData, isLoading } = useQuery({
-    queryKey: ['finances', user?.tenantId],
-    queryFn: () => fetch(`/api/dashboard/financial?tenantId=${user!.tenantId}`).then(r => r.json()),
-    enabled: !!user?.tenantId,
-  })
-
-  const { data: payments } = useQuery({
-    queryKey: ['payments-list', user?.tenantId, statusFilter],
-    queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); return fetch(`/api/payments?${p}`).then(r => r.json()) },
-    enabled: !!user?.tenantId,
-  })
-
-  if (isLoading) return <div className="p-6"><Skeleton className="h-8 w-48 mb-6" /><div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div></div>
-
-  return (
-    <div className="p-4 md:p-6 space-y-6">
-      <h2 className="text-lg font-semibold">Finances</h2>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-emerald-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">CA ce mois</p><p className="text-xl font-bold text-emerald-600">{fmtMoney(finData?.revenueThisMonth || 0)}</p><p className="text-xs text-slate-400 mt-1">Mois dernier: {fmtMoney(finData?.revenueLastMonth || 0)}</p></CardContent></Card>
-        <Card className="border-l-4 border-l-emerald-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">Encaissé ce mois</p><p className="text-xl font-bold">{fmtMoney(finData?.collectedThisMonth || 0)}</p></CardContent></Card>
-        <Card className="border-l-4 border-l-rose-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">À recouvrer</p><p className="text-xl font-bold text-rose-600">{fmtMoney(finData?.toRecover || 0)}</p></CardContent></Card>
-        <Card className="border-l-4 border-l-amber-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">Impayés {'>'} 30 jours</p><p className="text-xl font-bold text-amber-600">{finData?.overdueInvoicesCount || 0} factures</p></CardContent></Card>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Users className="size-4 text-emerald-500" />Top clients</CardTitle></CardHeader><CardContent><div className="space-y-3 max-h-64 overflow-y-auto">{(finData?.topClients || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucune donnée</p> : (finData?.topClients || []).map((c: {name: string, total: number}, i: number) => { const maxT = Math.max(...(finData?.topClients || []).map((x: {total: number}) => x.total), 1); return (<div key={i} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-28 truncate">{c.name}</span><div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full rounded-full bg-emerald-400 dark:bg-emerald-600" style={{width: `${(c.total / maxT) * 100}%`}} /></div><span className="text-xs font-semibold w-24 text-right">{fmtMoney(c.total)}</span></div>) })}</div></CardContent></Card>
-        <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Banknote className="size-4 text-amber-500" />Modes de paiement</CardTitle></CardHeader><CardContent><div className="space-y-3">{(finData?.methodBreakdown || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucune donnée</p> : (finData?.methodBreakdown || []).map((m: {method: string, total: number, count: number}, i: number) => { const maxM = Math.max(...(finData?.methodBreakdown || []).map((x: {total: number}) => x.total), 1); const mColors = ['bg-emerald-400 dark:bg-emerald-600', 'bg-blue-400 dark:bg-blue-600', 'bg-orange-400 dark:bg-orange-600', 'bg-purple-400 dark:bg-purple-600']; return (<div key={i} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-28">{METHOD_LABELS[m.method] || m.method}</span><div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className={cn('h-full rounded-full', mColors[i % mColors.length])} style={{width: `${(m.total / maxM) * 100}%`}} /></div><span className="text-xs font-semibold w-24 text-right">{fmtMoney(m.total)} <span className="text-slate-400 font-normal">({m.count})</span></span></div>) })}</div></CardContent></Card>
-      </div>
-      <Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-sm font-semibold">Historique des paiements</CardTitle><Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="valide">Validés</SelectItem><SelectItem value="en_attente">En attente</SelectItem></SelectContent></Select></CardHeader><CardContent className="p-0"><div className="max-h-80 overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Réf</TableHead><TableHead>Client</TableHead><TableHead>Montant</TableHead><TableHead className="hidden md:table-cell">Mode</TableHead><TableHead className="hidden lg:table-cell">Date</TableHead><TableHead className="hidden md:table-cell">Statut</TableHead></TableRow></TableHeader><TableBody>{(payments || []).length === 0 ? <TableRow><TableCell colSpan={6} className="text-center text-sm text-slate-400 py-8">Aucun paiement</TableCell></TableRow> : (payments || []).map((p: PaymentItem, i: number) => (<TableRow key={p.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}><TableCell className="text-sm font-medium">{p.reference || '—'}</TableCell><TableCell className="text-sm text-slate-500">{p.client ? `${p.client.firstName} ${p.client.lastName}` : '—'}</TableCell><TableCell className="text-sm font-medium">{fmtMoney(p.amount)}</TableCell><TableCell className="hidden md:table-cell text-sm">{METHOD_LABELS[p.method] || p.method}</TableCell><TableCell className="hidden lg:table-cell text-sm text-slate-500">{fmtDate(p.receivedAt)}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', PAYMENT_STATUS_COLORS[p.status])}>{p.status === 'valide' ? 'Validé' : p.status === 'en_attente' ? 'En attente' : 'Rejeté'}</Badge></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
-    </div>
-  )
-}
-
 // ==================== FOOTER ====================
 function Footer() {
   return (
@@ -1554,7 +1512,6 @@ function DashboardRouter() {
     case 'documents': return <DocumentsView />
     case 'calendar': return <CalendarView />
     case 'invoices': return <InvoicesView />
-    case 'finances': return <FinancesView />
     case 'messages': return <MessagesView />
     case 'reports': return <ReportsView />
     case 'audit-logs': return <AuditLogsView />
