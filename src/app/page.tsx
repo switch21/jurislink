@@ -50,7 +50,7 @@ import {
   Building2, RefreshCw, TrendingUp, DollarSign, FileCheck, FileWarning, Activity,
   Sun, Moon, Inbox, FolderOpen, Scale, ClipboardList, Zap, AlertOctagon,
   ChevronUp, ExternalLink, Timer, Target, Flag, Folder, Tag, MapPin, Banknote, Gavel,
-  UserCheck, Check, CircleDot, ArrowUpRight, ArrowDownRight, Minus, AlertCircle
+  UserCheck, Check, CircleDot, ArrowUpRight, ArrowDownRight, Minus, AlertCircle, Wallet, Brain
 } from 'lucide-react'
 
 // ==================== Types ====================
@@ -132,6 +132,7 @@ interface ConflictResult {
   type: string; case: { id: string; reference: string; title: string; clientName: string }; description: string;
 }
 interface CurrencyItem { id: string; code: string; name: string; symbol: string }
+interface PaymentItem { id: string; reference?: string | null; amount: number; method: string; status: string; notes?: string | null; receivedAt: string; tenantId: string; invoiceId?: string | null; client?: { id: string; firstName: string; lastName: string } | null; validatedByUser?: { id: string; name: string } | null }
 
 // ==================== Query Client ====================
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } })
@@ -179,6 +180,8 @@ const RISK_COLORS: Record<string, string> = {
   eleve: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
 }
 const BILLING_LABELS: Record<string, string> = { forfait: 'Forfait', horaire: 'Horaire', abonnement: 'Abonnement', success_fee: 'Success fee', provision: 'Provision' }
+const METHOD_LABELS: Record<string, string> = { especes: 'Especèces', virement: 'Virement', mobile_money: 'Mobile Money', carte: 'Carte' }
+const PAYMENT_STATUS_COLORS: Record<string, string> = { en_attente: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', valide: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', rejete: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' }
 const CHART_COLORS = ['#475569', '#d97706', '#059669', '#e11d48', '#94a3b8', '#f59e0b']
 const CHART_COLORS_DARK = ['#94a3b8', '#f59e0b', '#34d399', '#fb7185', '#64748b', '#fbbf24']
 
@@ -190,6 +193,7 @@ const NAV_ITEMS: { view: ViewName; label: string; icon: React.ElementType; admin
   { view: 'documents', label: 'Documents', icon: FileText },
   { view: 'calendar', label: 'Calendrier', icon: Calendar },
   { view: 'invoices', label: 'Factures', icon: Receipt },
+  { view: 'finances', label: 'Finances', icon: Wallet },
   { view: 'messages', label: 'Messages', icon: MessageSquare },
   { view: 'reports', label: 'Rapports', icon: BarChart3 },
   { view: 'audit-logs', label: "Journal d'audit", icon: Shield, adminOnly: true },
@@ -401,6 +405,11 @@ function DashboardView() {
     queryFn: () => fetch(`/api/dashboard?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
     enabled: !!user?.tenantId, refetchInterval: 60000
   })
+  const { data: finData } = useQuery({
+    queryKey: ['dashboard-financial', user?.tenantId],
+    queryFn: () => fetch(`/api/dashboard/financial?tenantId=${user!.tenantId}`).then(r => r.json()),
+    enabled: !!user?.tenantId,
+  })
   const { theme } = useTheme()
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Bonjour' : now.getHours() < 18 ? 'Bon après-midi' : 'Bonsoir'
@@ -465,6 +474,35 @@ function DashboardView() {
           {/* Upcoming Events */}
           <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Calendar className="size-4 text-amber-500" />Prochains événements (7j)</CardTitle></CardHeader><CardContent className="p-4 pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">{(stats.upcomingEventsEnhanced || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucun événement à venir</p> : (stats.upcomingEventsEnhanced || []).map(e => (<div key={e.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => setCurrentView('calendar')}><span className={cn('w-1 h-8 rounded-full shrink-0', CRIT_COLORS[e.criticality] || CRIT_COLORS.normal)} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{e.title}</p><p className="text-xs text-slate-500">{fmtDateTime(e.startTime)}{e.location ? ` • ${e.location}` : ''}{e.caseReference ? ` • ${e.caseReference}` : ''}</p><p className="text-xs text-slate-400 mt-0.5">{e.assignments.map(a => a.userName).join(', ')}</p></div><Badge variant="outline" className="text-[10px] shrink-0">{EVENT_TYPE_LABELS[e.eventType] || e.eventType}</Badge></div>))}</div></CardContent></Card>
         </div>
+      )}
+
+      {/* Activité du cabinet - Financial comparison */}
+      {finData && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><TrendingUp className="size-4 text-emerald-500" />Activité du cabinet</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="rounded-xl p-4 border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20">
+                <p className="text-xs text-slate-500 mb-1">CA ce mois</p>
+                <p className="text-lg font-bold">{fmtMoney(finData.revenueThisMonth || 0)}</p>
+                {finData.revenueLastMonth > 0 && <p className={cn("text-xs mt-1", (finData.revenueThisMonth || 0) >= finData.revenueLastMonth ? "text-emerald-600" : "text-rose-600")}>{(finData.revenueThisMonth || 0) >= finData.revenueLastMonth ? "↑" : "↓"} vs mois dernier ({fmtMoney(finData.revenueLastMonth)})</p>}
+              </div>
+              <div className="rounded-xl p-4 border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20">
+                <p className="text-xs text-slate-500 mb-1">Encaissé</p>
+                <p className="text-lg font-bold">{fmtMoney(finData.collectedThisMonth || 0)}</p>
+                {finData.collectedLastMonth > 0 && <p className={cn("text-xs mt-1", (finData.collectedThisMonth || 0) >= finData.collectedLastMonth ? "text-emerald-600" : "text-rose-600")}>{(finData.collectedThisMonth || 0) >= finData.collectedLastMonth ? "↑" : "↓"} vs mois dernier</p>}
+              </div>
+              <div className="rounded-xl p-4 border-l-4 border-l-rose-500 bg-rose-50/50 dark:bg-rose-950/20">
+                <p className="text-xs text-slate-500 mb-1">À recouvrer</p>
+                <p className="text-lg font-bold text-rose-600">{fmtMoney(finData.toRecover || 0)}</p>
+              </div>
+              <div className="rounded-xl p-4 border-l-4 border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20">
+                <p className="text-xs text-slate-500 mb-1">Impayés</p>
+                <p className="text-lg font-bold text-amber-600">{finData.overdueInvoicesCount || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Charts */}
@@ -1075,25 +1113,20 @@ function CalendarView() {
 
 // ==================== INVOICES VIEW ====================
 function InvoicesView() {
-  const { user } = useAppStore()
+  const { user, setCurrentView } = useAppStore()
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
+  const [payDialogOpen, setPayDialogOpen] = useState(false)
+  const [payInvoice, setPayInvoice] = useState<Invoice | null>(null)
+  const [payForm, setPayForm] = useState({ amount: '', method: 'virement', notes: '' })
 
-  const { data: invoices, isLoading } = useQuery({
-    queryKey: ['invoices', user?.tenantId, statusFilter],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (user?.tenantId) p.set('tenantId', user.tenantId)
-      if (statusFilter !== 'all') p.set('status', statusFilter)
-      return fetch(`/api/invoices?${p}`).then(r => r.json())
-    },
-  })
+  const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices', user?.tenantId, statusFilter], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); return fetch(`/api/invoices?${p}`).then(r => r.json()) } })
 
-  const updateMut = useMutation({
-    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/invoices/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture mise à jour') },
-    onError: () => toast.error('Erreur lors de la mise à jour'),
-  })
+  const { data: payments } = useQuery({ queryKey: ['payments-all', user?.tenantId], queryFn: () => fetch(`/api/payments?tenantId=${user?.tenantId}`).then(r => r.json()) })
+
+  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/invoices/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Facture mise à jour') }, onError: () => toast.error('Erreur') })
+
+  const payMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Paiement enregistré'); setPayDialogOpen(false); setPayForm({ amount: '', method: 'virement', notes: '' }) }, onError: () => toast.error('Erreur') })
 
   const markStatus = (inv: Invoice, newStatus: string) => {
     const data: Record<string, unknown> = { id: inv.id, status: newStatus }
@@ -1102,44 +1135,22 @@ function InvoicesView() {
     updateMut.mutate(data)
   }
 
+  const openPayDialog = (inv: Invoice) => { setPayInvoice(inv); setPayForm({ amount: String(inv.amount - (inv.paidAmount || 0)), method: 'virement', notes: `Paiement ${inv.reference}` }); setPayDialogOpen(true) }
+  const getInvPayments = (invId: string) => (payments || []).filter((p: PaymentItem) => p.invoiceId === invId)
+  const invPayTotal = (invId: string) => getInvPayments(invId).reduce((s: number, p: PaymentItem) => s + p.amount, 0)
+
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Factures</h2>
-      <Select value={statusFilter} onValueChange={setStatusFilter}>
-        <SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger>
-        <SelectContent><SelectItem value="all">Tous les statuts</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent>
-      </Select>
-
+      <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Factures</h2><Button size="sm" variant="outline" className="text-xs" onClick={() => setCurrentView('finances')}><Wallet className="size-3.5 mr-1" />Paiements</Button></div>
+      <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous les statuts</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent></Select>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         (invoices || []).length === 0 ? <EmptyState icon={Receipt} title="Aucune facture" /> :
         <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
-          <Table><TableHeader><TableRow>
-            <TableHead>Référence</TableHead>
-            <TableHead>Client</TableHead>
-            <TableHead>Montant</TableHead>
-            <TableHead className="hidden md:table-cell">Statut</TableHead>
-            <TableHead className="hidden lg:table-cell">Échéance</TableHead>
-            <TableHead className="w-36">Actions</TableHead>
-          </TableRow></TableHeader><TableBody>
-            {(invoices || []).map((inv: Invoice, i: number) => (
-              <TableRow key={inv.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}>
-                <TableCell className="font-medium text-sm">{inv.reference}</TableCell>
-                <TableCell className="text-sm text-slate-500 dark:text-slate-400">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell>
-                <TableCell className="text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell>
-                <TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell>
-                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{fmtDate(inv.dueDate)}</TableCell>
-                <TableCell>
-                  {(inv.status === 'non_paye' || inv.status === 'partiel') && (
-                    <div className="flex gap-1">
-                      <Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'paye')}>Marquer payée</Button>
-                      <Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'partiel')}>Marquer partielle</Button>
-                    </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+          <Table><TableHeader><TableRow><TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead>Montant</TableHead><TableHead className="hidden md:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Payé</TableHead><TableHead className="w-44">Actions</TableHead></TableRow></TableHeader><TableBody>
+            {(invoices || []).map((inv: Invoice, i: number) => { const pmts = getInvPayments(inv.id); return (<TableRow key={inv.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}><TableCell className="font-medium text-sm">{inv.reference}</TableCell><TableCell className="text-sm text-slate-500 dark:text-slate-400">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell><TableCell className="text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm"><span className={invPayTotal(inv.id) >= inv.amount ? 'text-emerald-600 font-medium' : 'text-amber-600'}>{fmtMoney(invPayTotal(inv.id), inv.currencyCode)}</span>{pmts.length > 0 && <span className="text-xs text-slate-400 ml-1">({pmts.length})</span>}</TableCell><TableCell><div className="flex gap-1 flex-wrap">{(inv.status === 'non_paye' || inv.status === 'partiel') && <><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'paye')}>Payée</Button><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'partiel')}>Partielle</Button><Button size="sm" className="text-[10px] h-7" onClick={() => openPayDialog(inv)}><Banknote className="size-3 mr-1" />Paiement</Button></>}{pmts.length > 0 && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><ChevronDown className="size-3" /></Button></DropdownMenuTrigger><DropdownMenuContent className="w-64 max-h-48 overflow-y-auto"><DropdownMenuLabel className="text-xs">Paiements ({pmts.length})</DropdownMenuLabel><DropdownMenuSeparator />{pmts.map((p: PaymentItem) => (<DropdownMenuItem key={p.id} className="text-xs flex flex-col items-start gap-0.5"><span className="font-medium">{fmtMoney(p.amount)} — {METHOD_LABELS[p.method] || p.method}</span><span className="text-slate-400">{fmtDate(p.receivedAt)}</span></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>}</div></TableCell></TableRow>) })}
           </TableBody></Table>
         </div></CardContent></Card>}
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}><DialogContent><DialogHeader><DialogTitle>Enregistrer un paiement</DialogTitle><DialogDescription>{payInvoice?.reference} — {payInvoice?.client ? `${payInvoice.client.firstName} ${payInvoice.client.lastName}` : ''}</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Montant</Label><Input type="number" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} /></div><div><Label>Mode</Label><Select value={payForm.method} onValueChange={v => setPayForm(f => ({ ...f, method: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="virement">Virement</SelectItem><SelectItem value="especes">Espèces</SelectItem><SelectItem value="mobile_money">Mobile Money</SelectItem><SelectItem value="carte">Carte</SelectItem></SelectContent></Select></div><div><Label>Notes</Label><Textarea value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div></div><DialogFooter><Button variant="outline" onClick={() => setPayDialogOpen(false)}>Annuler</Button><Button onClick={() => payMut.mutate({ amount: parseFloat(payForm.amount), method: payForm.method, notes: payForm.notes, tenantId: user?.tenantId, invoiceId: payInvoice?.id, clientId: payInvoice?.clientId, userId: user?.id, status: 'valide', validatedBy: user?.id, validatedAt: new Date().toISOString() })} disabled={!payForm.amount || parseFloat(payForm.amount) <= 0}>{payMut.isPending ? '...' : 'Enregistrer'}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
 }
@@ -1485,12 +1496,49 @@ function ArchivesView() {
   )
 }
 
+// ==================== FINANCES VIEW ====================
+function FinancesView() {
+  const { user } = useAppStore()
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const { data: finData, isLoading } = useQuery({
+    queryKey: ['finances', user?.tenantId],
+    queryFn: () => fetch(`/api/dashboard/financial?tenantId=${user!.tenantId}`).then(r => r.json()),
+    enabled: !!user?.tenantId,
+  })
+
+  const { data: payments } = useQuery({
+    queryKey: ['payments-list', user?.tenantId, statusFilter],
+    queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); return fetch(`/api/payments?${p}`).then(r => r.json()) },
+    enabled: !!user?.tenantId,
+  })
+
+  if (isLoading) return <div className="p-6"><Skeleton className="h-8 w-48 mb-6" /><div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div></div>
+
+  return (
+    <div className="p-4 md:p-6 space-y-6">
+      <h2 className="text-lg font-semibold">Finances</h2>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-l-4 border-l-emerald-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">CA ce mois</p><p className="text-xl font-bold text-emerald-600">{fmtMoney(finData?.revenueThisMonth || 0)}</p><p className="text-xs text-slate-400 mt-1">Mois dernier: {fmtMoney(finData?.revenueLastMonth || 0)}</p></CardContent></Card>
+        <Card className="border-l-4 border-l-emerald-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">Encaissé ce mois</p><p className="text-xl font-bold">{fmtMoney(finData?.collectedThisMonth || 0)}</p></CardContent></Card>
+        <Card className="border-l-4 border-l-rose-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">À recouvrer</p><p className="text-xl font-bold text-rose-600">{fmtMoney(finData?.toRecover || 0)}</p></CardContent></Card>
+        <Card className="border-l-4 border-l-amber-500"><CardContent className="p-4"><p className="text-xs text-slate-500 mb-1">Impayés {'>'} 30 jours</p><p className="text-xl font-bold text-amber-600">{finData?.overdueInvoicesCount || 0} factures</p></CardContent></Card>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Users className="size-4 text-emerald-500" />Top clients</CardTitle></CardHeader><CardContent><div className="space-y-3 max-h-64 overflow-y-auto">{(finData?.topClients || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucune donnée</p> : (finData?.topClients || []).map((c: {name: string, total: number}, i: number) => { const maxT = Math.max(...(finData?.topClients || []).map((x: {total: number}) => x.total), 1); return (<div key={i} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-28 truncate">{c.name}</span><div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full rounded-full bg-emerald-400 dark:bg-emerald-600" style={{width: `${(c.total / maxT) * 100}%`}} /></div><span className="text-xs font-semibold w-24 text-right">{fmtMoney(c.total)}</span></div>) })}</div></CardContent></Card>
+        <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Banknote className="size-4 text-amber-500" />Modes de paiement</CardTitle></CardHeader><CardContent><div className="space-y-3">{(finData?.methodBreakdown || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucune donnée</p> : (finData?.methodBreakdown || []).map((m: {method: string, total: number, count: number}, i: number) => { const maxM = Math.max(...(finData?.methodBreakdown || []).map((x: {total: number}) => x.total), 1); const mColors = ['bg-emerald-400 dark:bg-emerald-600', 'bg-blue-400 dark:bg-blue-600', 'bg-orange-400 dark:bg-orange-600', 'bg-purple-400 dark:bg-purple-600']; return (<div key={i} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-28">{METHOD_LABELS[m.method] || m.method}</span><div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className={cn('h-full rounded-full', mColors[i % mColors.length])} style={{width: `${(m.total / maxM) * 100}%`}} /></div><span className="text-xs font-semibold w-24 text-right">{fmtMoney(m.total)} <span className="text-slate-400 font-normal">({m.count})</span></span></div>) })}</div></CardContent></Card>
+      </div>
+      <Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-sm font-semibold">Historique des paiements</CardTitle><Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="valide">Validés</SelectItem><SelectItem value="en_attente">En attente</SelectItem></SelectContent></Select></CardHeader><CardContent className="p-0"><div className="max-h-80 overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Réf</TableHead><TableHead>Client</TableHead><TableHead>Montant</TableHead><TableHead className="hidden md:table-cell">Mode</TableHead><TableHead className="hidden lg:table-cell">Date</TableHead><TableHead className="hidden md:table-cell">Statut</TableHead></TableRow></TableHeader><TableBody>{(payments || []).length === 0 ? <TableRow><TableCell colSpan={6} className="text-center text-sm text-slate-400 py-8">Aucun paiement</TableCell></TableRow> : (payments || []).map((p: PaymentItem, i: number) => (<TableRow key={p.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}><TableCell className="text-sm font-medium">{p.reference || '—'}</TableCell><TableCell className="text-sm text-slate-500">{p.client ? `${p.client.firstName} ${p.client.lastName}` : '—'}</TableCell><TableCell className="text-sm font-medium">{fmtMoney(p.amount)}</TableCell><TableCell className="hidden md:table-cell text-sm">{METHOD_LABELS[p.method] || p.method}</TableCell><TableCell className="hidden lg:table-cell text-sm text-slate-500">{fmtDate(p.receivedAt)}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', PAYMENT_STATUS_COLORS[p.status])}>{p.status === 'valide' ? 'Validé' : p.status === 'en_attente' ? 'En attente' : 'Rejeté'}</Badge></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
+    </div>
+  )
+}
+
 // ==================== FOOTER ====================
 function Footer() {
   return (
     <footer className="mt-auto border-t dark:border-slate-800 px-4 py-3 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-950">
       <span className="flex items-center gap-1"><Scale className="size-3.5" />JurisLink</span>
-      <span>v1.0.0</span>
+      <span>v2.1.0</span>
     </footer>
   )
 }
@@ -1506,6 +1554,7 @@ function DashboardRouter() {
     case 'documents': return <DocumentsView />
     case 'calendar': return <CalendarView />
     case 'invoices': return <InvoicesView />
+    case 'finances': return <FinancesView />
     case 'messages': return <MessagesView />
     case 'reports': return <ReportsView />
     case 'audit-logs': return <AuditLogsView />

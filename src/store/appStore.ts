@@ -24,6 +24,7 @@ export type ViewName =
   | 'tasks'
   | 'reports'
   | 'settings'
+  | 'finances'
   | 'audit-logs'
   | 'archives'
 

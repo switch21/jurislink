@@ -283,3 +283,31 @@ Stage Summary:
 - 7 user roles (expanded from 4)
 - Key features from objectifs.md implemented: attention-focused dashboard, task management, case timeline, conflict detection, CRM client profiles, enhanced search
 - Known limitation: OOM in 4GB environment when running dev server + API calls simultaneously
+
+---
+Task ID: 9
+Agent: Main
+Task: Create 7 new API routes (payments CRUD, workflow, permissions, AI analysis, financial dashboard, invoice print)
+
+Work Log:
+- Created `/src/app/api/payments/route.ts` — GET list (filters: tenantId, invoiceId, clientId, method, status, from/to dates; includes invoice, client, user relations + validatedBy user resolution); POST create (requires tenantId/amount/method, auto-updates linked invoice paidAmount and status: paye if paidAmount >= amount, partiel if > 0)
+- Created `/src/app/api/payments/[id]/route.ts` — GET one (with relations + validatedBy user), PUT update (all fields, re-calculates invoice status on invoiceId/amount/status change using aggregate sum of validated payments), DELETE (removes payment, re-calculates linked invoice status via recalcInvoiceStatus helper)
+- Created `/src/app/api/workflow/generate-tasks/route.ts` — POST endpoint accepting { tenantId, eventId, caseId?, assigneeId? }. Templates for 3 event types: audience (5 tasks at -7d, -5d, -3d, -1d, 0d), echeance (2 tasks at -3d, -1d), depot (2 tasks at -2d, 0d). Last 2 tasks get priority 'haute', earlier ones 'normal'. Prevents duplicate generation (409 if tasks already exist). Returns created tasks with relations.
+- Created `/src/app/api/permissions/route.ts` — GET list (filter by role; if no permissions in DB returns hardcoded default matrix for 8 roles × 11 resources × 6 actions); POST upsert (role+resource+action as unique key)
+- Created `/src/app/api/ai/analyze-case/route.ts` — POST accepting { tenantId, caseId }. Fetches case with all related data (client, assignments, events, notes, documents, tasks, invoices, tenant). Builds a structured French legal analysis prompt covering: Résumé, Chronologie, Parties, Questions juridiques, Risques, Pièces manquantes, Échéances, Actions recommandées. Returns { success, caseData, prompt } for frontend z-ai-web-dev-sdk consumption.
+- Created `/src/app/api/dashboard/financial/route.ts` — GET with tenantId. Returns: CA this/last month (paid invoices), encaissé this/last month (validated payments), à recouvrer (unpaid partial invoices - paid amounts), top 5 clients by payment volume, monthly revenue last 6 months array, payment method breakdown with labels.
+- Created `/src/app/api/invoices/[id]/print/route.ts` — GET returns invoice formatted for PDF generation: firm info, client info (with NIU), line items (parsed from notes with pipe separator), tax calculations (19.25% TVA Cameroun: HT→TVA→TTC), payment status.
+
+Verification:
+- ESLint: 0 errors
+- All routes follow existing patterns: NextResponse.json, `import { db } from '@/lib/db'`, try/catch with console.error, Promise<{ id: string }> params
+
+Stage Summary:
+- 7 new API route files created (payments CRUD, workflow, permissions, AI, financial, print)
+- Total API routes: ~36+
+- Invoice payment auto-calculation with recalculation on update/delete
+- Workflow engine for event-driven task generation (audience, echeance, depot)
+- Default RBAC permission matrix (8 roles, 66 permission entries per role)
+- AI case analysis prompt builder
+- Financial dashboard with monthly trends and client rankings
+- Invoice print data with Cameroon TVA calculations

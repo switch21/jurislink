@@ -33,6 +33,7 @@ model Tenant {
   auditLogs    AuditLog[]
   notifications Notification[]
   tasks        Task[]
+  payments     Payment[]
 }
 
 // ==================== USER ====================
@@ -67,6 +68,7 @@ model User {
   receivedNotifications Notification[] @relation("UserNotifications")
   assignedTasks       Task[]
   createdTasks        Task[]  @relation("TaskCreator")
+  validatedPayments   Payment[]
 
   @@unique([tenantId, email])
 }
@@ -95,6 +97,7 @@ model Client {
   tenant    Tenant  @relation(fields: [tenantId], references: [id])
   cases     Case[]
   invoices  Invoice[]
+  payments  Payment[]
 }
 
 // ==================== CASE ====================
@@ -221,11 +224,13 @@ model Invoice {
   reference     String
   amount        Float
   status        String   @default("non_paye") // non_paye, partiel, paye, annule
+  type          String   @default("facture") // devis, facture, avoir, recu
   dueDate       DateTime?
   paidDate      DateTime?
   paidAmount    Float?
   notes         String?
   paymentMethod String?  // especes, virement, mobile_money, carte
+  billingType   String?  // forfait, horaire, abonnement, success_fee, provision
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -236,6 +241,8 @@ model Invoice {
   caseId      String?
   case        Case?    @relation(fields: [caseId], references: [id])
   currencyCode String  @default("XAF")
+
+  payments   Payment[]
 }
 
 // ==================== MESSAGE ====================
@@ -301,6 +308,30 @@ model Task {
   @@index([status])
 }
 
+// ==================== PAYMENT ====================
+model Payment {
+  id             String   @id @default(cuid())
+  reference      String?
+  amount         Float
+  method         String   // especes, virement, mobile_money, carte
+  status         String   @default("en_attente") // en_attente, valide, rejete
+  notes          String?
+  receivedAt     DateTime @default(now())
+  validatedBy    String?
+  validatedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id])
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
 // ==================== AUDIT LOG ====================
 model AuditLog {
   id           String   @id @default(cuid())
@@ -316,6 +347,17 @@ model AuditLog {
   tenant    Tenant  @relation(fields: [tenantId], references: [id])
   userId    String?
   user      User?   @relation(fields: [userId], references: [id])
+}
+
+// ==================== PERMISSION ====================
+model Permission {
+  id        String @id @default(cuid())
+  role      String // root_admin, associate, firm_admin, lawyer, jurist, assistant, accountant, client
+  resource  String // case, client, document, invoice, task, event, audit, user, payment, report, setting
+  action    String // view, create, edit, delete, export, manage_permissions
+  allowed   Boolean @default(false)
+
+  @@unique([role, resource, action])
 }
 
 // ==================== CURRENCY ====================
