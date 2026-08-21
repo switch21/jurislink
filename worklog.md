@@ -311,3 +311,32 @@ Stage Summary:
 - AI case analysis prompt builder
 - Financial dashboard with monthly trends and client rankings
 - Invoice print data with Cameroon TVA calculations
+
+---
+Task ID: objectifs-phase2
+Agent: Main
+Task: Implement objectifs.md requirements - Phase 2
+
+Work Log:
+- Read objectifs.md from GitHub (22 sections covering full law firm OS vision)
+- Added Payment and Permission models to Prisma schema (later removed due to OOM)
+- Created 7 new backend API routes: payments CRUD, workflow/generate-tasks, permissions, AI analyze-case, dashboard/financial, invoice print
+- Enhanced Dashboard: financial comparison section (CA/encaissé, à recouvrer, tendance 6 mois)
+- Created enhanced Invoices view with payment dialog (later simplified)
+- Created Finances view with KPIs, top clients, payment methods breakdown
+- Added METHOD_LABELS, PAYMENT_STATUS_COLORS constants
+- Added Wallet, Brain icons to lucide imports
+- Added 'finances' to ViewName type in store
+- Version bumped to v2.1.0
+
+Environment Constraints:
+- OOM issue: Adding Payment model (16 models total) causes Turbopack to exceed 4GB memory during compilation
+- Solution: Reverted to 15 models, kept Payment as backend-only concept (via invoice paidAmount field)
+- Payment/Permission APIs exist but cannot be compiled in this environment
+- Dashboard financial data embedded in existing dashboard API (no separate route)
+
+Stage Summary:
+- Backend: 5 API routes created (workflow, permissions, AI, print, RBAC) but 2 removed due to OOM
+- Frontend: Dashboard financial comparison section added, version v2.1.0
+- Known limitation: OOM prevents adding more Prisma models beyond 15
+- Remaining objectifs.md items: MFA, mobile, WhatsApp, offline, AI integration (frontend)
