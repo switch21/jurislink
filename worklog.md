@@ -596,3 +596,28 @@ Stage Summary:
 - Known limitation: dev server dies from OOM in sandbox (not a code bug)
 - Default password for EKOKA users: jenetedispas
 - QA cron job active (every 15 min, webDevReview)
+
+---
+Task ID: 9
+Agent: Main
+Task: Fix React hydration error #185 (4th attempt - useSyncExternalStore)
+
+Work Log:
+- Diagnosed that all 3 previous Vercel error reports had identical JS bundle hash `1b722dc42a67f14a`
+- This proves Vercel never deployed any of the 3 previous fix commits (880c373, e9599d0, 0a88bc7)
+- Rewrote page.tsx using React 18+ `useSyncExternalStore` pattern (server snapshot: false, client snapshot: true)
+- This is the React-team-recommended way to detect client mount without hydration mismatch
+- Added `suppressHydrationWarning` to `<body>` tag in layout.tsx (already on `<html>`)
+- Previous approaches: (1) mounted state guard with useEffect, (2) dynamic(ssr:false), (3) dynamic + separate file
+- New approach is most robust: server renders loading spinner, client hydrates with same spinner, then re-renders to show app
+- Build verified: `next build` succeeds, page pre-rendered as static content (○ /)
+- Lint passes: 0 errors
+- Committed: 95ea47a, pushed to origin/main
+
+Stage Summary:
+- Code fix: useSyncExternalStore + suppressHydrationWarning on body
+- Build: SUCCESS (static pre-render of loading spinner)
+- Lint: 0 errors
+- CRITICAL: User must verify on Vercel that the new deployment has a DIFFERENT bundle hash
+- If bundle hash is still `1b722dc42a67f14a`, Vercel build is failing — check Vercel dashboard for build errors
+- If bundle hash changed but error persists, there's another hydration source beyond page.tsx
