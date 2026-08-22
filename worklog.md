@@ -383,3 +383,30 @@ Stage Summary:
 - Priorite P2: implementer stats financieres dashboard
 - Priorite P3: refactor monolithique, middleware, connexion Supabase
 - Fichiers cle: prisma/schema.prisma, src/app/page.tsx, src/app/api/*/route.ts
+
+---
+Task ID: migrate-prisma-to-supabase
+Agent: Main + 3 parallel subagents
+Task: Remove all Prisma/SQLite, rewrite 27 API routes to use Supabase
+
+Work Log:
+- Installed @supabase/supabase-js
+- Created src/lib/supabase.ts (service-role client)
+- Created src/lib/transform.ts (snake_case↔camelCase + domain mappers)
+- Created src/types/database.ts (TypeScript interfaces for all tables)
+- Updated .env with SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY placeholders
+- Dispatched 3 parallel subagents to rewrite all 27 API routes
+  - Batch 1: Auth, Tenants, Users, Clients, Currencies, Audit-logs, Permissions, Root (12 files)
+  - Batch 2: Cases, Tasks, Documents, Events (9 files)
+  - Batch 3: Invoices, Payments, Messages, Notifications, Dashboard, Conflicts, AI, Workflow, Seed (15 files)
+- Deleted prisma/ directory, db/ directory, src/lib/db.ts
+- Removed @prisma/client and prisma packages
+- Fixed lint error in permissions/route.ts
+- Committed and force-pushed to GitHub
+
+Stage Summary:
+- All 27 API routes now use Supabase client instead of Prisma
+- Supabase is the single source of truth for data
+- Frontend unchanged — same API contract maintained via transform layer
+- 4 stubs: payments, case_notes, conflicts, AI (tables/features not in Supabase yet)
+- User MUST add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env
