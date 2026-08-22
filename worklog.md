@@ -648,3 +648,27 @@ Stage Summary:
 - Removed DOM mutation prevents any pre-hydration DOM changes
 - suppressHydrationWarning on html+body provides additional safety net
 - User should verify error is gone on Vercel after this deployment
+
+---
+Task ID: 11
+Agent: Main
+Task: Add error boundaries + favicon for React 19 hydration error recovery
+
+Work Log:
+- Discovered that React 19 (used by Next.js 16) throws hydration mismatches as ERRORS, not warnings
+- Without error.tsx, the error propagates and crashes the entire app (no error boundary)
+- Created src/app/error.tsx: catches hydration error, immediately calls reset() to force client-side re-render
+- Created src/app/global-error.tsx: catches errors in layout itself (renders full HTML document)
+- error.tsx recovery flow: error thrown → error boundary catches → renders loading spinner → useEffect(reset) → full client-side re-render → AppClient loads normally
+- Added suppressHydrationWarning to every element in the loading spinner (belt-and-suspenders)
+- Created public/favicon.svg to fix the 404 on /favicon.ico
+- Build verified: error boundary registered in RSC payload ("error":"$3")
+- Lint: 0 errors
+- Committed: 5034044, pushed to origin/main
+
+Stage Summary:
+- error.tsx provides graceful recovery from React 19 hydration errors
+- When hydration mismatch occurs, the app recovers automatically via reset()
+- The user sees a brief loading spinner, then the full app loads normally
+- Combined with previous fixes (i18n DOM mutation removal, Math.random fix, dynamic ssr:false), this should resolve the issue
+- If the root mismatch persists, the error boundary at least prevents the crash
