@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  /* config options here */
+  // "standalone" retiré — Vercel a son propre runtime natif.
+  // Ce mode est uniquement pour Docker / self-hosted et peut
+  // causer des problèmes d'hydratation en modifiant comment le HTML est servi.
   typescript: {
     ignoreBuildErrors: true,
   },
