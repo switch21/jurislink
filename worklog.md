@@ -672,3 +672,40 @@ Stage Summary:
 - The user sees a brief loading spinner, then the full app loads normally
 - Combined with previous fixes (i18n DOM mutation removal, Math.random fix, dynamic ssr:false), this should resolve the issue
 - If the root mismatch persists, the error boundary at least prevents the crash
+
+---
+Task ID: 12
+Agent: Main
+Task: Deep compatibility audit — fix infinite loading loop on Vercel
+
+Work Log:
+- Comprehensive audit of entire project (all src/ files, API routes, config, dependencies)
+- Identified root cause: error.tsx + global-error.tsx had setTimeout(reset, 0) creating infinite loop
+  (any error → error boundary → reset → same error → reset → ↻)
+- Fixed error.tsx: replaced auto-reset with manual "Réessayer" button
+- Fixed global-error.tsx: same fix
+- Fixed page.tsx: removed redundant 'use client' directive (dynamic ssr:false is sufficient from server component)
+- Fixed AppClient.tsx: removed enableSystem from ThemeProvider (prevents dark mode detection → hydration mismatch in React 19)
+- Removed 22 dead/incompatible dependencies (next-auth v4 incompatible with React 19, plus 21 unused packages)
+- Deleted orphaned tailwind.config.ts (Tailwind v3 config in v4 project)
+- Fixed start script (was referencing non-existent .next/standalone/server.js)
+- Verified ESLint passes cleanly
+
+Stage Summary:
+- Root cause: error boundary auto-reset loop + ThemeProvider enableSystem hydration mismatch
+- Dependencies reduced from ~40 to ~18 active packages
+- Commit f52d1fb pushed to GitHub
+- Awaiting Vercel deployment verification
+
+---
+Task ID: 13
+Agent: Main
+Task: Fix Vercel build failure (standalone cp commands)
+
+Work Log:
+- Fixed package.json build script: removed `cp -r .next/static .next/standalone/...` commands
+- The standalone output mode was removed from next.config.ts but build script wasn't updated
+- Commit 17a489e pushed
+
+Stage Summary:
+- Vercel build now uses simple `next build` without post-copy steps
