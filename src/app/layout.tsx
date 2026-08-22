@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Outfit } from "next/font/google";
-import { ThemeProvider } from "next-themes";
 import "./globals.css";
-import { Toaster } from "sonner";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -28,18 +26,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" suppressHydrationWarning>
-      <body
-        className={`${inter.variable} ${outfit.variable} antialiased`}
-      >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
-        <Toaster richColors position="top-right" />
+      <body className={`${inter.variable} ${outfit.variable} antialiased`}>
+        {children}
       </body>
     </html>
   );
