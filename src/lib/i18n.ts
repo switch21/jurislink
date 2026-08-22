@@ -28,6 +28,8 @@ const TRANSLATIONS: Record<Locale, Record<string, string>> = {
   fr: frDict, en: enDict, es: esDict, sw: swDict, ar: arDict, it: itDict, de: deDict,
 }
 
+// Detect locale only when called, not at module level
+// Returns 'fr' on server (no window), reads localStorage/navigator on client
 function detectLocale(): Locale {
   if (typeof window === 'undefined') return 'fr'
   try {
@@ -62,8 +64,6 @@ export const useLocaleStore = create<LocaleState>((set) => ({
 
 export const useLocale = () => useLocaleStore((s) => ({ locale: s.locale, setLocale: s.setLocale }))
 
-if (typeof window !== 'undefined') {
-  const initLocale = detectLocale()
-  document.documentElement.dir = RTL_LOCALES.has(initLocale) ? 'rtl' : 'ltr'
-  document.documentElement.lang = initLocale
-}
+// REMOVED: module-level DOM mutation that ran before React hydration
+// The DOM dir/lang attributes are now only set in setLocale() callback,
+// which is called from a useEffect in the locale selector component.
