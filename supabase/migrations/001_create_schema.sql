@@ -548,16 +548,17 @@ END $$;
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.audit_logs (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id     UUID,
-  user_id       UUID,
   action        TEXT NOT NULL,
-  resource_type TEXT,
-  resource_id   UUID,
-  metadata      JSONB,
-  ip_address    TEXT,
-  user_agent    TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+DO $$ BEGIN ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS tenant_id UUID; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS user_id UUID; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS resource_type TEXT; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS resource_id UUID; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS metadata JSONB; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS ip_address TEXT; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS user_agent TEXT; EXCEPTION WHEN others THEN NULL; END $$;
 
 
 -- ---------------------------------------------------------------
@@ -569,10 +570,11 @@ CREATE TABLE IF NOT EXISTS public.case_notes (
   case_id     UUID NOT NULL,
   user_id     UUID NOT NULL,
   content     TEXT NOT NULL,
-  is_pinned   BOOLEAN NOT NULL DEFAULT false,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+DO $$ BEGIN ALTER TABLE public.case_notes ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false; EXCEPTION WHEN others THEN NULL; END $$;
 
 
 -- ---------------------------------------------------------------
@@ -583,14 +585,15 @@ CREATE TABLE IF NOT EXISTS public.payments (
   tenant_id   UUID NOT NULL,
   invoice_id  UUID NOT NULL,
   amount      NUMERIC(12,2) NOT NULL DEFAULT 0,
-  method      TEXT,
-  reference   TEXT,
   status      TEXT NOT NULL DEFAULT 'pending',
-  paid_at     TIMESTAMPTZ,
-  notes       TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+DO $$ BEGIN ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS method TEXT; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS reference TEXT; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS notes TEXT; EXCEPTION WHEN others THEN NULL; END $$;
 
 
 -- ---------------------------------------------------------------
@@ -598,15 +601,26 @@ CREATE TABLE IF NOT EXISTS public.payments (
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.permissions (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID,
   role        TEXT NOT NULL,
   resource    TEXT NOT NULL,
   action      TEXT NOT NULL,
-  allowed     BOOLEAN NOT NULL DEFAULT false,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(tenant_id, role, resource, action)
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+DO $$ BEGIN ALTER TABLE public.permissions ADD COLUMN IF NOT EXISTS tenant_id UUID; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.permissions ADD COLUMN IF NOT EXISTS allowed BOOLEAN NOT NULL DEFAULT false; EXCEPTION WHEN others THEN NULL; END $$;
+-- Unique constraint ajoutée à part pour éviter les erreurs si déjà présente
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'permissions_tenant_role_resource_action_key' AND table_name = 'permissions'
+  ) THEN
+    ALTER TABLE public.permissions ADD CONSTRAINT permissions_tenant_role_resource_action_key
+      UNIQUE(tenant_id, role, resource, action);
+  END IF;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 
 -- ==============================================================
@@ -1026,97 +1040,78 @@ END $$;
 -- PARTIE 6 — INDEX
 -- ==============================================================
 
--- tenants
-CREATE UNIQUE INDEX IF NOT EXISTS tenants_slug_idx ON public.tenants (slug);
-CREATE INDEX IF NOT EXISTS tenants_is_active_idx ON public.tenants (is_active);
+DO $$ BEGIN CREATE UNIQUE INDEX IF NOT EXISTS tenants_slug_idx ON public.tenants (slug); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS tenants_is_active_idx ON public.tenants (is_active); EXCEPTION WHEN others THEN NULL; END $$;
 
--- currencies
-CREATE UNIQUE INDEX IF NOT EXISTS currencies_code_idx ON public.currencies (code);
+DO $$ BEGIN CREATE UNIQUE INDEX IF NOT EXISTS currencies_code_idx ON public.currencies (code); EXCEPTION WHEN others THEN NULL; END $$;
 
--- users
-CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON public.users (tenant_id);
-CREATE INDEX IF NOT EXISTS users_email_idx ON public.users (email);
-CREATE INDEX IF NOT EXISTS users_role_idx ON public.users (role);
-CREATE INDEX IF NOT EXISTS users_is_active_idx ON public.users (is_active);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON public.users (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS users_email_idx ON public.users (email); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS users_role_idx ON public.users (role); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS users_is_active_idx ON public.users (is_active); EXCEPTION WHEN others THEN NULL; END $$;
 
--- clients
-CREATE INDEX IF NOT EXISTS clients_tenant_id_idx ON public.clients (tenant_id);
-CREATE INDEX IF NOT EXISTS clients_full_name_idx ON public.clients (full_name);
-CREATE INDEX IF NOT EXISTS clients_email_idx ON public.clients (email);
-CREATE INDEX IF NOT EXISTS clients_company_idx ON public.clients (company);
-CREATE INDEX IF NOT EXISTS clients_is_active_idx ON public.clients (is_active);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS clients_tenant_id_idx ON public.clients (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS clients_full_name_idx ON public.clients (full_name); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS clients_email_idx ON public.clients (email); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS clients_company_idx ON public.clients (company); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS clients_is_active_idx ON public.clients (is_active); EXCEPTION WHEN others THEN NULL; END $$;
 
--- cases
-CREATE INDEX IF NOT EXISTS cases_client_id_idx ON public.cases (client_id);
-CREATE INDEX IF NOT EXISTS cases_status_idx ON public.cases (status);
-CREATE INDEX IF NOT EXISTS cases_case_type_idx ON public.cases (case_type);
-CREATE INDEX IF NOT EXISTS cases_assigned_lawyer_id_idx ON public.cases (assigned_lawyer_id);
-CREATE INDEX IF NOT EXISTS cases_next_deadline_idx ON public.cases (next_deadline);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS cases_client_id_idx ON public.cases (client_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS cases_status_idx ON public.cases (status); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS cases_case_type_idx ON public.cases (case_type); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS cases_assigned_lawyer_id_idx ON public.cases (assigned_lawyer_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS cases_next_deadline_idx ON public.cases (next_deadline); EXCEPTION WHEN others THEN NULL; END $$;
 
--- tasks
-CREATE INDEX IF NOT EXISTS tasks_tenant_id_idx ON public.tasks (tenant_id);
-CREATE INDEX IF NOT EXISTS tasks_case_id_idx ON public.tasks (case_id);
-CREATE INDEX IF NOT EXISTS tasks_assignee_id_idx ON public.tasks (assignee_id);
-CREATE INDEX IF NOT EXISTS tasks_status_idx ON public.tasks (status);
-CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON public.tasks (due_date);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS tasks_tenant_id_idx ON public.tasks (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS tasks_case_id_idx ON public.tasks (case_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS tasks_assignee_id_idx ON public.tasks (assignee_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS tasks_status_idx ON public.tasks (status); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON public.tasks (due_date); EXCEPTION WHEN others THEN NULL; END $$;
 
--- documents
-CREATE INDEX IF NOT EXISTS documents_tenant_id_idx ON public.documents (tenant_id);
-CREATE INDEX IF NOT EXISTS documents_case_id_idx ON public.documents (case_id);
-CREATE INDEX IF NOT EXISTS documents_uploader_id_idx ON public.documents (uploader_id);
-CREATE INDEX IF NOT EXISTS documents_deleted_at_idx ON public.documents (deleted_at);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS documents_tenant_id_idx ON public.documents (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS documents_case_id_idx ON public.documents (case_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS documents_uploader_id_idx ON public.documents (uploader_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS documents_deleted_at_idx ON public.documents (deleted_at); EXCEPTION WHEN others THEN NULL; END $$;
 
--- invoices
-CREATE INDEX IF NOT EXISTS invoices_tenant_id_idx ON public.invoices (tenant_id);
-CREATE INDEX IF NOT EXISTS invoices_client_id_idx ON public.invoices (client_id);
-CREATE INDEX IF NOT EXISTS invoices_status_idx ON public.invoices (status);
-CREATE INDEX IF NOT EXISTS invoices_due_date_idx ON public.invoices (due_date);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS invoices_tenant_id_idx ON public.invoices (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS invoices_client_id_idx ON public.invoices (client_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS invoices_status_idx ON public.invoices (status); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS invoices_due_date_idx ON public.invoices (due_date); EXCEPTION WHEN others THEN NULL; END $$;
 
--- events
-CREATE INDEX IF NOT EXISTS events_tenant_id_idx ON public.events (tenant_id);
-CREATE INDEX IF NOT EXISTS events_case_id_idx ON public.events (case_id);
-CREATE INDEX IF NOT EXISTS events_start_time_idx ON public.events (start_time);
-CREATE INDEX IF NOT EXISTS events_event_type_idx ON public.events (event_type);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS events_tenant_id_idx ON public.events (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS events_case_id_idx ON public.events (case_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS events_start_time_idx ON public.events (start_time); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS events_event_type_idx ON public.events (event_type); EXCEPTION WHEN others THEN NULL; END $$;
 
--- event_assignments
-CREATE UNIQUE INDEX IF NOT EXISTS event_assignments_event_user_idx
-  ON public.event_assignments (event_id, user_id);
-CREATE INDEX IF NOT EXISTS event_assignments_user_id_idx
-  ON public.event_assignments (user_id);
-CREATE INDEX IF NOT EXISTS event_assignments_tenant_id_idx
-  ON public.event_assignments (tenant_id);
+DO $$ BEGIN CREATE UNIQUE INDEX IF NOT EXISTS event_assignments_event_user_idx ON public.event_assignments (event_id, user_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS event_assignments_user_id_idx ON public.event_assignments (user_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS event_assignments_tenant_id_idx ON public.event_assignments (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
 
--- messages
-CREATE INDEX IF NOT EXISTS messages_tenant_id_idx ON public.messages (tenant_id);
-CREATE INDEX IF NOT EXISTS messages_sender_id_idx ON public.messages (sender_id);
-CREATE INDEX IF NOT EXISTS messages_receiver_id_idx ON public.messages (receiver_id);
-CREATE INDEX IF NOT EXISTS messages_case_id_idx ON public.messages (case_id);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS messages_tenant_id_idx ON public.messages (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS messages_sender_id_idx ON public.messages (sender_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS messages_receiver_id_idx ON public.messages (receiver_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS messages_case_id_idx ON public.messages (case_id); EXCEPTION WHEN others THEN NULL; END $$;
 
--- notifications
-CREATE INDEX IF NOT EXISTS notifications_tenant_id_idx ON public.notifications (tenant_id);
-CREATE INDEX IF NOT EXISTS notifications_user_id_idx ON public.notifications (user_id);
-CREATE INDEX IF NOT EXISTS notifications_read_idx ON public.notifications ("read");
-CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON public.notifications (created_at);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS notifications_tenant_id_idx ON public.notifications (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS notifications_user_id_idx ON public.notifications (user_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS notifications_read_idx ON public.notifications ("read"); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON public.notifications (created_at); EXCEPTION WHEN others THEN NULL; END $$;
 
--- audit_logs
-CREATE INDEX IF NOT EXISTS audit_logs_tenant_id_idx ON public.audit_logs (tenant_id);
-CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON public.audit_logs (user_id);
-CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON public.audit_logs (action);
-CREATE INDEX IF NOT EXISTS audit_logs_resource_type_idx ON public.audit_logs (resource_type);
-CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON public.audit_logs (created_at);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS audit_logs_tenant_id_idx ON public.audit_logs (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON public.audit_logs (user_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON public.audit_logs (action); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS audit_logs_resource_type_idx ON public.audit_logs (resource_type); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON public.audit_logs (created_at); EXCEPTION WHEN others THEN NULL; END $$;
 
--- case_notes
-CREATE INDEX IF NOT EXISTS case_notes_tenant_id_idx ON public.case_notes (tenant_id);
-CREATE INDEX IF NOT EXISTS case_notes_case_id_idx ON public.case_notes (case_id);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS case_notes_tenant_id_idx ON public.case_notes (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS case_notes_case_id_idx ON public.case_notes (case_id); EXCEPTION WHEN others THEN NULL; END $$;
 
--- payments
-CREATE INDEX IF NOT EXISTS payments_tenant_id_idx ON public.payments (tenant_id);
-CREATE INDEX IF NOT EXISTS payments_invoice_id_idx ON public.payments (invoice_id);
-CREATE INDEX IF NOT EXISTS payments_status_idx ON public.payments (status);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS payments_tenant_id_idx ON public.payments (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS payments_invoice_id_idx ON public.payments (invoice_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS payments_status_idx ON public.payments (status); EXCEPTION WHEN others THEN NULL; END $$;
 
--- permissions
-CREATE INDEX IF NOT EXISTS permissions_tenant_id_idx ON public.permissions (tenant_id);
-CREATE INDEX IF NOT EXISTS permissions_role_idx ON public.permissions (role);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS permissions_tenant_id_idx ON public.permissions (tenant_id); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS permissions_role_idx ON public.permissions (role); EXCEPTION WHEN others THEN NULL; END $$;
 
 
 -- ==============================================================
@@ -1204,24 +1199,23 @@ DO $$ BEGIN ALTER TABLE public.case_notes ENABLE ROW LEVEL SECURITY; EXCEPTION W
 DO $$ BEGIN ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN others THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN others THEN NULL; END $$;
 
--- Service role a accès total (bypass RLS déjà actif par défaut,
--- mais on ajoute des policies explicites pour l'anon key futur)
-CREATE POLICY "Service role full access" ON public.tenants FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.currencies FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.clients FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.cases FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.tasks FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.documents FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.invoices FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.events FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.event_assignments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.messages FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.notifications FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.case_notes FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.payments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Service role full access" ON public.permissions FOR ALL USING (true) WITH CHECK (true);
+-- Service role a accès total
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.tenants FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.currencies FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.users FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.clients FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.cases FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.tasks FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.documents FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.invoices FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.events FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.event_assignments FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.messages FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.notifications FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.case_notes FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.payments FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Service role full access" ON public.permissions FOR ALL USING (true) WITH CHECK (true); EXCEPTION WHEN others THEN NULL; END $$;
 
 
 -- ==============================================================
@@ -1242,6 +1236,7 @@ ON CONFLICT (code) DO NOTHING;
 -- PARTIE 11 — VUES UTILITAIRES
 -- ==============================================================
 
+DO $$ BEGIN
 CREATE OR REPLACE VIEW public.v_cases_summary AS
 SELECT
   c.id, c.tenant_id, c.client_id, c.reference, c.title,
@@ -1255,7 +1250,10 @@ SELECT
 FROM public.cases c
 LEFT JOIN public.clients cl ON cl.id = c.client_id
 LEFT JOIN public.users u ON u.id = c.assigned_lawyer_id;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE OR REPLACE VIEW public.v_tasks_detail AS
 SELECT
   t.id, t.tenant_id, t.case_id, t.event_id, t.assignee_id,
@@ -1267,7 +1265,10 @@ SELECT
 FROM public.tasks t
 LEFT JOIN public.cases cs ON cs.id = t.case_id
 LEFT JOIN public.users u ON u.id = t.assignee_id;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE OR REPLACE VIEW public.v_invoices_detail AS
 SELECT
   i.id, i.tenant_id, i.case_id, i.client_id, i.amount,
@@ -1280,7 +1281,10 @@ SELECT
 FROM public.invoices i
 LEFT JOIN public.clients cl ON cl.id = i.client_id
 LEFT JOIN public.currencies cu ON cu.id = i.currency_id;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
+DO $$ BEGIN
 CREATE OR REPLACE VIEW public.v_events_detail AS
 SELECT
   e.id, e.tenant_id, e.case_id, e.title, e.description,
@@ -1304,6 +1308,8 @@ LEFT JOIN public.cases cs ON cs.id = e.case_id
 LEFT JOIN public.event_assignments ea ON ea.event_id = e.id
 LEFT JOIN public.users u ON u.id = ea.user_id
 GROUP BY e.id, cs.id, cs.reference, cs.title;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 
 -- ==============================================================
