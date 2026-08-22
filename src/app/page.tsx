@@ -2,249 +2,115 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-// AnimatePresence removed to save memory
-// Charts replaced with lightweight CSS visualizations to reduce memory
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, isSameMonth, differenceInDays, isBefore, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
-import { useAppStore, type ViewName, type UserInfo } from '@/store/appStore'
+import { useAppStore, type ViewName } from '@/store/appStore'
 import { cn } from '@/lib/utils'
-
-// ==================== shadcn/ui imports ====================
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction, CardFooter } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption
-} from '@/components/ui/table'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose
-} from '@/components/ui/dialog'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from '@/components/ui/select'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Progress } from '@/components/ui/progress'
-import { Toaster } from '@/components/ui/sonner'
-
-// ==================== lucide icons ====================
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
-  LayoutDashboard, Briefcase, Users, FileText, Calendar, Receipt, MessageSquare, BarChart3,
-  Shield, Settings, Menu, X, Search, Bell, LogOut, User, ChevronDown, ChevronRight,
-  ChevronLeft, Plus, Edit, Trash2, Eye, Lock, Clock, Send, ArrowLeft, Download,
-  Filter, MoreHorizontal, Archive, AlertTriangle, CheckCircle2, Circle, Phone, Mail,
-  Building2, RefreshCw, TrendingUp, DollarSign, FileCheck, FileWarning, Activity,
-  Sun, Moon, Inbox, FolderOpen, Scale, ClipboardList, Zap, AlertOctagon,
-  ChevronUp, ExternalLink, Timer, Target, Flag, Folder, Tag, MapPin, Banknote, Gavel,
-  UserCheck, Check, CircleDot, ArrowUpRight, ArrowDownRight, Minus, AlertCircle, Wallet, Brain
+  LayoutDashboard, Briefcase, Users, FileText, Calendar, Receipt, MessageSquare,
+  BarChart3, Settings, Shield, Plus, Search, Bell, LogOut, Menu, X, Edit, Trash2,
+  Eye, Download, Send, ChevronLeft, ChevronRight, MoreHorizontal, Scale,
+  CheckCircle2, AlertTriangle, Clock, Building2, RefreshCw, TrendingUp, DollarSign,
+  FileCheck, Activity, Sun, Moon, Inbox, ClipboardList, Zap,
+  AlertOctagon, Timer, Gavel, AlertCircle, ArrowUpRight, ArrowDownRight
 } from 'lucide-react'
 
 // ==================== Types ====================
-interface Client {
-  id: string; firstName: string; lastName: string; company?: string | null;
-  clientType?: string; niu?: string | null; email?: string | null;
-  phone?: string | null; address?: string | null; city?: string | null; country?: string | null;
-  notes?: string | null; riskLevel?: string; source?: string | null;
-  isActive: boolean; tenantId: string; createdAt: string; _count?: { cases: number; invoices: number };
-}
-interface CaseItem {
-  id: string; reference: string; title: string; description?: string | null; type: string;
-  status: string; priority: string; isSecret: boolean; nextDueDate?: string | null;
-  closingDate?: string | null; createdAt: string; tenantId: string; clientId: string;
-  adversary?: string | null; jurisdiction?: string | null; amountInDispute?: number | null;
-  billingType?: string | null;
-  client?: Client; assignments?: CaseAssignment[]; notes?: CaseNote[]; documents?: Doc[]; events?: EventItem[];
-}
+interface Client { id: string; firstName: string; lastName: string; company?: string | null; clientType?: string; niu?: string | null; email?: string | null; phone?: string | null; address?: string | null; city?: string | null; country?: string | null; notes?: string | null; riskLevel?: string; source?: string | null; isActive: boolean; tenantId: string; createdAt: string; _count?: { cases: number; invoices: number } }
+interface CaseItem { id: string; reference: string; title: string; description?: string | null; type: string; status: string; priority: string; isSecret: boolean; nextDueDate?: string | null; closingDate?: string | null; createdAt: string; tenantId: string; clientId: string; adversary?: string | null; jurisdiction?: string | null; amountInDispute?: number | null; billingType?: string | null; client?: Client; assignments?: CaseAssignment[]; notes?: CaseNote[]; documents?: Doc[]; events?: EventItem[] }
 interface CaseAssignment { id: string; userId: string; caseId: string; user?: UserItem }
 interface CaseNote { id: string; content: string; createdAt: string; userId?: string | null; user?: UserItem }
-interface Doc {
-  id: string; name: string; fileName: string; fileType: string; fileSize: number; filePath: string;
-  version: number; isFinal?: boolean; folder?: string | null; tags?: string | null;
-  description?: string | null; createdAt: string; tenantId: string; caseId?: string | null;
-  userId?: string | null; case?: CaseItem;
-}
-interface EventItem {
-  id: string; title: string; description?: string | null; startTime: string; endTime?: string | null;
-  eventType: string; criticality: string; location?: string | null; createdAt: string;
-  tenantId: string; caseId?: string | null; case?: CaseItem; assignments?: EventAssignment[];
-}
+interface Doc { id: string; name: string; fileName: string; fileType: string; fileSize: number; filePath: string; version: number; isFinal?: boolean; folder?: string | null; tags?: string | null; description?: string | null; createdAt: string; tenantId: string; caseId?: string | null; userId?: string | null; case?: CaseItem }
+interface EventItem { id: string; title: string; description?: string | null; startTime: string; endTime?: string | null; eventType: string; criticality: string; location?: string | null; createdAt: string; tenantId: string; caseId?: string | null; case?: CaseItem; assignments?: EventAssignment[] }
 interface EventAssignment { id: string; userId: string; eventId: string; user?: UserItem }
-interface Invoice {
-  id: string; reference: string; amount: number; status: string; dueDate?: string | null;
-  paidDate?: string | null; paidAmount?: number | null; notes?: string | null; createdAt: string;
-  tenantId: string; clientId: string; client?: Client; caseId?: string | null; case?: CaseItem; currencyCode: string;
-  paymentMethod?: string | null;
-}
-interface Message {
-  id: string; content: string; isRead: boolean; createdAt: string; tenantId: string;
-  senderId: string; receiverId: string; sender?: UserItem; receiver?: UserItem;
-}
-interface Notification {
-  id: string; title: string; message: string; category: string; priority?: string; isRead: boolean;
-  resourceType?: string | null; resourceId?: string | null; createdAt: string;
-}
-interface AuditLogItem {
-  id: string; action: string; resourceType?: string | null; resourceId?: string | null;
-  metadata?: string | null; ipAddress?: string | null; userAgent?: string | null;
-  createdAt: string; tenantId: string; userId?: string | null; user?: UserItem;
-}
-interface UserItem {
-  id: string; email: string; name: string; role: string; tenantId?: string | null;
-  phone?: string | null; avatarUrl?: string | null; preferredLanguage?: string; isActive?: boolean;
-}
-interface TenantItem {
-  id: string; name: string; slug: string; plan: string; maxUsers: number; maxStorageGb: number;
-  isActive: boolean; createdAt: string; _count?: { users: number; clients: number; cases: number };
-}
-interface TaskItem {
-  id: string; title: string; description?: string | null; status: string; priority: string;
-  dueDate?: string | null; completedAt?: string | null; createdAt: string;
-  tenantId: string; caseId?: string | null; userId?: string | null; creatorId?: string | null; eventId?: string | null;
-  user?: UserItem; creator?: UserItem; case?: { id: string; reference: string; title: string } | null;
-  event?: { id: string; title: string } | null;
-}
-interface DashboardStats {
-  totalCases: number; activeCases: number; totalClients: number; upcomingEvents: number;
-  unpaidInvoices: number; totalRevenue: number; paidInvoices: number;
-  casesByStatus: Record<string, number>; casesByType: Record<string, number>;
-  recentActivity: AuditLogItem[]; upcomingEventsList: EventItem[];
-  urgencies: Array<{ id: string; reference: string; title: string; clientName: string; nextDueDate: string; daysRemaining: number }>;
-  overdueInvoices: Array<{ id: string; reference: string; clientName: string; amount: number; currencyCode: string; daysOverdue: number }>;
-  urgentTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null; assigneeName: string | null }>;
-  upcomingEventsEnhanced: Array<{ id: string; title: string; startTime: string; eventType: string; criticality: string; location?: string | null; caseReference: string | null; assignments: Array<{ userId: string; userName: string }> }>;
-  myTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null }>;
-}
-interface ConflictResult {
-  type: string; case: { id: string; reference: string; title: string; clientName: string }; description: string;
-}
+interface Invoice { id: string; reference: string; amount: number; status: string; dueDate?: string | null; paidDate?: string | null; paidAmount?: number | null; notes?: string | null; createdAt: string; tenantId: string; clientId: string; client?: Client; caseId?: string | null; case?: CaseItem; currencyCode: string; paymentMethod?: string | null }
+interface Message { id: string; content: string; isRead: boolean; createdAt: string; tenantId: string; senderId: string; receiverId: string; sender?: UserItem; receiver?: UserItem }
+interface Notification { id: string; title: string; message: string; category: string; priority?: string; isRead: boolean; resourceType?: string | null; resourceId?: string | null; createdAt: string }
+interface AuditLogItem { id: string; action: string; resourceType?: string | null; resourceId?: string | null; metadata?: string | null; ipAddress?: string | null; userAgent?: string | null; createdAt: string; tenantId: string; userId?: string | null; user?: UserItem }
+interface UserItem { id: string; email: string; name: string; role: string; tenantId?: string | null; phone?: string | null; avatarUrl?: string | null; preferredLanguage?: string; isActive?: boolean }
+interface TenantItem { id: string; name: string; slug: string; plan: string; maxUsers: number; maxStorageGb: number; isActive: boolean; createdAt: string; _count?: { users: number; clients: number; cases: number }; email?: string | null; phone?: string | null; address?: string | null }
+interface TaskItem { id: string; title: string; description?: string | null; status: string; priority: string; dueDate?: string | null; completedAt?: string | null; createdAt: string; tenantId: string; caseId?: string | null; userId?: string | null; creatorId?: string | null; eventId?: string | null; user?: UserItem; creator?: UserItem; case?: { id: string; reference: string; title: string } | null; event?: { id: string; title: string } | null }
+interface DashboardStats { totalCases: number; activeCases: number; totalClients: number; upcomingEvents: number; unpaidInvoices: number; totalRevenue: number; paidInvoices: number; casesByStatus: Record<string, number>; casesByType: Record<string, number>; recentActivity: AuditLogItem[]; upcomingEventsList: EventItem[]; urgencies: Array<{ id: string; reference: string; title: string; clientName: string; nextDueDate: string; daysRemaining: number }>; overdueInvoices: Array<{ id: string; reference: string; clientName: string; amount: number; currencyCode: string; daysOverdue: number }>; urgentTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null; assigneeName: string | null }>; upcomingEventsEnhanced: Array<{ id: string; title: string; startTime: string; eventType: string; criticality: string; location?: string | null; caseReference: string | null; assignments: Array<{ userId: string; userName: string }> }>; myTasks: Array<{ id: string; title: string; priority: string; status: string; dueDate: string | null; caseReference: string | null }> }
+interface ConflictResult { type: string; case: { id: string; reference: string; title: string; clientName: string }; description: string }
 interface CurrencyItem { id: string; code: string; name: string; symbol: string }
 
-
-// ==================== Query Client ====================
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } })
 
 // ==================== Constants ====================
-const STATUS_COLORS: Record<string, string> = {
-  nouveau: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  ouvert: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
-  en_cours: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  en_attente: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  clos: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  archive: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  non_paye: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-  partiel: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  paye: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  annule: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  a_faire: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  en_cours_t: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  terminee: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  annulee: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-}
-const STATUS_LABELS: Record<string, string> = {
-  nouveau: 'Nouveau', ouvert: 'Ouvert', en_cours: 'En cours', en_attente: 'En attente',
-  clos: 'Clos', archive: 'Archivé', non_paye: 'Non payé', partiel: 'Partiel',
-  paye: 'Payé', annule: 'Annulé',
-  a_faire: 'À faire', en_cours_t: 'En cours', terminee: 'Terminée', annulee: 'Annulée',
-}
-const PRIORITY_COLORS: Record<string, string> = {
-  basse: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  normal: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  haute: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  urgente: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-}
+const STATUS_COLORS: Record<string, string> = { nouveau: 'bg-blue-50 text-blue-700', ouvert: 'bg-cyan-50 text-cyan-700', en_cours: 'bg-amber-50 text-amber-700', en_attente: 'bg-orange-50 text-orange-700', clos: 'bg-emerald-50 text-emerald-700', archive: 'bg-gray-100 text-gray-600', non_paye: 'bg-rose-50 text-rose-700', partiel: 'bg-orange-50 text-orange-700', paye: 'bg-emerald-50 text-emerald-700', annule: 'bg-gray-100 text-gray-600', a_faire: 'bg-blue-50 text-blue-700', en_cours_t: 'bg-amber-50 text-amber-700', terminee: 'bg-emerald-50 text-emerald-700', annulee: 'bg-gray-100 text-gray-600' }
+const STATUS_LABELS: Record<string, string> = { nouveau: 'Nouveau', ouvert: 'Ouvert', en_cours: 'En cours', en_attente: 'En attente', clos: 'Clos', archive: 'Archivé', non_paye: 'Non payé', partiel: 'Partiel', paye: 'Payé', annule: 'Annulé', a_faire: 'À faire', en_cours_t: 'En cours', terminee: 'Terminée', annulee: 'Annulée' }
+const PRIORITY_COLORS: Record<string, string> = { basse: 'bg-gray-100 text-gray-600', normal: 'bg-blue-50 text-blue-700', haute: 'bg-orange-50 text-orange-700', urgente: 'bg-rose-50 text-rose-700' }
 const PRIORITY_LABELS: Record<string, string> = { basse: 'Basse', normal: 'Normal', haute: 'Haute', urgente: 'Urgente' }
 const TYPE_LABELS: Record<string, string> = { civil: 'Civil', penal: 'Pénal', commercial: 'Commercial', social: 'Social', administratif: 'Administratif' }
 const EVENT_TYPE_LABELS: Record<string, string> = { audience: 'Audience', rdv: 'Rendez-vous', echeance: 'Échéance', depot: 'Dépôt', autre: 'Autre' }
-const CRIT_COLORS: Record<string, string> = { basse: 'bg-slate-300 dark:bg-slate-600', normal: 'bg-amber-300 dark:bg-amber-600', haute: 'bg-orange-400 dark:bg-orange-500', urgente: 'bg-rose-500 dark:bg-rose-400' }
-const ROLE_LABELS: Record<string, string> = {
-  root_admin: 'Admin Racine', associate: 'Associé', firm_admin: 'Admin Cabinet',
-  lawyer: 'Avocat', jurist: 'Juriste', assistant: 'Assistant', accountant: 'Comptable', client: 'Client',
-}
-const RISK_COLORS: Record<string, string> = {
-  faible: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  moyen: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  eleve: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-}
+const CRIT_COLORS: Record<string, string> = { basse: 'bg-gray-300', normal: 'bg-amber-400', haute: 'bg-orange-400', urgente: 'bg-rose-500' }
+const ROLE_LABELS: Record<string, string> = { root_admin: 'Admin Racine', associate: 'Associé', firm_admin: 'Admin Cabinet', lawyer: 'Avocat', jurist: 'Juriste', assistant: 'Assistant', accountant: 'Comptable', client: 'Client' }
+const RISK_COLORS: Record<string, string> = { faible: 'bg-emerald-50 text-emerald-700', moyen: 'bg-amber-50 text-amber-700', eleve: 'bg-rose-50 text-rose-700' }
 const BILLING_LABELS: Record<string, string> = { forfait: 'Forfait', horaire: 'Horaire', abonnement: 'Abonnement', success_fee: 'Success fee', provision: 'Provision' }
-const METHOD_LABELS: Record<string, string> = { especes: 'Especèces', virement: 'Virement', mobile_money: 'Mobile Money', carte: 'Carte' }
+const METHOD_LABELS: Record<string, string> = { especes: 'Espèces', virement: 'Virement', mobile_money: 'Mobile Money', carte: 'Carte' }
+const CHART_COLORS = ['#1E5A8A', '#C8A45D', '#059669', '#E8A838', '#8B5CF6', '#EC4899']
+const CHART_COLORS_DARK = ['#60A5FA', '#FBBF24', '#34D399', '#FB923C', '#A78BFA', '#FB7185']
 
-const CHART_COLORS = ['#475569', '#d97706', '#059669', '#e11d48', '#94a3b8', '#f59e0b']
-const CHART_COLORS_DARK = ['#94a3b8', '#f59e0b', '#34d399', '#fb7185', '#64748b', '#fbbf24']
-
-const NAV_ITEMS: { view: ViewName; label: string; icon: React.ElementType; adminOnly?: boolean }[] = [
-  { view: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-  { view: 'cases', label: 'Dossiers', icon: Briefcase },
-  { view: 'clients', label: 'Clients', icon: Users },
-  { view: 'tasks', label: 'Tâches', icon: ClipboardList },
-  { view: 'documents', label: 'Documents', icon: FileText },
-  { view: 'calendar', label: 'Calendrier', icon: Calendar },
-  { view: 'invoices', label: 'Factures', icon: Receipt },
-  { view: 'messages', label: 'Messages', icon: MessageSquare },
-  { view: 'reports', label: 'Rapports', icon: BarChart3 },
-  { view: 'audit-logs', label: "Journal d'audit", icon: Shield, adminOnly: true },
-  { view: 'settings', label: 'Paramètres', icon: Settings },
+const NAV_SECTIONS = [
+  { label: 'NAVIGATION', items: [
+    { view: 'dashboard' as ViewName, label: 'Tableau de bord', icon: LayoutDashboard },
+    { view: 'cases' as ViewName, label: 'Dossiers', icon: Briefcase },
+    { view: 'clients' as ViewName, label: 'Clients', icon: Users },
+    { view: 'tasks' as ViewName, label: 'Tâches', icon: ClipboardList },
+    { view: 'documents' as ViewName, label: 'Documents', icon: FileText },
+    { view: 'calendar' as ViewName, label: 'Calendrier', icon: Calendar },
+  ]},
+  { label: 'OUTILS', items: [
+    { view: 'invoices' as ViewName, label: 'Factures', icon: Receipt },
+    { view: 'messages' as ViewName, label: 'Messages', icon: MessageSquare },
+    { view: 'reports' as ViewName, label: 'Rapports', icon: BarChart3 },
+  ]},
+  { label: 'ADMINISTRATION', items: [
+    { view: 'audit-logs' as ViewName, label: "Journal d'audit", icon: Shield, adminOnly: true },
+    { view: 'settings' as ViewName, label: 'Paramètres', icon: Settings },
+  ]},
 ]
+const NAV_ITEMS = NAV_SECTIONS.flatMap(s => s.items)
 
 // ==================== Helpers ====================
-function fmtDate(d: string | null | undefined) {
-  if (!d) return '—'
-  try { return format(parseISO(d), 'dd/MM/yyyy', { locale: fr }) } catch { return '—' }
-}
-function fmtDateTime(d: string | null | undefined) {
-  if (!d) return '—'
-  try { return format(parseISO(d), 'dd/MM/yyyy HH:mm', { locale: fr }) } catch { return '—' }
-}
-function fmtMoney(amount: number, code: string = 'XAF') {
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(amount)
-}
-function fmtFileSize(bytes: number) {
-  if (bytes < 1024) return bytes + ' o'
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko'
-  return (bytes / 1048576).toFixed(1) + ' Mo'
-}
+function fmtDate(d: string | null | undefined) { if (!d) return '—'; try { return format(parseISO(d), 'dd/MM/yyyy', { locale: fr }) } catch { return '—' } }
+function fmtDateTime(d: string | null | undefined) { if (!d) return '—'; try { return format(parseISO(d), 'dd/MM/yyyy HH:mm', { locale: fr }) } catch { return '—' } }
+function fmtMoney(amount: number, code: string = 'XAF') { return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(amount) }
+function fmtFileSize(bytes: number) { if (bytes < 1024) return bytes + ' o'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko'; return (bytes / 1048576).toFixed(1) + ' Mo' }
 function initials(name: string) { return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) }
-function taskStatusColor(s: string) { return STATUS_COLORS[s === 'en_cours' ? 'en_cours_t' : s] || STATUS_COLORS[s] || '' }
+function taskStatusColor(s: string) { return STATUS_COLORS[s === 'en_cours' ? 'en_cours_t' : s] || '' }
 function taskStatusLabel(s: string) { return STATUS_LABELS[s === 'en_cours' ? 'en_cours_t' : s] || s }
 
 // ==================== Theme Toggle ====================
 function ThemeToggle() {
   const { theme, setTheme } = useTheme()
-  return (
-    <TooltipProvider><Tooltip><TooltipTrigger asChild>
-      <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-        <Sun className="size-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-        <Moon className="absolute size-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        <span className="sr-only">Basculer le thème</span>
-      </Button>
-    </TooltipTrigger><TooltipContent>{theme === 'dark' ? 'Mode clair' : 'Mode sombre'}</TooltipContent></Tooltip></TooltipProvider>
-  )
+  return (<TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="text-muted-foreground" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><Sun className="size-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" /><Moon className="absolute size-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" /><span className="sr-only">Thème</span></Button></TooltipTrigger><TooltipContent>Thème</TooltipContent></Tooltip></TooltipProvider>)
 }
 
 // ==================== Empty State ====================
 function EmptyState({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description?: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 px-4">
-      <div className="size-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-        <Icon className="size-8 text-slate-400 dark:text-slate-500" />
-      </div>
-      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{title}</h3>
-      {description && <p className="text-sm text-slate-400 dark:text-slate-500 mt-1 text-center max-w-sm">{description}</p>}
-    </div>
-  )
+  return (<div className="flex flex-col items-center justify-center py-16 px-4"><div className="size-14 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4"><Icon className="size-7 text-gray-400" /></div><h3 className="text-sm font-semibold text-foreground">{title}</h3>{description && <p className="text-sm text-muted-foreground mt-1 text-center max-w-sm">{description}</p>}</div>)
 }
 
 // ==================== Login Page ====================
@@ -253,7 +119,6 @@ function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) { toast.error('Veuillez remplir tous les champs'); return }
@@ -265,32 +130,25 @@ function LoginPage() {
       login(data); toast.success(`Bienvenue, ${data.name} !`)
     } catch { toast.error('Erreur de connexion au serveur') } finally { setLoading(false) }
   }
-
   return (
-    <div className="min-h-screen flex items-center justify-center login-pattern p-4 relative overflow-hidden">
-      <div className="absolute top-[12%] left-[8%] md:top-[10%] md:left-[12%] opacity-[0.08] dark:opacity-[0.05] pointer-events-none animate-float-slow"><Scale className="size-16 md:size-20 text-slate-900 dark:text-white" /></div>
-      <div className="absolute top-[18%] right-[10%] md:top-[15%] md:right-[14%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none animate-float-medium"><FileText className="size-14 md:size-18 text-slate-900 dark:text-white" /></div>
-      <div className="absolute bottom-[15%] left-[10%] md:bottom-[18%] md:left-[15%] opacity-[0.06] dark:opacity-[0.04] pointer-events-none animate-float-fast"><Building2 className="size-16 md:size-20 text-slate-900 dark:text-white" /></div>
-      <div className="absolute bottom-[20%] right-[8%] md:bottom-[22%] md:right-[11%] opacity-[0.07] dark:opacity-[0.04] pointer-events-none animate-float-medium"><Shield className="size-14 md:size-18 text-slate-900 dark:text-white" /></div>
-      <div className="w-full max-w-md relative z-10 animate-fade-in">
-        <Card className="shadow-2xl border-slate-200/80 dark:border-slate-700/50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
+    <div className="min-h-screen flex items-center justify-center login-pattern p-4">
+      <div className="w-full max-w-md">
+        <Card className="shadow-lg border-border rounded-xl">
           <CardHeader className="text-center pb-2 pt-8">
-            <div className="mx-auto mb-4 flex items-center justify-center gap-2">
-              <div className="size-11 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/20"><Scale className="size-6 text-white" /></div>
-            </div>
-            <div className="mb-1"><span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Juris</span><span className="text-2xl font-bold tracking-tight text-amber-600">Link</span></div>
-            <CardDescription className="text-sm mt-1">Le système d'exploitation de votre cabinet</CardDescription>
+            <div className="mx-auto mb-4 size-12 rounded-xl bg-[#1E5A8A] flex items-center justify-center shadow-md"><Scale className="size-6 text-white" /></div>
+            <div className="mb-1"><span className="text-2xl font-bold tracking-tight text-foreground">Juris</span><span className="text-2xl font-bold tracking-tight text-[#1E5A8A]">Link</span></div>
+            <CardDescription className="text-sm mt-1 text-muted-foreground">Le système d'exploitation de votre cabinet</CardDescription>
           </CardHeader>
           <CardContent className="pt-4">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2"><Label htmlFor="email">Adresse e-mail</Label><Input id="email" type="email" placeholder="email@jurislink.com" value={email} onChange={e => setEmail(e.target.value)} className="h-11" /></div>
-              <div className="space-y-2"><Label htmlFor="password">Mot de passe</Label><Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="h-11" /></div>
-              <Button type="submit" className="w-full h-11 bg-slate-900 hover:bg-slate-800 dark:bg-amber-600 dark:hover:bg-amber-700 text-white" disabled={loading}>{loading ? <RefreshCw className="size-4 animate-spin" /> : 'Se connecter'}</Button>
+              <div className="space-y-2"><Label htmlFor="email">Adresse e-mail</Label><Input id="email" type="email" placeholder="email@jurislink.com" value={email} onChange={e => setEmail(e.target.value)} className="h-11 rounded-lg" /></div>
+              <div className="space-y-2"><Label htmlFor="password">Mot de passe</Label><Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="h-11 rounded-lg" /></div>
+              <Button type="submit" className="w-full h-11 bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg" disabled={loading}>{loading ? <RefreshCw className="size-4 animate-spin" /> : 'Se connecter'}</Button>
             </form>
           </CardContent>
-          <CardFooter className="flex-col gap-2 pb-8"><Separator className="mb-2" /><p className="text-xs text-slate-400 dark:text-slate-500">Compte démo</p><p className="text-xs text-slate-500 dark:text-slate-400 font-mono bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-md">ngassa@jurislink.com / Admin@123</p></CardFooter>
+          <CardFooter className="flex-col gap-1 pb-8"><Separator className="mb-3" /><p className="text-xs text-muted-foreground">Compte démo</p><p className="text-xs text-muted-foreground font-mono bg-muted px-3 py-1.5 rounded-md">ngassa@jurislink.com / Admin@123</p></CardFooter>
         </Card>
-        <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-6">© 2025 JurisLink — Tous droits réservés</p>
+        <p className="text-center text-xs text-muted-foreground mt-6">© 2025 JurisLink — Tous droits réservés</p>
       </div>
     </div>
   )
@@ -301,32 +159,37 @@ function Sidebar() {
   const { currentView, setCurrentView, user, sidebarOpen, setSidebarOpen } = useAppStore()
   const isAdmin = user?.role === 'firm_admin' || user?.role === 'root_admin' || user?.role === 'associate'
   const navContent = (
-    <nav className="space-y-1 px-3">
-      {NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => {
-        const Icon = item.icon; const active = currentView === item.view
-        return (
-          <button key={item.view} onClick={() => { setCurrentView(item.view); setSidebarOpen(false) }}
-            className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-l-2',
-              active ? 'bg-amber-500/10 text-amber-400 dark:bg-amber-500/15 dark:text-amber-400 border-amber-500' : 'border-transparent text-slate-300 hover:bg-slate-800 hover:text-white dark:text-slate-400 dark:hover:bg-slate-800/50 dark:hover:text-slate-200')}>
-            {active && <span className="size-1.5 rounded-full bg-amber-500 shrink-0" />}
-            <Icon className="size-5 shrink-0" /><span className="whitespace-nowrap">{item.label}</span>
-          </button>
-        )
-      })}
-    </nav>
+    <div className="py-4 px-3">
+      {NAV_SECTIONS.map(section => (
+        <div key={section.label} className="mb-4">
+          <p className="section-label mb-1">{section.label}</p>
+          <nav className="space-y-0.5">
+            {section.items.filter(item => !item.adminOnly || isAdmin).map(item => {
+              const Icon = item.icon; const active = currentView === item.view
+              return (
+                <button key={item.view} onClick={() => { setCurrentView(item.view); setSidebarOpen(false) }}
+                  className={cn('nav-item', active && 'active')}>
+                  <Icon className="size-[20px] shrink-0" /><span className="whitespace-nowrap">{item.label}</span>
+                </button>
+              )
+            })}
+          </nav>
+        </div>
+      ))}
+    </div>
   )
   return (<>
-    <aside className="hidden lg:flex fixed top-0 left-0 z-40 h-full bg-slate-900 dark:bg-slate-950 text-white flex-col w-[260px]">
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-700/50 shrink-0">
-        <div className="size-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shrink-0"><Scale className="size-4 text-white" /></div>
-        <span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-white">Juris</span><span className="text-amber-500">Link</span></span>
+    <aside className="hidden lg:flex fixed top-0 left-0 z-40 h-full bg-[#F9FAFB] dark:bg-card border-r border-border flex-col w-[260px]">
+      <div className="flex items-center gap-3 px-6 h-16 border-b border-border shrink-0">
+        <div className="size-8 rounded-lg bg-[#1E5A8A] flex items-center justify-center shrink-0"><Scale className="size-4 text-white" /></div>
+        <span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-foreground">Juris</span><span className="text-[#1E5A8A]">Link</span></span>
       </div>
-      <ScrollArea className="flex-1 py-4 custom-scrollbar">{navContent}</ScrollArea>
-      <div className="p-4 border-t border-slate-700/50"><div className="flex items-center gap-3"><Avatar className="size-8 shrink-0"><AvatarFallback className="bg-amber-600 text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate text-white">{user?.name}</p><p className="text-xs text-slate-400 truncate">{ROLE_LABELS[user?.role || ''] || user?.role}</p></div></div></div>
+      <ScrollArea className="flex-1 custom-scrollbar">{navContent}</ScrollArea>
+      <div className="p-4 border-t border-border"><div className="flex items-center gap-3"><Avatar className="size-8 shrink-0"><AvatarFallback className="bg-[#1E5A8A] text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate text-foreground">{user?.name}</p><p className="text-xs text-muted-foreground truncate">{ROLE_LABELS[user?.role || ''] || user?.role}</p></div></div></div>
     </aside>
-    <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}><SheetContent side="left" className="w-[280px] p-0 bg-slate-900 dark:bg-slate-950 text-white border-slate-700/50">
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-700/50 shrink-0"><div className="size-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shrink-0"><Scale className="size-4 text-white" /></div><span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-white">Juris</span><span className="text-amber-500">Link</span></span><Button variant="ghost" size="icon" className="ml-auto text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}><X className="size-5" /></Button></div>
-      <ScrollArea className="flex-1 py-4 custom-scrollbar">{navContent}</ScrollArea>
+    <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}><SheetContent side="left" className="w-[280px] p-0 bg-[#F9FAFB] dark:bg-card border-border">
+      <div className="flex items-center gap-3 px-4 h-16 border-b border-border shrink-0"><div className="size-8 rounded-lg bg-[#1E5A8A] flex items-center justify-center shrink-0"><Scale className="size-4 text-white" /></div><span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-foreground">Juris</span><span className="text-[#1E5A8A]">Link</span></span><Button variant="ghost" size="icon" className="ml-auto text-muted-foreground" onClick={() => setSidebarOpen(false)}><X className="size-5" /></Button></div>
+      <ScrollArea className="flex-1 custom-scrollbar">{navContent}</ScrollArea>
     </SheetContent></Sheet>
   </>)
 }
@@ -336,7 +199,7 @@ function Header() {
   const { currentView, user, logout, setCurrentView } = useAppStore()
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [searchResults, setSearchResults] = useState<{type: string; label: string; sub: string; view: ViewName; id: string}[]>([])
+  const [searchResults, setSearchResults] = useState<{type:string;label:string;sub:string;view:ViewName;id:string}[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const viewLabel = NAV_ITEMS.find(n => n.view === currentView)?.label || 'JurisLink'
@@ -351,7 +214,7 @@ function Header() {
         fetch(`/api/invoices?${base}`).then(r => r.json()).catch(() => []),
         fetch(`/api/tasks?${base}`).then(r => r.json()).catch(() => ({ tasks: [] })),
       ])
-      const results: {type: string; label: string; sub: string; view: ViewName; id: string}[] = []
+      const results: {type:string;label:string;sub:string;view:ViewName;id:string}[] = []
       for (const c of (casesRes.cases || casesRes || [])) results.push({ type: 'Dossier', label: c.reference, sub: c.title, view: 'cases', id: c.id })
       for (const c of (clientsRes.clients || clientsRes || [])) results.push({ type: 'Client', label: `${c.firstName} ${c.lastName}`, sub: c.company || c.email || '', view: 'clients', id: c.id })
       for (const i of (invoicesRes.invoices || invoicesRes || [])) results.push({ type: 'Facture', label: i.reference, sub: fmtMoney(i.amount, i.currencyCode), view: 'invoices', id: i.id })
@@ -367,29 +230,29 @@ function Header() {
   const unreadCount = (notifs?.notifications || []).filter((n: Notification) => !n.isRead).length
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700/50">
+    <header className="sticky top-0 z-30 bg-white dark:bg-card border-b border-border">
       <div className="flex items-center gap-4 h-16 px-4 lg:px-6">
         <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => useAppStore.getState().toggleSidebar()}><Menu className="size-5" /></Button>
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">{viewLabel}</h1>
-        <div className="relative flex-1 max-w-md ml-auto">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-          <Input placeholder="Rechercher dossiers, clients, factures, tâches..." className="pl-9 h-9 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700" value={search} onChange={e => handleSearchChange(e.target.value)} onFocus={() => search && setSearchOpen(true)} />
+        <h1 className="text-xl font-bold text-foreground hidden sm:block">{viewLabel}</h1>
+        <div className="relative flex-1 max-w-sm ml-auto">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input placeholder="Rechercher..." className="pl-9 h-9 bg-muted border-transparent rounded-full text-sm" value={search} onChange={e => handleSearchChange(e.target.value)} onFocus={() => search && setSearchOpen(true)} />
           {searchOpen && searchResults.length > 0 && (
-            <div className="absolute top-full mt-1 w-full bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg z-50 max-h-80 overflow-y-auto">
+            <div className="absolute top-full mt-1 w-full bg-card rounded-xl border border-border shadow-lg z-50 max-h-80 overflow-y-auto">
               {searchResults.map((r, i) => (
-                <button key={i} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-left" onMouseDown={e => { e.preventDefault(); setSearchOpen(false); setCurrentView(r.view); setSearch('') }}>
-                  <div className="size-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">{r.type === 'Dossier' ? <Briefcase className="size-4 text-amber-600" /> : r.type === 'Client' ? <Users className="size-4 text-emerald-600" /> : r.type === 'Facture' ? <Receipt className="size-4 text-rose-600" /> : <ClipboardList className="size-4 text-blue-600" />}</div>
-                  <div className="min-w-0"><p className="text-sm font-medium truncate">{r.label}</p><p className="text-xs text-slate-400 truncate">{r.type} — {r.sub}</p></div>
+                <button key={i} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted text-left transition-colors" onMouseDown={e => { e.preventDefault(); setSearchOpen(false); setCurrentView(r.view); setSearch('') }}>
+                  <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">{r.type === 'Dossier' ? <Briefcase className="size-4 text-[#1E5A8A]" /> : r.type === 'Client' ? <Users className="size-4 text-emerald-600" /> : r.type === 'Facture' ? <Receipt className="size-4 text-rose-600" /> : <ClipboardList className="size-4 text-amber-600" />}</div>
+                  <div className="min-w-0"><p className="text-sm font-medium truncate">{r.label}</p><p className="text-xs text-muted-foreground truncate">{r.type} — {r.sub}</p></div>
                 </button>
               ))}
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="relative" onClick={() => { setCurrentView('messages') }}><MessageSquare className="size-5" />{msgCount ? <span className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center font-bold">{msgCount > 9 ? '9+' : msgCount}</span> : null}</Button></TooltipTrigger><TooltipContent>Messages</TooltipContent></Tooltip></TooltipProvider>
-          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="size-5" />{unreadCount ? <span className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span> : null}</Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto"><DropdownMenuLabel>Notifications ({unreadCount})</DropdownMenuLabel><DropdownMenuSeparator />{(notifs?.notifications || []).slice(0, 8).map((n: Notification) => (<DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 p-3 cursor-pointer" onClick={() => { const vmap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', tache: 'tasks', message: 'messages' }; setCurrentView(vmap[n.category] || 'dashboard'); setNotifOpen(false) }}><p className={cn('text-sm font-medium', !n.isRead && 'text-slate-900 dark:text-white')}>{n.title}</p><p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{n.message}</p></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>
+        <div className="flex items-center gap-0.5">
+          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="relative" onClick={() => setCurrentView('messages')}><MessageSquare className="size-[18px]" />{msgCount ? <span className="absolute top-1 right-1 size-2 rounded-full bg-[#1E5A8A]" /> : null}</Button></TooltipTrigger><TooltipContent>Messages</TooltipContent></Tooltip></TooltipProvider>
+          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="size-[18px]" />{unreadCount ? <span className="absolute top-1 right-1 size-2 rounded-full bg-rose-500" /> : null}</Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto"><DropdownMenuLabel>Notifications ({unreadCount})</DropdownMenuLabel><DropdownMenuSeparator />{(notifs?.notifications || []).slice(0, 8).map((n: Notification) => (<DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 p-3 cursor-pointer" onClick={() => { const vmap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', tache: 'tasks', message: 'messages' }; setCurrentView(vmap[n.category] || 'dashboard'); setNotifOpen(false) }}><p className={cn('text-sm font-medium', !n.isRead && 'text-foreground')}>{n.title}</p><p className="text-xs text-muted-foreground line-clamp-2">{n.message}</p></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>
           <ThemeToggle />
-          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><LogOut className="size-5 text-slate-500" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={logout} className="text-rose-600 cursor-pointer"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><LogOut className="size-[18px] text-muted-foreground" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={logout} className="text-rose-600 cursor-pointer"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
         </div>
       </div>
     </header>
@@ -404,106 +267,122 @@ function DashboardView() {
     queryFn: () => fetch(`/api/dashboard?tenantId=${user!.tenantId}&userId=${user!.id}`).then(r => r.json()),
     enabled: !!user?.tenantId, refetchInterval: 60000
   })
-// finData comes from stats.financial
   const { theme } = useTheme()
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Bonjour' : now.getHours() < 18 ? 'Bon après-midi' : 'Bonsoir'
-  const hour = new Date().getHours()
-  const minute = new Date().getMinutes()
 
-  if (isLoading) return <div className="p-6"><Skeleton className="h-8 w-48 mb-6" /><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div></div>
+  if (isLoading) return (<div className="p-6"><Skeleton className="h-8 w-48 mb-6" /><div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6"><Skeleton className="h-72" /><Skeleton className="h-72" /></div></div>)
   if (!stats) return null
 
   const urgencyCount = (stats.urgencies?.length || 0) + (stats.overdueInvoices?.length || 0)
-  const myTaskCount = stats.myTasks?.length || 0
   const totalPending = (stats.overdueInvoices || []).reduce((s, i) => s + i.amount, 0)
-
   const statusChartData = Object.entries(stats.casesByStatus).map(([name, value]) => ({ name: STATUS_LABELS[name] || name, value })).filter(d => d.value > 0)
   const typeChartData = Object.entries(stats.casesByType).map(([name, value]) => ({ name: TYPE_LABELS[name] || name, value })).filter(d => d.value > 0)
-  const colors = (theme === 'dark' ? CHART_COLORS_DARK : CHART_COLORS)
+  const colors = theme === 'dark' ? CHART_COLORS_DARK : CHART_COLORS
+  const maxCases = Math.max(...Object.values(stats.casesByStatus), 1)
+
+  const kpis = [
+    { label: 'Total dossiers', value: stats.totalCases, icon: Briefcase, bg: 'bg-[#E8F1F8]', iconColor: 'text-[#1E5A8A]', pct: stats.totalCases > 0 ? 100 : 0 },
+    { label: 'Dossiers actifs', value: stats.activeCases, icon: Activity, bg: 'bg-[#F5EFE0]', iconColor: 'text-[#C8A45D]', pct: stats.totalCases > 0 ? (stats.activeCases / stats.totalCases) * 100 : 0 },
+    { label: 'Nouveaux clients', value: stats.totalClients, icon: Users, bg: 'bg-emerald-50', iconColor: 'text-emerald-600', pct: 80 },
+    { label: 'Événements à venir', value: stats.upcomingEvents, icon: Clock, bg: 'bg-orange-50', iconColor: 'text-orange-600', pct: 60 },
+    { label: 'Impayés', value: stats.unpaidInvoices, icon: AlertCircle, bg: 'bg-rose-50', iconColor: 'text-rose-600', pct: stats.totalCases > 0 ? (stats.unpaidInvoices / stats.totalCases) * 100 : 0 },
+  ]
+
+  const barData = statusChartData.map(d => ({ ...d, fill: d.name === 'En cours' ? (theme === 'dark' ? '#60A5FA' : '#1E5A8A') : (theme === 'dark' ? '#334155' : '#E8F1F8') }))
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
-      {/* Welcome + Aujourd'hui section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
-          <CardContent className="p-5">
-            <div className="flex items-start justify-between mb-4">
-              <div><h2 className="text-xl font-bold text-slate-900 dark:text-white">{greeting}, {user?.name?.split(' ').slice(-1)}</h2><p className="text-sm text-slate-500 dark:text-slate-400">{format(now, 'EEEE d MMMM yyyy', { locale: fr })} — {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}</p></div>
-              <div className="flex gap-2"><Button size="sm" onClick={() => setCurrentView('cases')} className="hidden sm:flex"><Plus className="size-4 mr-1" />Nouveau dossier</Button><Button size="sm" variant="outline" onClick={() => setCurrentView('invoices')} className="hidden sm:flex"><Receipt className="size-4 mr-1" />Nouvelle facture</Button></div>
-            </div>
-            <Separator className="mb-4" />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className={cn('rounded-xl p-4 border-l-4', urgencyCount > 0 ? 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30' : 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30')}>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Aujourd'hui</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white">{urgencyCount > 0 ? <><span className="text-rose-600">{urgencyCount}</span> <span className="text-sm font-normal">urgence{urgencyCount > 1 ? 's' : ''}</span></> : <><CheckCircle2 className="size-6 text-emerald-500 inline" /> <span className="text-sm font-normal text-emerald-600">Tout va bien</span></>}</p>
-              </div>
-              <div className="rounded-xl p-4 border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-950/30">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Actions à faire</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white">{myTaskCount} <span className="text-sm font-normal text-slate-500">tâche{myTaskCount > 1 ? 's' : ''}</span></p>
-              </div>
-              <div className="rounded-xl p-4 border-l-4 border-l-slate-500 bg-slate-50 dark:bg-slate-800/50">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Dossiers actifs</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activeCases}</p>
-              </div>
-              <div className="rounded-xl p-4 border-l-4 border-l-orange-500 bg-orange-50 dark:bg-orange-950/30">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Honoraires en attente</p>
-                <p className="text-2xl font-bold text-orange-600">{fmtMoney(totalPending, 'XAF')}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        {/* My Tasks quick panel */}
-        <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><ClipboardList className="size-4 text-amber-500" />Mes tâches en cours</CardTitle></CardHeader><CardContent className="p-4 pt-0"><div className="space-y-2 max-h-48 overflow-y-auto">{(stats.myTasks || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucune tâche en cours</p> : (stats.myTasks || []).map(t => (<div key={t.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => setCurrentView('tasks')}><span className={cn('size-2 rounded-full shrink-0', t.priority === 'urgente' ? 'bg-rose-500' : t.priority === 'haute' ? 'bg-orange-500' : 'bg-amber-400')} /><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{t.title}</p><p className="text-xs text-slate-400">{t.caseReference ? `${t.caseReference} — ` : ''}{t.dueDate ? `Échéance: ${fmtDate(t.dueDate)}` : ''}</p></div></div>))}</div></CardContent></Card>
+    <div className="p-6 space-y-6">
+      {/* Welcome */}
+      <div className="flex items-center justify-between">
+        <div><h2 className="text-2xl font-bold text-foreground">{greeting}, {user?.name?.split(' ').slice(-1)}</h2><p className="text-sm text-muted-foreground mt-0.5">{format(now, 'EEEE d MMMM yyyy', { locale: fr })}</p></div>
+        <Button onClick={() => setCurrentView('cases')} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg hidden sm:flex"><Plus className="size-4 mr-1.5" />Nouveau dossier</Button>
       </div>
 
-      {/* Urgencies + Upcoming Events */}
-      {(urgencyCount > 0 || (stats.urgentTasks?.length || 0) > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Urgencies */}
-          <Card className="border-l-4 border-l-rose-500"><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2 text-rose-700 dark:text-rose-400"><AlertOctagon className="size-4" />Urgences</CardTitle></CardHeader><CardContent className="p-4 pt-0"><div className="space-y-3 max-h-64 overflow-y-auto">
-            {stats.urgencies?.map(u => (<div key={u.id} className="flex items-start gap-3 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/20 cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-950/40" onClick={() => setCurrentView('cases')}><div className="mt-0.5"><Gavel className="size-4 text-rose-500" /></div><div className="min-w-0"><p className="text-sm font-medium">{u.reference} — {u.title}</p><p className="text-xs text-slate-500">{u.clientName} • <span className="font-semibold text-rose-600">{u.daysRemaining <= 0 ? 'Aujourd\'hui !' : `Dans ${u.daysRemaining} jour${u.daysRemaining > 1 ? 's' : ''}`}</span></p></div></div>))}
-            {stats.overdueInvoices?.map(inv => (<div key={inv.id} className="flex items-start gap-3 p-2 rounded-lg bg-orange-50 dark:bg-orange-950/20 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-950/40" onClick={() => setCurrentView('invoices')}><div className="mt-0.5"><AlertTriangle className="size-4 text-orange-500" /></div><div className="min-w-0"><p className="text-sm font-medium">{inv.reference} — {inv.clientName}</p><p className="text-xs text-slate-500">{fmtMoney(inv.amount, inv.currencyCode)} • <span className="font-semibold text-orange-600">{inv.daysOverdue}j de retard</span></p></div></div>))}
-            {stats.urgentTasks?.slice(0, 3).map(t => (<div key={t.id} className="flex items-start gap-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40" onClick={() => setCurrentView('tasks')}><div className="mt-0.5"><Timer className="size-4 text-amber-500" /></div><div className="min-w-0"><p className="text-sm font-medium">{t.title}</p><p className="text-xs text-slate-500">{t.assigneeName ? `→ ${t.assigneeName}` : ''} {t.caseReference ? `• ${t.caseReference}` : ''}</p></div></div>))}
-          </div></CardContent></Card>
-          {/* Upcoming Events */}
-          <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Calendar className="size-4 text-amber-500" />Prochains événements (7j)</CardTitle></CardHeader><CardContent className="p-4 pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">{(stats.upcomingEventsEnhanced || []).length === 0 ? <p className="text-xs text-slate-400 py-4 text-center">Aucun événement à venir</p> : (stats.upcomingEventsEnhanced || []).map(e => (<div key={e.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => setCurrentView('calendar')}><span className={cn('w-1 h-8 rounded-full shrink-0', CRIT_COLORS[e.criticality] || CRIT_COLORS.normal)} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{e.title}</p><p className="text-xs text-slate-500">{fmtDateTime(e.startTime)}{e.location ? ` • ${e.location}` : ''}{e.caseReference ? ` • ${e.caseReference}` : ''}</p><p className="text-xs text-slate-400 mt-0.5">{e.assignments.map(a => a.userName).join(', ')}</p></div><Badge variant="outline" className="text-[10px] shrink-0">{EVENT_TYPE_LABELS[e.eventType] || e.eventType}</Badge></div>))}</div></CardContent></Card>
+      {/* KPI Card */}
+      <Card className="border-border rounded-xl shadow-sm">
+        <CardHeader className="pb-4"><div className="flex items-center justify-between"><CardTitle className="text-base font-semibold">Aperçu des dossiers</CardTitle></div></CardHeader>
+        <CardContent className="pt-0 pb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {kpis.map(kpi => { const Icon = kpi.icon; return (
+              <div key={kpi.label} className="rounded-lg border border-border p-4">
+                <div className="flex items-center gap-3 mb-3"><div className={cn('size-10 rounded-lg flex items-center justify-center', kpi.bg)}><Icon className={cn('size-5', kpi.iconColor)} /></div></div>
+                <p className="text-xs font-medium text-muted-foreground mb-0.5">{kpi.label}</p>
+                <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
+                <div className="progress-bar mt-2"><div className="progress-bar-fill" style={{ width: `${kpi.pct}%` }} /></div>
+              </div>
+            )})}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Donut */}
+        <Card className="border-border rounded-xl shadow-sm">
+          <CardHeader className="pb-2"><CardTitle className="text-base font-semibold">Dossiers par domaine</CardTitle></CardHeader>
+          <CardContent>
+            {typeChartData.length === 0 ? <div className="flex items-center justify-center h-48"><p className="text-sm text-muted-foreground">0 Dossiers</p></div> : (
+              <div className="flex items-center gap-6">
+                <div className="relative w-44 h-44 shrink-0">
+                  <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={typeChartData} cx="50%" cy="50%" innerRadius={52} outerRadius={78} dataKey="value" stroke="none" paddingAngle={2}>{typeChartData.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie></PieChart></ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-2xl font-bold text-foreground">{stats.totalCases}</span><span className="text-xs text-muted-foreground">Dossiers</span></div>
+                </div>
+                <div className="space-y-2 flex-1">{typeChartData.map((d, i) => (<div key={d.name} className="flex items-center gap-2"><span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: colors[i % colors.length] }} /><span className="text-sm text-foreground">{d.name}</span><span className="text-sm font-semibold text-foreground ml-auto">{d.value}</span></div>))}</div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Bar */}
+        <Card className="border-border rounded-xl shadow-sm">
+          <CardHeader className="pb-2"><CardTitle className="text-base font-semibold">Dossiers par statut</CardTitle></CardHeader>
+          <CardContent>
+            {barData.length === 0 ? <div className="flex items-center justify-center h-48"><p className="text-sm text-muted-foreground">Aucune donnée</p></div> : (
+              <ResponsiveContainer width="100%" height={192}><BarChart data={barData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={false} tickLine={false} /><YAxis hide /><Bar dataKey="value" radius={[6, 6, 0, 0]}>{barData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}</Bar><RTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', fontSize: '12px' }} /></BarChart></ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Urgencies + Events */}
+      {(urgencyCount > 0 || (stats.urgentTasks?.length || 0) > 0 || (stats.upcomingEventsEnhanced?.length || 0) > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {(urgencyCount > 0 || (stats.urgentTasks?.length || 0) > 0) && (
+            <Card className="border-border rounded-xl shadow-sm border-l-4 border-l-rose-500">
+              <CardHeader className="pb-3"><CardTitle className="text-base font-semibold flex items-center gap-2 text-rose-700"><AlertOctagon className="size-4" />Urgences</CardTitle></CardHeader>
+              <CardContent className="pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">
+                {stats.urgencies?.map(u => (<div key={u.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-rose-50/50 dark:bg-rose-950/20 cursor-pointer hover:bg-rose-50 transition-colors" onClick={() => setCurrentView('cases')}><Gavel className="size-4 text-rose-500 mt-0.5 shrink-0" /><div className="min-w-0"><p className="text-sm font-medium">{u.reference} — {u.title}</p><p className="text-xs text-muted-foreground">{u.clientName} • <span className="font-semibold text-rose-600">{u.daysRemaining <= 0 ? "Aujourd'hui !" : `Dans ${u.daysRemaining}j`}</span></p></div></div>))}
+                {stats.overdueInvoices?.map(inv => (<div key={inv.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-orange-50/50 cursor-pointer hover:bg-orange-50 transition-colors" onClick={() => setCurrentView('invoices')}><AlertTriangle className="size-4 text-orange-500 mt-0.5 shrink-0" /><div className="min-w-0"><p className="text-sm font-medium">{inv.reference} — {inv.clientName}</p><p className="text-xs text-muted-foreground">{fmtMoney(inv.amount, inv.currencyCode)} • <span className="font-semibold text-orange-600">{inv.daysOverdue}j retard</span></p></div></div>))}
+                {stats.urgentTasks?.slice(0, 3).map(t => (<div key={t.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-50/50 cursor-pointer hover:bg-amber-50 transition-colors" onClick={() => setCurrentView('tasks')}><Timer className="size-4 text-amber-500 mt-0.5 shrink-0" /><div className="min-w-0"><p className="text-sm font-medium">{t.title}</p><p className="text-xs text-muted-foreground">{t.assigneeName ? `→ ${t.assigneeName}` : ''} {t.caseReference ? `• ${t.caseReference}` : ''}</p></div></div>))}
+              </div></CardContent>
+            </Card>
+          )}
+          <Card className="border-border rounded-xl shadow-sm">
+            <CardHeader className="pb-3"><CardTitle className="text-base font-semibold flex items-center gap-2"><Calendar className="size-4 text-[#1E5A8A]" />Prochains événements</CardTitle></CardHeader>
+            <CardContent className="pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">
+              {(stats.upcomingEventsEnhanced || []).length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">Aucun événement</p> : (stats.upcomingEventsEnhanced || []).map(e => (<div key={e.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted cursor-pointer transition-colors" onClick={() => setCurrentView('calendar')}><span className={cn('w-1 h-8 rounded-full shrink-0', CRIT_COLORS[e.criticality] || CRIT_COLORS.normal)} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{e.title}</p><p className="text-xs text-muted-foreground">{fmtDateTime(e.startTime)}{e.location ? ` • ${e.location}` : ''}</p></div><Badge variant="outline" className="text-[10px] shrink-0">{EVENT_TYPE_LABELS[e.eventType] || e.eventType}</Badge></div>))}
+            </div></CardContent>
+          </Card>
         </div>
       )}
 
-      {/* Activité du cabinet - Financial comparison */}
-      {finData && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><TrendingUp className="size-4 text-emerald-500" />Activité du cabinet</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="rounded-xl p-4 border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20">
-                <p className="text-xs text-slate-500 mb-1">CA ce mois</p>
-                <p className="text-lg font-bold">{fmtMoney(finData.revenueThisMonth || 0)}</p>
-                {finData.revenueLastMonth > 0 && <p className={cn("text-xs mt-1", (finData.revenueThisMonth || 0) >= finData.revenueLastMonth ? "text-emerald-600" : "text-rose-600")}>{(finData.revenueThisMonth || 0) >= finData.revenueLastMonth ? "↑" : "↓"} vs mois dernier ({fmtMoney(finData.revenueLastMonth)})</p>}
-              </div>
-              <div className="rounded-xl p-4 border-l-4 border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20">
-                <p className="text-xs text-slate-500 mb-1">Encaissé</p>
-                <p className="text-lg font-bold">{fmtMoney(finData.collectedThisMonth || 0)}</p>
-                {finData.collectedLastMonth > 0 && <p className={cn("text-xs mt-1", (finData.collectedThisMonth || 0) >= finData.collectedLastMonth ? "text-emerald-600" : "text-rose-600")}>{(finData.collectedThisMonth || 0) >= finData.collectedLastMonth ? "↑" : "↓"} vs mois dernier</p>}
-              </div>
-              <div className="rounded-xl p-4 border-l-4 border-l-rose-500 bg-rose-50/50 dark:bg-rose-950/20">
-                <p className="text-xs text-slate-500 mb-1">À recouvrer</p>
-                <p className="text-lg font-bold text-rose-600">{fmtMoney(finData.toRecover || 0)}</p>
-              </div>
-              <div className="rounded-xl p-4 border-l-4 border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20">
-                <p className="text-xs text-slate-500 mb-1">Impayés</p>
-                <p className="text-lg font-bold text-amber-600">{finData.overdueInvoicesCount || 0}</p>
-              </div>
-            </div>
+      {/* My Tasks + Quick Stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2 border-border rounded-xl shadow-sm">
+          <CardHeader className="pb-3"><CardTitle className="text-base font-semibold flex items-center gap-2"><ClipboardList className="size-4 text-[#1E5A8A]" />Mes tâches</CardTitle></CardHeader>
+          <CardContent className="pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">{(stats.myTasks || []).length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">Aucune tâche</p> : (stats.myTasks || []).map(t => (<div key={t.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted cursor-pointer transition-colors" onClick={() => setCurrentView('tasks')}><span className={cn('size-2 rounded-full shrink-0', t.priority === 'urgente' ? 'bg-rose-500' : t.priority === 'haute' ? 'bg-orange-500' : 'bg-[#1E5A8A]')} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{t.title}</p><p className="text-xs text-muted-foreground">{t.caseReference ? `${t.caseReference} — ` : ''}{t.dueDate ? `Échéance: ${fmtDate(t.dueDate)}` : ''}</p></div></div>))}</div></CardContent>
+        </Card>
+        <Card className="border-border rounded-xl shadow-sm">
+          <CardHeader className="pb-3"><CardTitle className="text-base font-semibold">Résumé financier</CardTitle></CardHeader>
+          <CardContent className="pt-0 space-y-4">
+            <div><p className="text-xs text-muted-foreground mb-1">Revenus totaux</p><p className="text-lg font-bold text-foreground">{fmtMoney(stats.totalRevenue)}</p></div>
+            <div><p className="text-xs text-muted-foreground mb-1">Honoraires en attente</p><p className="text-lg font-bold text-orange-600">{fmtMoney(totalPending)}</p></div>
+            <div><p className="text-xs text-muted-foreground mb-1">Factures payées</p><p className="text-lg font-bold text-emerald-600">{stats.paidInvoices}</p></div>
+            <Separator />
+            <Button variant="outline" className="w-full text-sm" onClick={() => setCurrentView('invoices')}>Voir les factures <ArrowUpRight className="size-3.5 ml-1" /></Button>
           </CardContent>
         </Card>
-      )}
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par statut</CardTitle></CardHeader><CardContent><div className="space-y-2 pt-2">{statusChartData.map((d, i) => <div key={d.name} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-24 truncate">{d.name}</span><div className="flex-1 h-6 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (d.value / Math.max(...statusChartData.map(x => x.value), 1)) * 100)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} /></div><span className="text-xs font-semibold w-6 text-right">{d.value}</span></div>)}</div></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Dossiers par type</CardTitle></CardHeader><CardContent><div className="space-y-2 pt-2">{typeChartData.map((d, i) => <div key={d.name} className="flex items-center gap-3"><div className="size-3 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} /><span className="text-xs flex-1">{d.name}</span><span className="text-xs font-semibold">{d.value}</span></div>)}</div></CardContent></Card>
       </div>
     </div>
   )
@@ -519,139 +398,34 @@ function TasksView() {
   const [editing, setEditing] = useState<TaskItem | null>(null)
   const [form, setForm] = useState({ title: '', description: '', priority: 'normal', dueDate: '', userId: '', caseId: '' })
 
-  const { data: tasksData, isLoading } = useQuery({
-    queryKey: ['tasks', user?.tenantId, statusFilter, priorityFilter],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (user?.tenantId) p.set('tenantId', user.tenantId)
-      if (statusFilter !== 'all') p.set('status', statusFilter)
-      if (priorityFilter !== 'all') p.set('priority', priorityFilter)
-      return fetch(`/api/tasks?${p}`).then(r => r.json()).then(d => d.tasks || d)
-    },
-  })
+  const { data: tasksData, isLoading } = useQuery({ queryKey: ['tasks', user?.tenantId, statusFilter, priorityFilter], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); if (priorityFilter !== 'all') p.set('priority', priorityFilter); return fetch(`/api/tasks?\${p}`).then(r => r.json()).then(d => d.tasks || d) } })
+  const { data: users } = useQuery({ queryKey: ['users', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=\${user?.tenantId}`).then(r => r.json()) })
+  const { data: cases } = useQuery({ queryKey: ['cases-mini', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=\${user?.tenantId}`).then(r => r.json()) })
 
-  const { data: users } = useQuery({
-    queryKey: ['users', user?.tenantId],
-    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
-  })
-
-  const { data: cases } = useQuery({
-    queryKey: ['cases-mini', user?.tenantId],
-    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()),
-  })
-
-  const createMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId, creatorId: user?.id }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche créée'); setDialogOpen(false); resetForm() },
-    onError: () => toast.error('Erreur lors de la création'),
-  })
-
-  const updateMut = useMutation({
-    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/tasks/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche mise à jour') },
-    onError: () => toast.error('Erreur lors de la mise à jour'),
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche supprimée') },
-    onError: () => toast.error('Erreur lors de la suppression'),
-  })
+  const createMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId, creatorId: user?.id }) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche créée'); setDialogOpen(false); resetForm() }, onError: () => toast.error('Erreur') })
+  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/tasks/\${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche mise à jour') }, onError: () => toast.error('Erreur') })
+  const deleteMut = useMutation({ mutationFn: (id: string) => fetch(`/api/tasks/\${id}`, { method: 'DELETE' }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Tâche supprimée') }, onError: () => toast.error('Erreur') })
 
   const resetForm = () => { setForm({ title: '', description: '', priority: 'normal', dueDate: '', userId: '', caseId: '' }); setEditing(null) }
   const openEdit = (t: TaskItem) => { setEditing(t); setForm({ title: t.title, description: t.description || '', priority: t.priority, dueDate: t.dueDate?.slice(0, 10) || '', userId: t.userId || '', caseId: t.caseId || '' }); setDialogOpen(true) }
-  const handleSubmit = () => {
-    if (!form.title.trim()) return
-    if (editing) { updateMut.mutate({ id: editing.id, title: form.title, description: form.description || null, priority: form.priority, dueDate: form.dueDate || null, userId: form.userId || null, caseId: form.caseId || null }) }
-    else { createMut.mutate({ title: form.title, description: form.description || null, priority: form.priority, dueDate: form.dueDate || null, userId: form.userId || null, caseId: form.caseId || null }) }
-  }
-
-  const toggleStatus = (t: TaskItem) => {
-    const newStatus = t.status === 'terminee' ? 'a_faire' : 'terminee'
-    updateMut.mutate({ id: t.id, status: newStatus })
-  }
-
+  const handleSubmit = () => { if (!form.title.trim()) return; const body = { title: form.title, description: form.description || null, priority: form.priority, dueDate: form.dueDate || null, userId: form.userId || null, caseId: form.caseId || null }; if (editing) { updateMut.mutate({ id: editing.id, ...body }) } else { createMut.mutate(body) } }
+  const toggleStatus = (t: TaskItem) => { updateMut.mutate({ id: t.id, status: t.status === 'terminee' ? 'a_faire' : 'terminee' }) }
   const tasks: TaskItem[] = tasksData || []
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="text-lg font-semibold">Tâches</h2>
-        <Button onClick={() => { resetForm(); setDialogOpen(true) }} size="sm"><Plus className="size-4 mr-1" />Nouvelle tâche</Button>
+        <div><h2 className="text-xl font-bold text-foreground">Tâches</h2><p className="text-sm text-muted-foreground">Gérez les tâches de votre cabinet</p></div>
+        <Button onClick={() => { resetForm(); setDialogOpen(true) }} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouvelle tâche</Button>
       </div>
-
       <div className="flex flex-wrap gap-2">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[160px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les statuts</SelectItem>
-            <SelectItem value="a_faire">À faire</SelectItem>
-            <SelectItem value="en_cours">En cours</SelectItem>
-            <SelectItem value="terminee">Terminée</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="w-[150px] h-9 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Toutes les priorités</SelectItem>
-            <SelectItem value="normal">Normal</SelectItem>
-            <SelectItem value="haute">Haute</SelectItem>
-            <SelectItem value="urgente">Urgente</SelectItem>
-          </SelectContent>
-        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[160px] h-9 text-sm"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="a_faire">À faire</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="terminee">Terminée</SelectItem></SelectContent></Select>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-[150px] h-9 text-sm"><SelectValue placeholder="Priorité" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
       </div>
-
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         tasks.length === 0 ? <EmptyState icon={ClipboardList} title="Aucune tâche" description="Créez votre première tâche" /> :
-        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
-          <Table><TableHeader><TableRow>
-            <TableHead className="w-10"></TableHead>
-            <TableHead>Titre</TableHead>
-            <TableHead className="hidden md:table-cell">Priorité</TableHead>
-            <TableHead className="hidden sm:table-cell">Statut</TableHead>
-            <TableHead className="hidden lg:table-cell">Assigné</TableHead>
-            <TableHead className="hidden lg:table-cell">Dossier</TableHead>
-            <TableHead className="hidden md:table-cell">Échéance</TableHead>
-            <TableHead className="w-24">Actions</TableHead>
-          </TableRow></TableHeader><TableBody>
-            {tasks.map(t => (
-              <TableRow key={t.id} className={cn(t.status === 'terminee' && 'opacity-60')}>
-                <TableCell><Checkbox checked={t.status === 'terminee'} onCheckedChange={() => toggleStatus(t)} /></TableCell>
-                <TableCell className="font-medium"><span className={cn(t.status === 'terminee' && 'line-through')}>{t.title}</span></TableCell>
-                <TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', PRIORITY_COLORS[t.priority])}>{PRIORITY_LABELS[t.priority] || t.priority}</Badge></TableCell>
-                <TableCell className="hidden sm:table-cell"><Badge variant="outline" className={cn('text-[10px]', taskStatusColor(t.status))}>{taskStatusLabel(t.status)}</Badge></TableCell>
-                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{t.user?.name || '—'}</TableCell>
-                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{t.case?.reference || '—'}</TableCell>
-                <TableCell className="hidden md:table-cell text-sm text-slate-500 dark:text-slate-400">{fmtDate(t.dueDate)}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(t)}><Edit className="size-3.5" /></Button>
-                    <Button variant="ghost" size="icon" className="size-7 text-rose-500 hover:text-rose-700" onClick={() => deleteMut.mutate(t.id)}><Trash2 className="size-3.5" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody></Table>
-        </div></CardContent></Card>}
-
-      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier la tâche' : 'Nouvelle tâche'}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Titre de la tâche" /></div>
-            <div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
-              <div><Label>Échéance</Label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Assigné à</Label><Select value={form.userId} onValueChange={v => setForm(f => ({ ...f, userId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(users || []).map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div>
-            </div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} disabled={!form.title.trim() || createMut.isPending || updateMut.isPending}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <Card className="border-border rounded-xl shadow-sm"><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto"><Table><TableHeader><TableRow><TableHead className="w-10"></TableHead><TableHead>Titre</TableHead><TableHead className="hidden md:table-cell">Priorité</TableHead><TableHead className="hidden sm:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Assigné</TableHead><TableHead className="hidden lg:table-cell">Dossier</TableHead><TableHead className="hidden md:table-cell">Échéance</TableHead><TableHead className="w-24">Actions</TableHead></TableRow></TableHeader><TableBody>{tasks.map(t => (<TableRow key={t.id} className={cn(t.status === 'terminee' && 'opacity-50')}><TableCell><Checkbox checked={t.status === 'terminee'} onCheckedChange={() => toggleStatus(t)} /></TableCell><TableCell className="font-medium"><span className={cn(t.status === 'terminee' && 'line-through')}>{t.title}</span></TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', PRIORITY_COLORS[t.priority])}>{PRIORITY_LABELS[t.priority] || t.priority}</Badge></TableCell><TableCell className="hidden sm:table-cell"><Badge variant="outline" className={cn('text-[10px]', taskStatusColor(t.status))}>{taskStatusLabel(t.status)}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{t.user?.name || '—'}</TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{t.case?.reference || '—'}</TableCell><TableCell className="hidden md:table-cell text-sm text-muted-foreground">{fmtDate(t.dueDate)}</TableCell><TableCell><div className="flex gap-1"><Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(t)}><Edit className="size-3.5" /></Button><Button variant="ghost" size="icon" className="size-7 text-rose-500 hover:text-rose-700" onClick={() => deleteMut.mutate(t.id)}><Trash2 className="size-3.5" /></Button></div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>}
+      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}><DialogContent className="max-w-md rounded-xl"><DialogHeader><DialogTitle>{editing ? 'Modifier la tâche' : 'Nouvelle tâche'}</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Titre de la tâche" /></div><div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div><div className="grid grid-cols-2 gap-3"><div><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div><div><Label>Échéance</Label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label>Assigné à</Label><Select value={form.userId} onValueChange={v => setForm(f => ({ ...f, userId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(users || []).map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} className="bg-[#1E5A8A] hover:bg-[#144570]" disabled={!form.title.trim() || createMut.isPending || updateMut.isPending}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
 }
@@ -671,188 +445,53 @@ function CasesView() {
   const [conflicts, setConflicts] = useState<ConflictResult[]>([])
   const [form, setForm] = useState({ title: '', description: '', type: 'civil', status: 'nouveau', priority: 'normal', clientId: '', reference: '', nextDueDate: '', adversary: '', jurisdiction: '', amountInDispute: '', billingType: '' })
 
-  const { data: cases, isLoading } = useQuery({
-    queryKey: ['cases', user?.tenantId, statusFilter, typeFilter, priorityFilter, search],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (user?.tenantId) p.set('tenantId', user.tenantId)
-      if (statusFilter !== 'all') p.set('status', statusFilter)
-      if (typeFilter !== 'all') p.set('type', typeFilter)
-      if (priorityFilter !== 'all') p.set('priority', priorityFilter)
-      if (search) p.set('search', search)
-      return fetch(`/api/cases?${p}`).then(r => r.json())
-    },
-  })
+  const { data: cases, isLoading } = useQuery({ queryKey: ['cases', user?.tenantId, statusFilter, typeFilter, priorityFilter, search], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); if (typeFilter !== 'all') p.set('type', typeFilter); if (priorityFilter !== 'all') p.set('priority', priorityFilter); if (search) p.set('search', search); return fetch(`/api/cases?\${p}`).then(r => r.json()) } })
+  const { data: clients } = useQuery({ queryKey: ['clients-mini', user?.tenantId], queryFn: () => fetch(`/api/clients?tenantId=\${user?.tenantId}`).then(r => r.json()) })
+  const { data: caseDetail } = useQuery({ queryKey: ['case-detail', selectedCase?.id], queryFn: () => fetch(`/api/cases/\${selectedCase!.id}`).then(r => r.json()), enabled: !!selectedCase?.id && detailOpen })
 
-  const { data: clients } = useQuery({
-    queryKey: ['clients-mini', user?.tenantId],
-    queryFn: () => fetch(`/api/clients?tenantId=${user?.tenantId}`).then(r => r.json()),
-  })
-
-  const { data: caseDetail } = useQuery({
-    queryKey: ['case-detail', selectedCase?.id],
-    queryFn: () => fetch(`/api/cases/${selectedCase!.id}`).then(r => r.json()),
-    enabled: !!selectedCase?.id && detailOpen,
-  })
-
-  const createMut = useMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
-      if (body.adversary && body.clientId) {
-        try {
-          const conflictRes = await fetch('/api/conflicts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: user?.tenantId, clientId: body.clientId, adversary: body.adversary }) }).then(r => r.json())
-          if (conflictRes.conflicts?.length > 0) setConflicts(conflictRes.conflicts)
-        } catch { /* ignore */ }
-      }
-      return fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success('Dossier créé'); setDialogOpen(false); resetForm() },
-    onError: () => toast.error('Erreur lors de la création'),
-  })
-
-  const updateMut = useMutation({
-    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/cases/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); qc.invalidateQueries({ queryKey: ['case-detail'] }); toast.success('Dossier mis à jour') },
-    onError: () => toast.error('Erreur lors de la mise à jour'),
-  })
+  const createMut = useMutation({ mutationFn: async (body: Record<string, unknown>) => { if (body.adversary && body.clientId) { try { const cr = await fetch('/api/conflicts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: user?.tenantId, clientId: body.clientId, adversary: body.adversary }) }).then(r => r.json()); if (cr.conflicts?.length > 0) setConflicts(cr.conflicts) } catch {} } return fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()) }, onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); toast.success('Dossier créé'); setDialogOpen(false); resetForm() }, onError: () => toast.error('Erreur') })
+  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/cases/\${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases'] }); qc.invalidateQueries({ queryKey: ['case-detail'] }); toast.success('Dossier mis à jour') }, onError: () => toast.error('Erreur') })
 
   const resetForm = () => { setForm({ title: '', description: '', type: 'civil', status: 'nouveau', priority: 'normal', clientId: '', reference: '', nextDueDate: '', adversary: '', jurisdiction: '', amountInDispute: '', billingType: '' }); setEditing(null); setConflicts([]) }
-  const openEdit = (c: CaseItem) => {
-    setEditing(c)
-    setForm({ title: c.title, description: c.description || '', type: c.type, status: c.status, priority: c.priority, clientId: c.clientId, reference: c.reference, nextDueDate: c.nextDueDate?.slice(0, 10) || '', adversary: c.adversary || '', jurisdiction: c.jurisdiction || '', amountInDispute: c.amountInDispute?.toString() || '', billingType: c.billingType || '' })
-    setDialogOpen(true)
-  }
-  const handleSubmit = () => {
-    if (!form.title.trim() || !form.clientId) return
-    const payload = { title: form.title, description: form.description || null, type: form.type, status: form.status, priority: form.priority, clientId: form.clientId, reference: form.reference, nextDueDate: form.nextDueDate || null, tenantId: user?.tenantId, adversary: form.adversary || null, jurisdiction: form.jurisdiction || null, amountInDispute: form.amountInDispute ? parseFloat(form.amountInDispute) : null, billingType: form.billingType || null }
-    if (editing) { updateMut.mutate({ id: editing.id, ...payload }) } else { createMut.mutate(payload) }
-  }
+  const openEdit = (c: CaseItem) => { setEditing(c); setForm({ title: c.title, description: c.description || '', type: c.type, status: c.status, priority: c.priority, clientId: c.clientId, reference: c.reference, nextDueDate: c.nextDueDate?.slice(0, 10) || '', adversary: c.adversary || '', jurisdiction: c.jurisdiction || '', amountInDispute: c.amountInDispute?.toString() || '', billingType: c.billingType || '' }); setDialogOpen(true) }
+  const handleSubmit = () => { if (!form.title.trim() || !form.clientId) return; const payload = { title: form.title, description: form.description || null, type: form.type, status: form.status, priority: form.priority, clientId: form.clientId, reference: form.reference, nextDueDate: form.nextDueDate || null, tenantId: user?.tenantId, adversary: form.adversary || null, jurisdiction: form.jurisdiction || null, amountInDispute: form.amountInDispute ? parseFloat(form.amountInDispute) : null, billingType: form.billingType || null }; if (editing) { updateMut.mutate({ id: editing.id, ...payload }) } else { createMut.mutate(payload) } }
 
-  const timeline = useMemo(() => {
-    if (!caseDetail) return []
-    const items: Array<{ date: string; type: 'event' | 'note' | 'doc'; icon: React.ElementType; title: string; description: string }> = []
-    for (const e of (caseDetail.events || [])) { items.push({ date: e.startTime, type: 'event', icon: Calendar, title: e.title, description: e.description || '' }) }
-    for (const n of (caseDetail.notes || [])) { items.push({ date: n.createdAt, type: 'note', icon: FileText, title: 'Note', description: n.content }) }
-    for (const d of (caseDetail.documents || [])) { items.push({ date: d.createdAt, type: 'doc', icon: FileCheck, title: d.name, description: `${d.fileType} • ${fmtFileSize(d.fileSize)}` }) }
-    return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [caseDetail])
-
-  const getClientName = (c: CaseItem) => c.client ? `${c.client.firstName} ${c.client.lastName}` : '—'
+  const timeline = useMemo(() => { if (!caseDetail) return []; const items: Array<{date:string;type:string;icon:React.ElementType;title:string;description:string}> = []; for (const e of (caseDetail.events || [])) items.push({ date: e.startTime, type: 'event', icon: Calendar, title: e.title, description: e.description || '' }); for (const n of (caseDetail.notes || [])) items.push({ date: n.createdAt, type: 'note', icon: FileText, title: 'Note', description: n.content }); for (const d of (caseDetail.documents || [])) items.push({ date: d.createdAt, type: 'doc', icon: FileCheck, title: d.name, description: `\${d.fileType} • \${fmtFileSize(d.fileSize)}` }); return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) }, [caseDetail])
+  const getClientName = (c: CaseItem) => c.client ? `\${c.client.firstName} \${c.client.lastName}` : '—'
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="text-lg font-semibold">Dossiers</h2>
-        <Button onClick={() => { resetForm(); setDialogOpen(true) }} size="sm"><Plus className="size-4 mr-1" />Nouveau dossier</Button>
+        <div><h2 className="text-xl font-bold text-foreground">Dossiers</h2><p className="text-sm text-muted-foreground">Gérez les dossiers de votre cabinet</p></div>
+        <Button onClick={() => { resetForm(); setDialogOpen(true) }} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouveau dossier</Button>
       </div>
-
       <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-xs" /></div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
-        <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Type" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-[140px] h-9 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
+        <div className="relative flex-1 min-w-[200px] max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-sm" /></div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[140px] h-9 text-sm"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select>
+        <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-[140px] h-9 text-sm"><SelectValue placeholder="Type" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}><SelectTrigger className="w-[140px] h-9 text-sm"><SelectValue placeholder="Priorité" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select>
       </div>
-
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         (cases || []).length === 0 ? <EmptyState icon={Briefcase} title="Aucun dossier" description="Créez votre premier dossier" /> :
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
           {(cases || []).map(c => (
-            <Card key={c.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => { setSelectedCase(c); setDetailOpen(true) }}>
+            <Card key={c.id} className="border-border rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => { setSelectedCase(c); setDetailOpen(true) }}>
               <CardHeader className="pb-2"><div className="flex items-start justify-between"><CardTitle className="text-sm font-semibold">{c.reference}</CardTitle><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[c.status])}>{STATUS_LABELS[c.status] || c.status}</Badge></div><CardDescription className="text-xs mt-1 line-clamp-2">{c.title}</CardDescription></CardHeader>
-              <CardContent className="p-4 pt-0 space-y-2">
-                <p className="text-xs text-slate-500 dark:text-slate-400"><Users className="size-3 inline mr-1" />{getClientName(c)}</p>
-                {c.adversary && <p className="text-xs text-slate-500 dark:text-slate-400"><Scale className="size-3 inline mr-1" />Contre : {c.adversary}</p>}
-                {c.jurisdiction && <p className="text-xs text-slate-500 dark:text-slate-400"><MapPin className="size-3 inline mr-1" />{c.jurisdiction}</p>}
-                {c.amountInDispute != null && c.amountInDispute > 0 && <p className="text-xs font-medium text-amber-600"><Banknote className="size-3 inline mr-1" />{fmtMoney(c.amountInDispute)}</p>}
-                {c.billingType && <Badge variant="secondary" className="text-[10px]">{BILLING_LABELS[c.billingType] || c.billingType}</Badge>}
-                <div className="flex items-center justify-between pt-2">
-                  <Badge variant="outline" className="text-[10px]">{TYPE_LABELS[c.type] || c.type}</Badge>
-                  <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(c)}><Edit className="size-3.5" /></Button>
-                  </div>
-                </div>
-              </CardContent>
+              <CardContent className="p-4 pt-0 space-y-1"><p className="text-xs text-muted-foreground">{getClientName(c)}</p><div className="flex items-center gap-2 mt-2"><Badge variant="outline" className="text-[10px]">{TYPE_LABELS[c.type] || c.type}</Badge>{c.isSecret && <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-600">Secret</Badge>}</div></CardContent>
             </Card>
           ))}
         </div>}
-
-      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier le dossier' : 'Nouveau dossier'}</DialogTitle></DialogHeader>
-          {conflicts.length > 0 && <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-1">{conflicts.map((c, i) => <div key={i} className="flex items-start gap-2 text-xs"><AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" /><span className="text-amber-700 dark:text-amber-300">{c.description}</span></div>)}</div>}
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Référence *</Label><Input value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} placeholder="REF-001" /></div>
-              <div><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{(clients || []).map(cl => <SelectItem key={cl.id} value={cl.id}>{cl.firstName} {cl.lastName}{cl.company ? ` (${cl.company})` : ''}</SelectItem>)}</SelectContent></Select></div>
-            </div>
-            <div><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
-            <div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div>
-            <div className="grid grid-cols-3 gap-3">
-              <div><Label>Type</Label><Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select></div>
-              <div><Label>Statut</Label><Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select></div>
-              <div><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Partie adverse</Label><Input value={form.adversary} onChange={e => setForm(f => ({ ...f, adversary: e.target.value }))} placeholder="Nom de la partie adverse" /></div>
-              <div><Label>Juridiction</Label><Input value={form.jurisdiction} onChange={e => setForm(f => ({ ...f, jurisdiction: e.target.value }))} placeholder="TPI de Douala" /></div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div><Label>Montant en jeu</Label><Input type="number" value={form.amountInDispute} onChange={e => setForm(f => ({ ...f, amountInDispute: e.target.value }))} placeholder="0" /></div>
-              <div><Label>Facturation</Label><Select value={form.billingType} onValueChange={v => setForm(f => ({ ...f, billingType: v }))}><SelectTrigger><SelectValue placeholder="—" /></SelectTrigger><SelectContent><SelectItem value="forfait">Forfait</SelectItem><SelectItem value="horaire">Horaire</SelectItem><SelectItem value="abonnement">Abonnement</SelectItem><SelectItem value="success_fee">Success fee</SelectItem><SelectItem value="provision">Provision</SelectItem></SelectContent></Select></div>
-              <div><Label>Prochaine échéance</Label><Input type="date" value={form.nextDueDate} onChange={e => setForm(f => ({ ...f, nextDueDate: e.target.value }))} /></div>
-            </div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} disabled={!form.title.trim() || !form.clientId || createMut.isPending}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader><DialogTitle className="flex items-center gap-2">{selectedCase?.reference} — {selectedCase?.title}</DialogTitle></DialogHeader>
-          <Tabs defaultValue="resume" className="flex-1 overflow-hidden">
-            <TabsList className="w-full"><TabsTrigger value="resume">Résumé</TabsTrigger><TabsTrigger value="timeline">Chronologie</TabsTrigger><TabsTrigger value="notes">Notes</TabsTrigger><TabsTrigger value="documents">Documents</TabsTrigger></TabsList>
-            <TabsContent value="resume" className="mt-4 space-y-3 overflow-y-auto max-h-[50vh]">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-slate-500">Client :</span> <span className="font-medium">{caseDetail?.client ? `${caseDetail.client.firstName} ${caseDetail.client.lastName}` : '—'}</span></div>
-                <div><span className="text-slate-500">Type :</span> <Badge variant="outline" className="text-[10px]">{TYPE_LABELS[caseDetail?.type || ''] || caseDetail?.type}</Badge></div>
-                <div><span className="text-slate-500">Statut :</span> <Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[caseDetail?.status || ''])}>{STATUS_LABELS[caseDetail?.status || ''] || caseDetail?.status}</Badge></div>
-                <div><span className="text-slate-500">Priorité :</span> <Badge variant="outline" className={cn('text-[10px]', PRIORITY_COLORS[caseDetail?.priority || ''])}>{PRIORITY_LABELS[caseDetail?.priority || ''] || caseDetail?.priority}</Badge></div>
-                {caseDetail?.adversary && <div className="col-span-2"><span className="text-slate-500">Partie adverse :</span> <span className="font-medium">{caseDetail.adversary}</span></div>}
-                {caseDetail?.jurisdiction && <div className="col-span-2"><span className="text-slate-500">Juridiction :</span> <span className="font-medium">{caseDetail.jurisdiction}</span></div>}
-                {caseDetail?.amountInDispute != null && <div><span className="text-slate-500">Montant en jeu :</span> <span className="font-medium">{fmtMoney(caseDetail.amountInDispute)}</span></div>}
-                {caseDetail?.billingType && <div><span className="text-slate-500">Facturation :</span> <Badge variant="secondary" className="text-[10px]">{BILLING_LABELS[caseDetail.billingType] || caseDetail.billingType}</Badge></div>}
-                <div className="col-span-2"><span className="text-slate-500">Description :</span><p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{caseDetail?.description || 'Aucune description'}</p></div>
-              </div>
-            </TabsContent>
-            <TabsContent value="timeline" className="mt-4 overflow-y-auto max-h-[50vh]">
-              {timeline.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune activité</p> :
-              <div className="relative pl-6">
-                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700" />
-                {timeline.map((item, i) => {
-                  const Icon = item.icon
-                  return (
-                    <div key={i} className="relative pb-4">
-                      <div className="absolute -left-6 top-1 size-[15px] rounded-full bg-white dark:bg-slate-950 border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center"><Icon className="size-2.5 text-slate-500" /></div>
-                      <div><p className="text-xs text-slate-400">{fmtDateTime(item.date)}</p><p className="text-sm font-medium mt-0.5">{item.title}</p>{item.description && <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>}</div>
-                    </div>
-                  )
-                })}
-              </div>}
-            </TabsContent>
-            <TabsContent value="notes" className="mt-4 space-y-3 overflow-y-auto max-h-[50vh]">
-              {(caseDetail?.notes || []).length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune note</p> :
-                (caseDetail?.notes || []).map(n => (
-                  <div key={n.id} className="border rounded-lg p-3"><div className="flex items-center justify-between mb-1"><span className="text-xs font-medium">{n.user?.name || '—'}</span><span className="text-[10px] text-slate-400">{fmtDateTime(n.createdAt)}</span></div><p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{n.content}</p></div>
-                ))}
-            </TabsContent>
-            <TabsContent value="documents" className="mt-4 space-y-2 overflow-y-auto max-h-[50vh]">
-              {(caseDetail?.documents || []).length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucun document</p> :
-                (caseDetail?.documents || []).map(d => (
-                  <div key={d.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50"><FileText className="size-4 text-slate-400 shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{d.name}</p><p className="text-[10px] text-slate-400">{d.fileType} • {fmtFileSize(d.fileSize)}</p></div>{d.isFinal && <Badge className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Officielle</Badge>}</div>
-                ))}
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}><DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl"><DialogHeader><DialogTitle>{selectedCase?.reference} — {selectedCase?.title}</DialogTitle></DialogHeader>
+      {selectedCase && <Tabs defaultValue="resume"><TabsList className="w-full"><TabsTrigger value="resume">Résumé</TabsTrigger><TabsTrigger value="chrono">Chronologie</TabsTrigger><TabsTrigger value="notes">Notes</TabsTrigger><TabsTrigger value="docs">Documents</TabsTrigger></TabsList>
+        <TabsContent value="resume" className="mt-4 space-y-3"><div className="grid grid-cols-2 gap-3 text-sm"><div><span className="text-muted-foreground">Client :</span> <span className="font-medium">{getClientName(selectedCase)}</span></div><div><span className="text-muted-foreground">Type :</span> <span className="font-medium">{TYPE_LABELS[selectedCase.type]}</span></div><div><span className="text-muted-foreground">Statut :</span> <Badge variant="outline" className={cn('ml-1', STATUS_COLORS[selectedCase.status])}>{STATUS_LABELS[selectedCase.status]}</Badge></div><div><span className="text-muted-foreground">Priorité :</span> <Badge variant="outline" className={cn('ml-1', PRIORITY_COLORS[selectedCase.priority])}>{PRIORITY_LABELS[selectedCase.priority]}</Badge></div>{selectedCase.adversary && <div className="col-span-2"><span className="text-muted-foreground">Partie adverse :</span> <span className="font-medium">{selectedCase.adversary}</span></div>}{selectedCase.jurisdiction && <div className="col-span-2"><span className="text-muted-foreground">Juridiction :</span> <span className="font-medium">{selectedCase.jurisdiction}</span></div>}{selectedCase.amountInDispute && <div><span className="text-muted-foreground">Montant litigieux :</span> <span className="font-medium">{fmtMoney(selectedCase.amountInDispute)}</span></div>}{selectedCase.billingType && <div><span className="text-muted-foreground">Facturation :</span> <span className="font-medium">{BILLING_LABELS[selectedCase.billingType] || selectedCase.billingType}</span></div>}{selectedCase.nextDueDate && <div><span className="text-muted-foreground">Prochaine échéance :</span> <span className="font-medium">{fmtDate(selectedCase.nextDueDate)}</span></div>}{selectedCase.description && <div className="col-span-2"><span className="text-muted-foreground">Description :</span> <p className="mt-1 text-sm">{selectedCase.description}</p></div>}</div>{selectedCase.assignments && selectedCase.assignments.length > 0 && <><Separator className="my-3" /><p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Avocats assignés</p><div className="flex flex-wrap gap-2">{selectedCase.assignments.map(a => <Badge key={a.id} variant="outline">{a.user?.name || 'Avocat'}</Badge>)}</div></>}</TabsContent>
+        <TabsContent value="chrono" className="mt-4">{timeline.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">Aucune activité</p> : <div className="space-y-3">{timeline.map((item, i) => { const Icon = item.icon; return (<div key={i} className="flex gap-3"><div className={cn('size-8 rounded-lg flex items-center justify-center shrink-0', item.type === 'event' ? 'bg-blue-50 text-blue-600' : item.type === 'note' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600')}><Icon className="size-4" /></div><div className="min-w-0"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{fmtDateTime(item.date)}</p>{item.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>}</div></div>)})}</div>}</TabsContent>
+        <TabsContent value="notes" className="mt-4">{caseDetail?.notes && caseDetail.notes.length > 0 ? <div className="space-y-2">{caseDetail.notes.map(n => (<div key={n.id} className="p-3 rounded-lg bg-muted"><p className="text-sm">{n.content}</p><p className="text-xs text-muted-foreground mt-1">{n.user?.name} — {fmtDateTime(n.createdAt)}</p></div>))}</div> : <p className="text-sm text-muted-foreground text-center py-8">Aucune note</p>}</TabsContent>
+        <TabsContent value="docs" className="mt-4">{caseDetail?.documents && caseDetail.documents.length > 0 ? <div className="space-y-2">{caseDetail.documents.map(d => (<div key={d.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted"><FileText className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{d.name}</p><p className="text-xs text-muted-foreground">{d.fileType} • {fmtFileSize(d.fileSize)}</p></div></div>))}</div> : <p className="text-sm text-muted-foreground text-center py-8">Aucun document</p>}</TabsContent>
+      </Tabs>}
+      </DialogContent></Dialog>
+      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}><DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto rounded-xl"><DialogHeader><DialogTitle>{editing ? 'Modifier le dossier' : 'Nouveau dossier'}</DialogTitle></DialogHeader>
+      {conflicts.length > 0 && <div className="rounded-lg bg-rose-50 border border-rose-200 p-3"><p className="text-sm font-semibold text-rose-700">⚠ Conflits détectés</p>{conflicts.map((c, i) => <p key={i} className="text-xs text-rose-600 mt-1">{c.case.reference}: {c.description}</p>)}</div>}
+      <div className="space-y-3"><div className="grid grid-cols-2 gap-3"><div><Label>Référence</Label><Input value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} /></div><div><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{(clients || []).map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}</SelectItem>)}</SelectContent></Select></div></div><div><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div><div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div><div className="grid grid-cols-2 gap-3"><div><Label>Type</Label><Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="civil">Civil</SelectItem><SelectItem value="penal">Pénal</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="social">Social</SelectItem><SelectItem value="administratif">Administratif</SelectItem></SelectContent></Select></div><div><Label>Priorité</Label><Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div></div>{editing && <div><Label>Statut</Label><Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nouveau">Nouveau</SelectItem><SelectItem value="ouvert">Ouvert</SelectItem><SelectItem value="en_cours">En cours</SelectItem><SelectItem value="en_attente">En attente</SelectItem><SelectItem value="clos">Clos</SelectItem></SelectContent></Select></div>}<div className="grid grid-cols-2 gap-3"><div><Label>Partie adverse</Label><Input value={form.adversary} onChange={e => setForm(f => ({ ...f, adversary: e.target.value }))} /></div><div><Label>Juridiction</Label><Input value={form.jurisdiction} onChange={e => setForm(f => ({ ...f, jurisdiction: e.target.value }))} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label>Montant litigieux</Label><Input type="number" value={form.amountInDispute} onChange={e => setForm(f => ({ ...f, amountInDispute: e.target.value }))} /></div><div><Label>Prochaine échéance</Label><Input type="date" value={form.nextDueDate} onChange={e => setForm(f => ({ ...f, nextDueDate: e.target.value }))} /></div></div><div><Label>Facturation</Label><Select value={form.billingType} onValueChange={v => setForm(f => ({ ...f, billingType: v }))}><SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger><SelectContent><SelectItem value="forfait">Forfait</SelectItem><SelectItem value="horaire">Horaire</SelectItem><SelectItem value="abonnement">Abonnement</SelectItem><SelectItem value="success_fee">Success fee</SelectItem><SelectItem value="provision">Provision</SelectItem></SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} className="bg-[#1E5A8A] hover:bg-[#144570]" disabled={!form.title.trim() || !form.clientId}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
 }
@@ -861,121 +500,33 @@ function CasesView() {
 function ClientsView() {
   const { user } = useAppStore()
   const qc = useQueryClient()
-  const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
-  const [form, setForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', city: '', country: 'Cameroun', notes: '', clientType: 'particulier', niu: '', riskLevel: 'faible', source: '', isActive: true })
+  const [search, setSearch] = useState('')
+  const [form, setForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', city: '', country: '', niu: '', clientType: 'particulier', notes: '', riskLevel: 'faible', source: '' })
 
-  const { data: clients, isLoading } = useQuery({
-    queryKey: ['clients', user?.tenantId, search],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (user?.tenantId) p.set('tenantId', user.tenantId)
-      if (search) p.set('search', search)
-      return fetch(`/api/clients?${p}`).then(r => r.json())
-    },
-  })
+  const { data: clientsData, isLoading } = useQuery({ queryKey: ['clients', user?.tenantId, search], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (search) p.set('search', search); return fetch(`/api/clients?\${p}`).then(r => r.json()) } })
 
-  const createMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client créé'); setDialogOpen(false); resetForm() },
-    onError: () => toast.error('Erreur lors de la création'),
-  })
+  const createMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, tenantId: user?.tenantId }) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client créé'); setDialogOpen(false); resetForm() }, onError: () => toast.error('Erreur') })
+  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/clients/\${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client mis à jour') }, onError: () => toast.error('Erreur') })
+  const deleteMut = useMutation({ mutationFn: (id: string) => fetch(`/api/clients/\${id}`, { method: 'DELETE' }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client supprimé') }, onError: () => toast.error('Erreur') })
 
-  const updateMut = useMutation({
-    mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/clients/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client mis à jour'); setDialogOpen(false); resetForm() },
-    onError: () => toast.error('Erreur lors de la mise à jour'),
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => fetch(`/api/clients/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['clients'] }); toast.success('Client supprimé') },
-    onError: () => toast.error('Erreur lors de la suppression'),
-  })
-
-  const resetForm = () => { setForm({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', city: '', country: 'Cameroun', notes: '', clientType: 'particulier', niu: '', riskLevel: 'faible', source: '', isActive: true }); setEditing(null) }
-  const openEdit = (c: Client) => { setEditing(c); setForm({ firstName: c.firstName, lastName: c.lastName, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '', city: c.city || '', country: c.country || 'Cameroun', notes: c.notes || '', clientType: c.clientType || 'particulier', niu: c.niu || '', riskLevel: c.riskLevel || 'faible', source: c.source || '', isActive: c.isActive }); setDialogOpen(true) }
-  const handleSubmit = () => {
-    if (!form.firstName.trim() || !form.lastName.trim()) return
-    const payload = { ...form, company: form.company || null, email: form.email || null, phone: form.phone || null, address: form.address || null, city: form.city || null, niu: form.niu || null, notes: form.notes || null, source: form.source || null }
-    if (editing) { updateMut.mutate({ id: editing.id, ...payload }) } else { createMut.mutate(payload) }
-  }
+  const resetForm = () => { setForm({ firstName: '', lastName: '', company: '', email: '', phone: '', address: '', city: '', country: '', niu: '', clientType: 'particulier', notes: '', riskLevel: 'faible', source: '' }); setEditing(null) }
+  const openEdit = (c: Client) => { setEditing(c); setForm({ firstName: c.firstName, lastName: c.lastName, company: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '', city: c.city || '', country: c.country || '', niu: c.niu || '', clientType: c.clientType || 'particulier', notes: c.notes || '', riskLevel: c.riskLevel || 'faible', source: c.source || '' }); setDialogOpen(true) }
+  const handleSubmit = () => { if (!form.firstName.trim() || !form.lastName.trim()) return; const body = { ...form, name: `\${form.firstName} \${form.lastName}` }; if (editing) { updateMut.mutate({ id: editing.id, ...body }) } else { createMut.mutate(body) } }
+  const clients: Client[] = (clientsData?.clients || clientsData || [])
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="text-lg font-semibold">Clients</h2>
-        <Button onClick={() => { resetForm(); setDialogOpen(true) }} size="sm"><Plus className="size-4 mr-1" />Nouveau client</Button>
+        <div><h2 className="text-xl font-bold text-foreground">Clients</h2><p className="text-sm text-muted-foreground">Gérez les clients de votre cabinet</p></div>
+        <Button onClick={() => { resetForm(); setDialogOpen(true) }} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouveau client</Button>
       </div>
-
-      <div className="relative max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-xs" /></div>
-
+      <div className="relative max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9 text-sm" /></div>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
-        (clients || []).length === 0 ? <EmptyState icon={Users} title="Aucun client" description="Ajoutez votre premier client" /> :
-        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
-          <Table><TableHeader><TableRow>
-            <TableHead>Nom</TableHead>
-            <TableHead className="hidden md:table-cell">Type</TableHead>
-            <TableHead className="hidden lg:table-cell">Ville</TableHead>
-            <TableHead className="hidden md:table-cell">Risque</TableHead>
-            <TableHead className="hidden sm:table-cell">Dossiers</TableHead>
-            <TableHead className="w-24">Actions</TableHead>
-          </TableRow></TableHeader><TableBody>
-            {(clients || []).map((c: Client, i: number) => (
-              <TableRow key={c.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Avatar className="size-7"><AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-800">{initials(`${c.firstName} ${c.lastName}`)}</AvatarFallback></Avatar>
-                    <div><p className="text-sm font-medium">{c.firstName} {c.lastName}</p>{c.company && <p className="text-[10px] text-slate-400">{c.company}</p>}</div>
-                  </div>
-                </TableCell>
-                <TableCell className="hidden md:table-cell"><Badge variant="outline" className="text-[10px]">{c.clientType === 'entreprise' ? 'Entreprise' : 'Particulier'}</Badge></TableCell>
-                <TableCell className="hidden lg:table-cell text-sm text-slate-500 dark:text-slate-400">{c.city || '—'}</TableCell>
-                <TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', RISK_COLORS[c.riskLevel || 'faible'])}>{c.riskLevel === 'eleve' ? 'Élevé' : c.riskLevel === 'moyen' ? 'Moyen' : 'Faible'}</Badge></TableCell>
-                <TableCell className="hidden sm:table-cell text-sm text-slate-500 dark:text-slate-400">{c._count?.cases || 0}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(c)}><Edit className="size-3.5" /></Button>
-                    <Button variant="ghost" size="icon" className="size-7 text-rose-500 hover:text-rose-700" onClick={() => deleteMut.mutate(c.id)}><Trash2 className="size-3.5" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody></Table>
-        </div></CardContent></Card>}
-
-      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Modifier le client' : 'Nouveau client'}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Prénom *</Label><Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} /></div>
-              <div><Label>Nom *</Label><Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} /></div>
-            </div>
-            <div><Label>Société</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
-              <div><Label>Téléphone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
-            </div>
-            <div><Label>Adresse</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Ville</Label><Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
-              <div><Label>Pays</Label><Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Type</Label><Select value={form.clientType} onValueChange={v => setForm(f => ({ ...f, clientType: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="particulier">Particulier</SelectItem><SelectItem value="entreprise">Entreprise</SelectItem></SelectContent></Select></div>
-              <div><Label>NIU</Label><Input value={form.niu} onChange={e => setForm(f => ({ ...f, niu: e.target.value }))} placeholder="Numéro d'Identification Unique" /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Niveau de risque</Label><Select value={form.riskLevel} onValueChange={v => setForm(f => ({ ...f, riskLevel: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="faible">Faible</SelectItem><SelectItem value="moyen">Moyen</SelectItem><SelectItem value="eleve">Élevé</SelectItem></SelectContent></Select></div>
-              <div><Label>Source</Label><Select value={form.source} onValueChange={v => setForm(f => ({ ...f, source: v }))}><SelectTrigger><SelectValue placeholder="—" /></SelectTrigger><SelectContent><SelectItem value="bouche_a_oreille">Bouche à oreille</SelectItem><SelectItem value="internet">Internet</SelectItem><SelectItem value="recommandation">Recommandation</SelectItem><SelectItem value="autre">Autre</SelectItem></SelectContent></Select></div>
-            </div>
-            <div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} disabled={!form.firstName.trim() || !form.lastName.trim() || createMut.isPending || updateMut.isPending}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+        clients.length === 0 ? <EmptyState icon={Users} title="Aucun client" description="Ajoutez votre premier client" /> :
+        <Card className="border-border rounded-xl shadow-sm"><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead className="hidden md:table-cell">Email</TableHead><TableHead className="hidden lg:table-cell">Téléphone</TableHead><TableHead className="hidden md:table-cell">Risque</TableHead><TableHead className="hidden lg:table-cell">Dossiers</TableHead><TableHead className="w-24">Actions</TableHead></TableRow></TableHeader><TableBody>{clients.map(c => (<TableRow key={c.id}><TableCell className="font-medium">{c.firstName} {c.lastName}{c.company && <p className="text-xs text-muted-foreground">{c.company}</p>}</TableCell><TableCell className="hidden md:table-cell text-sm text-muted-foreground">{c.email || '—'}</TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{c.phone || '—'}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', RISK_COLORS[c.riskLevel || 'faible'])}>{c.riskLevel === 'eleve' ? 'Élevé' : c.riskLevel === 'moyen' ? 'Moyen' : 'Faible'}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{c._count?.cases || 0}</TableCell><TableCell><div className="flex gap-1"><Button variant="ghost" size="icon" className="size-7" onClick={() => openEdit(c)}><Edit className="size-3.5" /></Button><Button variant="ghost" size="icon" className="size-7 text-rose-500" onClick={() => deleteMut.mutate(c.id)}><Trash2 className="size-3.5" /></Button></div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>}
+      <Dialog open={dialogOpen} onOpenChange={o => { setDialogOpen(o); if (!o) resetForm() }}><DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto rounded-xl"><DialogHeader><DialogTitle>{editing ? 'Modifier le client' : 'Nouveau client'}</DialogTitle></DialogHeader><div className="space-y-3"><div className="grid grid-cols-2 gap-3"><div><Label>Prénom *</Label><Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} /></div><div><Label>Nom *</Label><Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} /></div></div><div><Label>Société</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div><div className="grid grid-cols-2 gap-3"><div><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div><div><Label>Téléphone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div></div><div><Label>Adresse</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div><div className="grid grid-cols-2 gap-3"><div><Label>Ville</Label><Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div><div><Label>Pays</Label><Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label>NIU</Label><Input value={form.niu} onChange={e => setForm(f => ({ ...f, niu: e.target.value }))} /></div><div><Label>Niveau de risque</Label><Select value={form.riskLevel} onValueChange={v => setForm(f => ({ ...f, riskLevel: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="faible">Faible</SelectItem><SelectItem value="moyen">Moyen</SelectItem><SelectItem value="eleve">Élevé</SelectItem></SelectContent></Select></div></div><div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} className="bg-[#1E5A8A] hover:bg-[#144570]" disabled={!form.firstName.trim() || !form.lastName.trim()}>{editing ? 'Enregistrer' : 'Créer'}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
 }
@@ -983,65 +534,37 @@ function ClientsView() {
 // ==================== DOCUMENTS VIEW ====================
 function DocumentsView() {
   const { user } = useAppStore()
-  const [caseFilter, setCaseFilter] = useState('all')
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [form, setForm] = useState({ name: '', description: '', caseId: '', tags: '' })
+  const [file, setFile] = useState<File | null>(null)
+  const qc = useQueryClient()
 
-  const { data: cases } = useQuery({
-    queryKey: ['cases-mini-docs', user?.tenantId],
-    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()),
-  })
+  const { data: docs, isLoading } = useQuery({ queryKey: ['documents', user?.tenantId], queryFn: () => fetch(`/api/documents?tenantId=${user?.tenantId}`).then(r => r.json()) })
+  const { data: cases } = useQuery({ queryKey: ['docs-cases', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()) })
 
-  const { data: docs, isLoading } = useQuery({
-    queryKey: ['documents', user?.tenantId, caseFilter],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (user?.tenantId) p.set('tenantId', user.tenantId)
-      if (caseFilter !== 'all') p.set('caseId', caseFilter)
-      return fetch(`/api/documents?${p}`).then(r => r.json())
-    },
-  })
+  const uploadMut = useMutation({ mutationFn: (fd: FormData) => fetch('/api/documents', { method: 'POST', body: fd }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success('Document ajouté'); setUploadOpen(false); setForm({ name: '', description: '', caseId: '', tags: '' }); setFile(null) }, onError: () => toast.error('Erreur') })
+  const deleteMut = useMutation({ mutationFn: (id: string) => fetch(`/api/documents/${id}`, { method: 'DELETE' }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success('Document supprimé') }, onError: () => toast.error('Erreur') })
 
-  const grouped = useMemo(() => {
-    const groups: Record<string, Doc[]> = {}
-    for (const d of (docs || []) as Doc[]) {
-      const folder = d.folder || 'Sans dossier'
-      if (!groups[folder]) groups[folder] = []
-      groups[folder].push(d)
-    }
-    return groups
-  }, [docs])
+  const handleUpload = () => {
+    if (!file || !form.name.trim()) return
+    const fd = new FormData(); fd.append('file', file); fd.append('name', form.name); fd.append('tenantId', user?.tenantId || ''); if (form.caseId) fd.append('caseId', form.caseId); if (form.description) fd.append('description', form.description); if (form.tags) fd.append('tags', form.tags)
+    uploadMut.mutate(fd)
+  }
+
+  const grouped = useMemo(() => { const map: Record<string, Doc[]> = {}; for (const d of (docs || [])) { const key = d.case?.reference || 'Sans dossier'; if (!map[key]) map[key] = []; map[key].push(d) } return map }, [docs])
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Documents</h2>
-      <Select value={caseFilter} onValueChange={setCaseFilter}>
-        <SelectTrigger className="w-[220px] h-9 text-xs"><SelectValue placeholder="Filtrer par dossier" /></SelectTrigger>
-        <SelectContent><SelectItem value="all">Tous les dossiers</SelectItem>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent>
-      </Select>
-
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div><h2 className="text-xl font-bold text-foreground">Documents</h2><p className="text-sm text-muted-foreground">Tous les documents de votre cabinet</p></div>
+        <Button onClick={() => setUploadOpen(true)} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Ajouter</Button>
+      </div>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
-        (docs || []).length === 0 ? <EmptyState icon={FileText} title="Aucun document" /> :
-        <div className="max-h-[600px] overflow-y-auto space-y-4">
-          {Object.entries(grouped).map(([folder, items]) => (
-            <Card key={folder}>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Folder className="size-4 text-amber-500" />{folder}<Badge variant="secondary" className="text-[10px]">{items.length}</Badge></CardTitle></CardHeader>
-              <CardContent className="p-4 pt-0 space-y-1">
-                {items.map(d => (
-                  <div key={d.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <FileText className="size-4 text-slate-400 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2"><p className="text-sm font-medium truncate">{d.name}</p>{d.isFinal && <Badge className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">V</Badge>}</div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-slate-400">{d.fileType} • {fmtFileSize(d.fileSize)}</span>
-                        {d.tags && d.tags.split(',').map((t, i) => <Badge key={i} variant="outline" className="text-[10px] px-1 py-0"><Tag className="size-2.5 mr-0.5" />{t.trim()}</Badge>)}
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-slate-400 shrink-0">{fmtDate(d.createdAt)}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
-        </div>}
+        (docs || []).length === 0 ? <EmptyState icon={FileText} title="Aucun document" description="Ajoutez votre premier document" /> :
+        <div className="space-y-6 max-h-[600px] overflow-y-auto">{Object.entries(grouped).map(([key, items]: [string, Doc[]]) => (
+          <Card key={key} className="border-border rounded-xl shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Briefcase className="size-4 text-[#1E5A8A]" />{key}</CardTitle></CardHeader><CardContent className="pt-0"><div className="space-y-1">{items.map(d => (<div key={d.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors"><FileText className="size-4 text-muted-foreground shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{d.name}</p><p className="text-xs text-muted-foreground">{d.fileType} • {fmtFileSize(d.fileSize)}</p></div><div className="flex gap-1"><Button variant="ghost" size="icon" className="size-7" onClick={() => window.open(d.filePath, '_blank')}><Eye className="size-3.5" /></Button><Button variant="ghost" size="icon" className="size-7 text-rose-500" onClick={() => deleteMut.mutate(d.id)}><Trash2 className="size-3.5" /></Button></div></div>))}</div></CardContent></Card>
+        ))}</div>}
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}><DialogContent className="max-w-md rounded-xl"><DialogHeader><DialogTitle>Ajouter un document</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>Fichier *</Label><Input type="file" onChange={e => { const f = e.target.files?.[0]; if (f) { setFile(f); if (!form.name) setForm(p => ({ ...p, name: f.name })) } }} /></div><div><Label>Nom *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div><div><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div><div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div></div><DialogFooter><Button variant="outline" onClick={() => setUploadOpen(false)}>Annuler</Button><Button onClick={handleUpload} className="bg-[#1E5A8A] hover:bg-[#144570]" disabled={!file || !form.name.trim()}>Ajouter</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
 }
@@ -1049,103 +572,77 @@ function DocumentsView() {
 // ==================== CALENDAR VIEW ====================
 function CalendarView() {
   const { user } = useAppStore()
+  const qc = useQueryClient()
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const monthStr = format(currentMonth, 'yyyy-MM')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [form, setForm] = useState({ title: '', description: '', startTime: '', endTime: '', eventType: 'rdv', criticality: 'normal', location: '', caseId: '' })
 
-  const { data: events, isLoading } = useQuery({
-    queryKey: ['events', user?.tenantId, monthStr],
-    queryFn: () => fetch(`/api/events?tenantId=${user?.tenantId}&month=${monthStr}`).then(r => r.json()),
-  })
+  const monthStart = startOfMonth(currentMonth)
+  const monthEnd = endOfMonth(currentMonth)
+  const days = eachDayOfInterval({ start: startOfWeek(monthStart, { weekStartsOn: 1 }), end: endOfWeek(monthEnd, { weekStartsOn: 1 }) })
 
-  const days = useMemo(() => {
-    const monthStart = startOfMonth(currentMonth)
-    const monthEnd = endOfMonth(currentMonth)
-    const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
-    const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
-    return eachDayOfInterval({ start: calStart, end: calEnd })
-  }, [currentMonth])
+  const { data: events, isLoading } = useQuery({ queryKey: ['events', user?.tenantId, monthStart.toISOString()], queryFn: () => { const p = new URLSearchParams(); p.set('tenantId', user!.tenantId); p.set('start', monthStart.toISOString()); p.set('end', monthEnd.toISOString()); return fetch(`/api/events?${p}`).then(r => r.json()) }, enabled: !!user?.tenantId })
+  const { data: cases } = useQuery({ queryKey: ['cal-cases', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}`).then(r => r.json()) })
 
-  const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+  const createMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['events'] }); toast.success('Événement créé'); setDialogOpen(false); setForm({ title: '', description: '', startTime: '', endTime: '', eventType: 'rdv', criticality: 'normal', location: '', caseId: '' }) }, onError: () => toast.error('Erreur') })
+
+  const handleSubmit = () => { if (!form.title.trim() || !form.startTime) return; createMut.mutate({ ...form, tenantId: user?.tenantId }) }
+
   const getEventsForDay = (day: Date) => (events || []).filter((e: EventItem) => isSameDay(parseISO(e.startTime), day))
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Calendrier</h2>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="size-8" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}><ChevronLeft className="size-4" /></Button>
-          <span className="text-sm font-medium min-w-[140px] text-center">{format(currentMonth, 'MMMM yyyy', { locale: fr })}</span>
-          <Button variant="outline" size="icon" className="size-8" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}><ChevronRight className="size-4" /></Button>
-        </div>
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div><h2 className="text-xl font-bold text-foreground">Calendrier</h2><p className="text-sm text-muted-foreground">Planifiez vos audiences et rendez-vous</p></div>
+        <Button onClick={() => setDialogOpen(true)} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouvel événement</Button>
       </div>
-
-      {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> : (
-        <Card><CardContent className="p-2">
-          <div className="grid grid-cols-7 gap-px bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden">
-            {weekDays.map(d => <div key={d} className="bg-white dark:bg-slate-950 p-2 text-center text-xs font-medium text-slate-500 dark:text-slate-400">{d}</div>)}
-            {days.map(day => {
-              const dayEvents = getEventsForDay(day)
-              return (
-                <div key={day.toISOString()} className={cn('bg-white dark:bg-slate-950 p-1 min-h-[80px] md:min-h-[100px]', !isSameMonth(day, currentMonth) && 'opacity-40', isToday(day) && 'bg-amber-50 dark:bg-amber-950/20')}>
-                  <p className={cn('text-xs mb-1', isToday(day) ? 'font-bold text-amber-600' : 'text-slate-500')}>{format(day, 'd')}</p>
-                  <div className="space-y-0.5">
-                    {dayEvents.slice(0, 3).map(e => (
-                      <div key={e.id} className={cn('text-[10px] px-1 py-0.5 rounded truncate', CRIT_COLORS[e.criticality], e.criticality === 'urgente' || e.criticality === 'haute' ? 'text-white' : 'text-white dark:text-slate-900')} title={`${e.title}${e.location ? ` — ${e.location}` : ''}`}>
-                        {e.title}
-                      </div>
-                    ))}
-                    {dayEvents.length > 3 && <p className="text-[10px] text-slate-400 pl-1">+{dayEvents.length - 3}</p>}
-                  </div>
-                </div>
-              )
-            })}
+      <div className="flex items-center gap-4">
+        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft className="size-4" /></Button>
+        <span className="text-sm font-semibold min-w-[140px] text-center">{format(currentMonth, 'MMMM yyyy', { locale: fr })}</span>
+        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight className="size-4" /></Button>
+      </div>
+      {isLoading ? <Skeleton className="h-96" /> : (
+        <Card className="border-border rounded-xl shadow-sm overflow-hidden"><CardContent className="p-0">
+          <div className="grid grid-cols-7">{['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(d => <div key={d} className="text-center text-xs font-semibold uppercase text-muted-foreground py-2 border-b border-border">{d}</div>)}
+          {days.map(day => { const dayEvents = getEventsForDay(day); const isCurrent = isSameMonth(day, currentMonth); return (<div key={day.toISOString()} className={cn('min-h-[80px] p-1 border-b border-r border-border', !isCurrent && 'bg-muted/50', isToday(day) && 'bg-[#E8F1F8]')}><span className={cn('text-xs', isToday(day) ? 'font-bold text-[#1E5A8A]' : isCurrent ? 'text-foreground' : 'text-muted-foreground')}>{format(day, 'd')}</span><div className="mt-0.5 space-y-0.5">{dayEvents.slice(0, 2).map((e: EventItem) => (<div key={e.id} className={cn('text-[10px] px-1 py-0.5 rounded truncate', CRIT_COLORS[e.criticality] || 'bg-muted')} title={e.title}>{e.title}</div>))}{dayEvents.length > 2 && <p className="text-[10px] text-muted-foreground pl-1">+{dayEvents.length - 2}</p>}</div></div>)})}
           </div>
         </CardContent></Card>
       )}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}><DialogContent className="max-w-md rounded-xl"><DialogHeader><DialogTitle>Nouvel événement</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>Titre *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div><div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div><div className="grid grid-cols-2 gap-3"><div><Label>Début *</Label><Input type="datetime-local" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} /></div><div><Label>Fin</Label><Input type="datetime-local" value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label>Type</Label><Select value={form.eventType} onValueChange={v => setForm(f => ({ ...f, eventType: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="audience">Audience</SelectItem><SelectItem value="rdv">Rendez-vous</SelectItem><SelectItem value="echeance">Échéance</SelectItem><SelectItem value="depot">Dépôt</SelectItem><SelectItem value="autre">Autre</SelectItem></SelectContent></Select></div><div><Label>Criticité</Label><Select value={form.criticality} onValueChange={v => setForm(f => ({ ...f, criticality: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="basse">Basse</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="haute">Haute</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div></div><div><Label>Lieu</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} /></div><div><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={handleSubmit} className="bg-[#1E5A8A] hover:bg-[#144570]" disabled={!form.title.trim() || !form.startTime}>Créer</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
 }
 
 // ==================== INVOICES VIEW ====================
 function InvoicesView() {
-  const { user, setCurrentView } = useAppStore()
+  const { user } = useAppStore()
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
-  const [payDialogOpen, setPayDialogOpen] = useState(false)
-  const [payInvoice, setPayInvoice] = useState<Invoice | null>(null)
-  const [payForm, setPayForm] = useState({ amount: '', method: 'virement', notes: '' })
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [form, setForm] = useState({ amount: '', dueDate: '', notes: '', clientId: '', caseId: '', currencyCode: 'XAF', paymentMethod: '' })
 
-  const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices', user?.tenantId, statusFilter], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); return fetch(`/api/invoices?${p}`).then(r => r.json()) } })
+  const { data: invoicesData, isLoading } = useQuery({ queryKey: ['invoices', user?.tenantId, statusFilter], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (statusFilter !== 'all') p.set('status', statusFilter); return fetch(`/api/invoices?\${p}`).then(r => r.json()) } })
+  const { data: clients } = useQuery({ queryKey: ['inv-clients', user?.tenantId], queryFn: () => fetch(`/api/clients?tenantId=\${user?.tenantId}`).then(r => r.json()) })
+  const { data: cases } = useQuery({ queryKey: ['inv-cases', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=\${user?.tenantId}`).then(r => r.json()) })
 
-  const { data: payments } = useQuery({ queryKey: ['payments-all', user?.tenantId], queryFn: () => fetch(`/api/payments?tenantId=${user?.tenantId}`).then(r => r.json()) })
+  const createMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture créée'); setDialogOpen(false); setForm({ amount: '', dueDate: '', notes: '', clientId: '', caseId: '', currencyCode: 'XAF', paymentMethod: '' }) }, onError: () => toast.error('Erreur') })
+  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/invoices/\${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture mise à jour') }, onError: () => toast.error('Erreur') })
 
-  const updateMut = useMutation({ mutationFn: ({ id, ...body }: Record<string, unknown>) => fetch(`/api/invoices/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Facture mise à jour') }, onError: () => toast.error('Erreur') })
-
-  const payMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['payments-all'] }); toast.success('Paiement enregistré'); setPayDialogOpen(false); setPayForm({ amount: '', method: 'virement', notes: '' }) }, onError: () => toast.error('Erreur') })
-
-  const markStatus = (inv: Invoice, newStatus: string) => {
-    const data: Record<string, unknown> = { id: inv.id, status: newStatus }
-    if (newStatus === 'paye') { data.paidDate = new Date().toISOString(); data.paidAmount = inv.amount }
-    else if (newStatus === 'partiel') { data.paidDate = new Date().toISOString(); data.paidAmount = inv.amount * 0.5 }
-    updateMut.mutate(data)
-  }
-
-  const openPayDialog = (inv: Invoice) => { setPayInvoice(inv); setPayForm({ amount: String(inv.amount - (inv.paidAmount || 0)), method: 'virement', notes: `Paiement ${inv.reference}` }); setPayDialogOpen(true) }
-  const getInvPayments = (invId: string) => (payments || []).filter((p: PaymentItem) => p.invoiceId === invId)
-  const invPayTotal = (invId: string) => getInvPayments(invId).reduce((s: number, p: PaymentItem) => s + p.amount, 0)
+  const invoices: Invoice[] = (invoicesData?.invoices || invoicesData || [])
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Factures</h2><Button size="sm" variant="outline" className="text-xs" onClick={() => setCurrentView('finances')}><Wallet className="size-3.5 mr-1" />Paiements</Button></div>
-      <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous les statuts</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent></Select>
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div><h2 className="text-xl font-bold text-foreground">Factures</h2><p className="text-sm text-muted-foreground">Suivi de vos facturations</p></div>
+        <Button onClick={() => setDialogOpen(true)} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouvelle facture</Button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[160px] h-9 text-sm"><SelectValue placeholder="Statut" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="non_paye">Non payé</SelectItem><SelectItem value="partiel">Partiel</SelectItem><SelectItem value="paye">Payé</SelectItem><SelectItem value="annule">Annulé</SelectItem></SelectContent></Select>
+      </div>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
-        (invoices || []).length === 0 ? <EmptyState icon={Receipt} title="Aucune facture" /> :
-        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
-          <Table><TableHeader><TableRow><TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead>Montant</TableHead><TableHead className="hidden md:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Payé</TableHead><TableHead className="w-44">Actions</TableHead></TableRow></TableHeader><TableBody>
-            {(invoices || []).map((inv: Invoice, i: number) => { const pmts = getInvPayments(inv.id); return (<TableRow key={inv.id} className={cn(i % 2 === 1 && 'bg-slate-50/50 dark:bg-slate-900/30')}><TableCell className="font-medium text-sm">{inv.reference}</TableCell><TableCell className="text-sm text-slate-500 dark:text-slate-400">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell><TableCell className="text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm"><span className={invPayTotal(inv.id) >= inv.amount ? 'text-emerald-600 font-medium' : 'text-amber-600'}>{fmtMoney(invPayTotal(inv.id), inv.currencyCode)}</span>{pmts.length > 0 && <span className="text-xs text-slate-400 ml-1">({pmts.length})</span>}</TableCell><TableCell><div className="flex gap-1 flex-wrap">{(inv.status === 'non_paye' || inv.status === 'partiel') && <><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'paye')}>Payée</Button><Button variant="outline" size="sm" className="text-[10px] h-7" onClick={() => markStatus(inv, 'partiel')}>Partielle</Button><Button size="sm" className="text-[10px] h-7" onClick={() => openPayDialog(inv)}><Banknote className="size-3 mr-1" />Paiement</Button></>}{pmts.length > 0 && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><ChevronDown className="size-3" /></Button></DropdownMenuTrigger><DropdownMenuContent className="w-64 max-h-48 overflow-y-auto"><DropdownMenuLabel className="text-xs">Paiements ({pmts.length})</DropdownMenuLabel><DropdownMenuSeparator />{pmts.map((p: PaymentItem) => (<DropdownMenuItem key={p.id} className="text-xs flex flex-col items-start gap-0.5"><span className="font-medium">{fmtMoney(p.amount)} — {METHOD_LABELS[p.method] || p.method}</span><span className="text-slate-400">{fmtDate(p.receivedAt)}</span></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>}</div></TableCell></TableRow>) })}
-          </TableBody></Table>
-        </div></CardContent></Card>}
-      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}><DialogContent><DialogHeader><DialogTitle>Enregistrer un paiement</DialogTitle><DialogDescription>{payInvoice?.reference} — {payInvoice?.client ? `${payInvoice.client.firstName} ${payInvoice.client.lastName}` : ''}</DialogDescription></DialogHeader><div className="space-y-3"><div><Label>Montant</Label><Input type="number" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} /></div><div><Label>Mode</Label><Select value={payForm.method} onValueChange={v => setPayForm(f => ({ ...f, method: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="virement">Virement</SelectItem><SelectItem value="especes">Espèces</SelectItem><SelectItem value="mobile_money">Mobile Money</SelectItem><SelectItem value="carte">Carte</SelectItem></SelectContent></Select></div><div><Label>Notes</Label><Textarea value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div></div><DialogFooter><Button variant="outline" onClick={() => setPayDialogOpen(false)}>Annuler</Button><Button onClick={() => payMut.mutate({ amount: parseFloat(payForm.amount), method: payForm.method, notes: payForm.notes, tenantId: user?.tenantId, invoiceId: payInvoice?.id, clientId: payInvoice?.clientId, userId: user?.id, status: 'valide', validatedBy: user?.id, validatedAt: new Date().toISOString() })} disabled={!payForm.amount || parseFloat(payForm.amount) <= 0}>{payMut.isPending ? '...' : 'Enregistrer'}</Button></DialogFooter></DialogContent></Dialog>
+        invoices.length === 0 ? <EmptyState icon={Receipt} title="Aucune facture" description="Créez votre première facture" /> :
+        <Card className="border-border rounded-xl shadow-sm"><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead className="hidden md:table-cell">Montant</TableHead><TableHead className="hidden sm:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Échéance</TableHead><TableHead className="w-32">Actions</TableHead></TableRow></TableHeader><TableBody>{invoices.map(inv => (<TableRow key={inv.id}><TableCell className="font-medium">{inv.reference}</TableCell><TableCell className="text-sm">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell><TableCell className="hidden md:table-cell text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell><TableCell className="hidden sm:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{fmtDate(inv.dueDate)}</TableCell><TableCell><div className="flex gap-1">{inv.status !== 'paye' && inv.status !== 'annule' && <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => updateMut.mutate({ id: inv.id, status: inv.status === 'partiel' ? 'paye' : 'partiel', paidAmount: inv.amount })}>{inv.status === 'partiel' ? 'Soldée' : 'Partiel'}</Button>}{inv.status === 'non_paye' && <Button variant="ghost" size="icon" className="size-7" onClick={() => window.open(`/api/invoices/${inv.id}/print`, '_blank')}><Download className="size-3.5" /></Button>}</div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}><DialogContent className="max-w-md rounded-xl"><DialogHeader><DialogTitle>Nouvelle facture</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{(clients || []).map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}</SelectItem>)}</SelectContent></Select></div><div><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-2 gap-3"><div><Label>Montant *</Label><Input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div><div><Label>Échéance</Label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label>Devise</Label><Select value={form.currencyCode} onValueChange={v => setForm(f => ({ ...f, currencyCode: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="XAF">XAF (FCFA)</SelectItem><SelectItem value="EUR">EUR (€)</SelectItem><SelectItem value="GBP">GBP (£)</SelectItem><SelectItem value="USD">USD ($)</SelectItem></SelectContent></Select></div><div><Label>Mode de paiement</Label><Select value={form.paymentMethod} onValueChange={v => setForm(f => ({ ...f, paymentMethod: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent><SelectItem value="especes">Espèces</SelectItem><SelectItem value="virement">Virement</SelectItem><SelectItem value="mobile_money">Mobile Money</SelectItem><SelectItem value="carte">Carte</SelectItem></SelectContent></Select></div></div><div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={() => { if (!form.clientId || !form.amount) return; createMut.mutate({ ...form, amount: parseFloat(form.amount), tenantId: user?.tenantId }) }} className="bg-[#1E5A8A] hover:bg-[#144570]" disabled={!form.clientId || !form.amount}>Créer</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
 }
@@ -1158,75 +655,42 @@ function MessagesView() {
   const [newMessage, setNewMessage] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const { data: contacts } = useQuery({
-    queryKey: ['users-contacts', user?.tenantId],
-    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
-  })
+  const { data: contacts } = useQuery({ queryKey: ['users-contacts', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()) })
+  const { data: messages } = useQuery({ queryKey: ['messages', user?.id, selectedContact], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (user?.id) p.set('userId', user.id); if (selectedContact) p.set('contactId', selectedContact); return fetch(`/api/messages?${p}`).then(r => r.json()) }, refetchInterval: 5000 })
 
-  const { data: messages } = useQuery({
-    queryKey: ['messages', user?.id, selectedContact],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (user?.tenantId) p.set('tenantId', user.tenantId)
-      if (user?.id) p.set('userId', user.id)
-      if (selectedContact) p.set('contactId', selectedContact)
-      return fetch(`/api/messages?${p}`).then(r => r.json())
-    },
-    refetchInterval: 5000,
-  })
-
-  const sendMut = useMutation({
-    mutationFn: (content: string) => fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, tenantId: user?.tenantId, senderId: user?.id, receiverId: selectedContact }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['messages'] }); setNewMessage('') },
-    onError: () => toast.error("Erreur d'envoi"),
-  })
+  const sendMut = useMutation({ mutationFn: (content: string) => fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, tenantId: user?.tenantId, senderId: user?.id, receiverId: selectedContact }) }).then(r => r.json()), onSuccess: () => { qc.invalidateQueries({ queryKey: ['messages'] }); setNewMessage('') }, onError: () => toast.error("Erreur d'envoi") })
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
-
   const contactList = (contacts || []).filter((c: UserItem) => c.id !== user?.id)
   const chatMessages = selectedContact ? (messages || []) as Message[] : []
-
-  const handleSend = () => {
-    if (!newMessage.trim() || !selectedContact) return
-    sendMut.mutate(newMessage.trim())
-  }
+  const handleSend = () => { if (!newMessage.trim() || !selectedContact) return; sendMut.mutate(newMessage.trim()) }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Messages</h2>
-      <Card className="overflow-hidden"><div className="flex h-[500px]">
-        <div className="w-64 border-r dark:border-slate-800 flex-shrink-0 overflow-y-auto hidden sm:block">
-          {contactList.length === 0 ? <p className="text-xs text-slate-400 p-4 text-center">Aucun contact</p> :
+    <div className="p-6 space-y-6">
+      <div><h2 className="text-xl font-bold text-foreground">Messages</h2><p className="text-sm text-muted-foreground">Communiquez avec votre équipe</p></div>
+      <Card className="border-border rounded-xl shadow-sm overflow-hidden"><div className="flex h-[500px]">
+        <div className="w-64 border-r border-border flex-shrink-0 overflow-y-auto hidden sm:block">
+          {contactList.length === 0 ? <p className="text-xs text-muted-foreground p-4 text-center">Aucun contact</p> :
             contactList.map((c: UserItem) => (
-              <button key={c.id} className={cn('w-full flex items-center gap-2 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors', selectedContact === c.id && 'bg-slate-100 dark:bg-slate-800')} onClick={() => setSelectedContact(c.id)}>
-                <Avatar className="size-8"><AvatarFallback className="text-[10px] bg-slate-100 dark:bg-slate-700">{initials(c.name)}</AvatarFallback></Avatar>
-                <div className="min-w-0"><p className="text-sm font-medium truncate">{c.name}</p><p className="text-[10px] text-slate-400">{ROLE_LABELS[c.role] || c.role}</p></div>
+              <button key={c.id} className={cn('w-full flex items-center gap-2.5 p-3 hover:bg-muted text-left transition-colors', selectedContact === c.id && 'bg-[#E8F1F8]')} onClick={() => setSelectedContact(c.id)}>
+                <Avatar className="size-8"><AvatarFallback className="text-[10px] bg-muted">{initials(c.name)}</AvatarFallback></Avatar>
+                <div className="min-w-0"><p className="text-sm font-medium truncate">{c.name}</p><p className="text-[10px] text-muted-foreground">{ROLE_LABELS[c.role] || c.role}</p></div>
               </button>
             ))}
         </div>
         <div className="flex-1 flex flex-col">
-          {!selectedContact ? <div className="flex-1 flex items-center justify-center"><EmptyState icon={MessageSquare} title="Sélectionnez une conversation" description="Choisissez un contact pour commencer" /></div> : (
+          {!selectedContact ? <div className="flex-1 flex items-center justify-center"><EmptyState icon={MessageSquare} title="Sélectionnez une conversation" /></div> : (
             <>
-              <div className="p-3 border-b dark:border-slate-800"><p className="text-sm font-semibold">{(contacts || []).find((c: UserItem) => c.id === selectedContact)?.name || ''}</p></div>
+              <div className="p-3 border-b border-border"><p className="text-sm font-semibold">{(contacts || []).find((c: UserItem) => c.id === selectedContact)?.name || ''}</p></div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {chatMessages.length === 0 && <p className="text-xs text-slate-400 text-center py-8">Aucun message</p>}
+                {chatMessages.length === 0 && <p className="text-xs text-muted-foreground text-center py-8">Aucun message</p>}
                 {chatMessages.map((m: Message) => {
                   const isMine = m.senderId === user?.id
-                  return (
-                    <div key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
-                      <div className={cn('max-w-[75%] rounded-xl px-3 py-2', isMine ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100')}>
-                        <p className="text-sm">{m.content}</p>
-                        <p className={cn('text-[10px] mt-1', isMine ? 'text-emerald-100' : 'text-slate-400')}>{fmtDateTime(m.createdAt)}</p>
-                      </div>
-                    </div>
-                  )
-                })}
+                  return (<div key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[75%] rounded-xl px-3 py-2', isMine ? 'bg-[#1E5A8A] text-white' : 'bg-muted')}><p className="text-sm">{m.content}</p><p className={cn('text-[10px] mt-1', isMine ? 'text-blue-200' : 'text-muted-foreground')}>{fmtDateTime(m.createdAt)}</p></div></div>)
+                  })}
                 <div ref={messagesEndRef} />
               </div>
-              <div className="p-3 border-t dark:border-slate-800 flex gap-2">
-                <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Écrire un message..." className="text-sm" onKeyDown={e => e.key === 'Enter' && handleSend()} />
-                <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sendMut.isPending}><Send className="size-4" /></Button>
-              </div>
+              <div className="p-3 border-t border-border flex gap-2"><Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Écrire un message..." className="text-sm" onKeyDown={e => e.key === 'Enter' && handleSend()} /><Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sendMut.isPending} className="bg-[#1E5A8A] hover:bg-[#144570]"><Send className="size-4" /></Button></div>
             </>
           )}
         </div>
@@ -1238,12 +702,7 @@ function MessagesView() {
 // ==================== REPORTS VIEW ====================
 function ReportsView() {
   const { user } = useAppStore()
-  const [period, setPeriod] = useState('month')
-
-  const { data: invoices } = useQuery({
-    queryKey: ['invoices-report', user?.tenantId],
-    queryFn: () => fetch(`/api/invoices?tenantId=${user?.tenantId}`).then(r => r.json()),
-  })
+  const { data: invoices } = useQuery({ queryKey: ['invoices-report', user?.tenantId], queryFn: () => fetch(`/api/invoices?tenantId=${user?.tenantId}`).then(r => r.json()) })
 
   const stats = useMemo(() => {
     const all = (invoices || []) as Invoice[]
@@ -1258,59 +717,30 @@ function ReportsView() {
   const monthlyData = useMemo(() => {
     const all = (invoices || []) as Invoice[]
     const months: Record<string, { month: string; revenue: number }> = {}
-    for (const inv of all) {
-      if (inv.status !== 'paye' || !inv.paidDate) continue
-      const m = format(parseISO(inv.paidDate), 'MMM yy', { locale: fr })
-      if (!months[m]) months[m] = { month: m, revenue: 0 }
-      months[m].revenue += inv.amount
-    }
+    for (const inv of all) { if (inv.status !== 'paye' || !inv.paidDate) continue; const m = format(parseISO(inv.paidDate), 'MMM yy', { locale: fr }); if (!months[m]) months[m] = { month: m, revenue: 0 }; months[m].revenue += inv.amount }
     return Object.values(months).sort((a, b) => a.month.localeCompare(b.month)).slice(-12)
   }, [invoices])
 
   const topClients = useMemo(() => {
     const all = (invoices || []) as Invoice[]
     const map: Record<string, { name: string; total: number }> = {}
-    for (const inv of all) {
-      if (inv.status !== 'paye') continue
-      const name = inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : 'Inconnu'
-      if (!map[inv.clientId]) map[inv.clientId] = { name, total: 0 }
-      map[inv.clientId].total += inv.amount
-    }
+    for (const inv of all) { if (inv.status !== 'paye') continue; const name = inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : 'Inconnu'; if (!map[inv.clientId]) map[inv.clientId] = { name, total: 0 }; map[inv.clientId].total += inv.amount }
     return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 5)
   }, [invoices])
 
-  const isDark = useTheme().resolvedTheme === 'dark'
-  const colors = isDark ? CHART_COLORS_DARK : CHART_COLORS
-
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Rapports</h2>
-
+    <div className="p-6 space-y-6">
+      <div><h2 className="text-xl font-bold text-foreground">Rapports</h2><p className="text-sm text-muted-foreground">Analyse de vos performances</p></div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Revenus totaux</p><p className="text-xl font-bold text-emerald-600 mt-1">{fmtMoney(stats.totalRevenue)}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">En attente</p><p className="text-xl font-bold text-orange-600 mt-1">{fmtMoney(stats.totalPending)}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Factures payées</p><p className="text-xl font-bold mt-1">{stats.paidCount}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Total factures</p><p className="text-xl font-bold mt-1">{stats.totalInvoices}</p></CardContent></Card>
+        {[
+          { label: 'Revenus totaux', value: fmtMoney(stats.totalRevenue), color: 'text-emerald-600' },
+          { label: 'En attente', value: fmtMoney(stats.totalPending), color: 'text-orange-600' },
+          { label: 'Factures payées', value: String(stats.paidCount), color: 'text-foreground' },
+          { label: 'Total factures', value: String(stats.totalInvoices), color: 'text-foreground' },
+        ].map(k => (<Card key={k.label} className="border-border rounded-xl shadow-sm"><CardContent className="p-4"><p className="text-xs text-muted-foreground">{k.label}</p><p className={cn("text-xl font-bold mt-1", k.color)}>{k.value}</p></CardContent></Card>))}
       </div>
-
-      <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Revenus mensuels</CardTitle></CardHeader><CardContent>
-        {monthlyData.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune donnée</p> : (
-          <div className="space-y-2 pt-2">{monthlyData.map((d, i) => <div key={d.month} className="flex items-center gap-3"><span className="text-xs text-slate-500 w-16">{d.month}</span><div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (d.revenue / Math.max(...monthlyData.map(x => x.revenue), 1)) * 100)}%`, backgroundColor: CHART_COLORS[2] }} /></div><span className="text-xs font-semibold w-28 text-right">{fmtMoney(d.revenue)}</span></div>)}</div>
-        )}
-      </CardContent></Card>
-
-      <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Top clients</CardTitle></CardHeader><CardContent>
-        {topClients.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">Aucune donnée</p> : (
-          <div className="space-y-3">
-            {topClients.map((c, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <div className="flex items-center gap-2"><span className="size-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold">{i + 1}</span><span className="text-sm font-medium">{c.name}</span></div>
-                <span className="text-sm font-semibold">{fmtMoney(c.total)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent></Card>
+      {monthlyData.length > 0 && <Card className="border-border rounded-xl shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-base font-semibold">Revenus mensuels</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={200}><AreaChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" /><XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={false} /><YAxis hide /><Area type="monotone" dataKey="revenue" stroke="#1E5A8A" fill="#E8F1F8" strokeWidth={2} /><RTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', fontSize: '12px' }} /></AreaChart></ResponsiveContainer></CardContent></Card>}
+      {topClients.length > 0 && <Card className="border-border rounded-xl shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-base font-semibold">Top clients</CardTitle></CardHeader><CardContent><div className="space-y-3">{topClients.map((c, i) => (<div key={i} className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="size-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold">{i + 1}</span><span className="text-sm font-medium">{c.name}</span></div><span className="text-sm font-semibold">{fmtMoney(c.total)}</span></div>))}</div></CardContent></Card>}
     </div>
   )
 }
@@ -1320,49 +750,15 @@ function AuditLogsView() {
   const { user } = useAppStore()
   const [resourceType, setResourceType] = useState('all')
   const isAdmin = user?.role === 'root_admin' || user?.role === 'firm_admin' || user?.role === 'associate'
-
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ['audit-logs', user?.tenantId, resourceType],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (user?.tenantId) p.set('tenantId', user.tenantId)
-      if (resourceType !== 'all') p.set('resourceType', resourceType)
-      return fetch(`/api/audit-logs?${p}`).then(r => r.json())
-    },
-    enabled: isAdmin,
-  })
-
-  if (!isAdmin) return <div className="p-6"><EmptyState icon={Shield} title="Accès restreint" description="Cette section est réservée aux administrateurs" /></div>
-
+  const { data: logs, isLoading } = useQuery({ queryKey: ['audit-logs', user?.tenantId, resourceType], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (resourceType !== 'all') p.set('resourceType', resourceType); return fetch(`/api/audit-logs?${p}`).then(r => r.json()) }, enabled: isAdmin })
+  if (!isAdmin) return <div className="p-6"><EmptyState icon={Shield} title="Accès restreint" description="Réservé aux administrateurs" /></div>
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Journal d'audit</h2>
-      <Select value={resourceType} onValueChange={setResourceType}>
-        <SelectTrigger className="w-[180px] h-9 text-xs"><SelectValue placeholder="Type de ressource" /></SelectTrigger>
-        <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="User">Utilisateur</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="Task">Tâche</SelectItem></SelectContent>
-      </Select>
-
+    <div className="p-6 space-y-6">
+      <div><h2 className="text-xl font-bold text-foreground">Journal d'audit</h2><p className="text-sm text-muted-foreground">Historique des actions</p></div>
+      <Select value={resourceType} onValueChange={setResourceType}><SelectTrigger className="w-[180px] h-9 text-sm"><SelectValue placeholder="Type de ressource" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="User">Utilisateur</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="Task">Tâche</SelectItem></SelectContent></Select>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         (logs || []).length === 0 ? <EmptyState icon={Shield} title="Aucune entrée" /> :
-        <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto">
-          <Table><TableHeader><TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Utilisateur</TableHead>
-            <TableHead>Action</TableHead>
-            <TableHead className="hidden md:table-cell">Ressource</TableHead>
-            <TableHead className="hidden lg:table-cell">IP</TableHead>
-          </TableRow></TableHeader><TableBody>
-            {(logs || []).map((log: AuditLogItem) => (
-              <TableRow key={log.id}>
-                <TableCell className="text-xs text-slate-500 dark:text-slate-400">{fmtDateTime(log.createdAt)}</TableCell>
-                <TableCell className="text-sm">{log.user?.name || 'Système'}</TableCell>
-                <TableCell className="text-sm font-medium">{log.action}</TableCell>
-                <TableCell className="hidden md:table-cell"><Badge variant="outline" className="text-[10px]">{log.resourceType || '—'}</Badge></TableCell>
-                <TableCell className="hidden lg:table-cell text-xs text-slate-400">{log.ipAddress || '—'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody></Table>
-        </div></CardContent></Card>}
+        <Card className="border-border rounded-xl shadow-sm"><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Utilisateur</TableHead><TableHead>Action</TableHead><TableHead className="hidden md:table-cell">Ressource</TableHead><TableHead className="hidden lg:table-cell">IP</TableHead></TableRow></TableHeader><TableBody>{(logs || []).map((log: AuditLogItem) => (<TableRow key={log.id}><TableCell className="text-xs text-muted-foreground">{fmtDateTime(log.createdAt)}</TableCell><TableCell className="text-sm">{log.user?.name || 'Système'}</TableCell><TableCell className="text-sm font-medium">{log.action}</TableCell><TableCell className="hidden md:table-cell"><Badge variant="outline" className="text-[10px]">{log.resourceType || '—'}</Badge></TableCell><TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{log.ipAddress || '—'}</TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>}
     </div>
   )
 }
@@ -1373,89 +769,33 @@ function SettingsView() {
   const qc = useQueryClient()
   const isAdmin = user?.role === 'root_admin' || user?.role === 'firm_admin' || user?.role === 'associate'
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '' })
-  const tenantInfo: TenantItem | null = tenantData || null
   const [newUser, setNewUser] = useState({ name: '', email: '', role: 'lawyer', password: '' })
   const [newCurrency, setNewCurrency] = useState({ code: '', name: '', symbol: '' })
   const [showNewUser, setShowNewUser] = useState(false)
   const [showNewCurrency, setShowNewCurrency] = useState(false)
 
-  const { data: tenantData } = useQuery({
-    queryKey: ['tenant', user?.tenantId],
-    queryFn: () => fetch(`/api/tenants/${user?.tenantId}`).then(r => r.json()),
-    enabled: !!user?.tenantId,
-  })
+  const { data: tenantData } = useQuery({ queryKey: ['tenant', user?.tenantId], queryFn: () => fetch(`/api/tenants/${user?.tenantId}`).then(r => r.json()), enabled: !!user?.tenantId })
+  const { data: usersList } = useQuery({ queryKey: ['settings-users', user?.tenantId], queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()), enabled: isAdmin })
+  const { data: currencies } = useQuery({ queryKey: ['currencies'], queryFn: () => fetch('/api/currencies').then(r => r.json()), enabled: isAdmin })
+  const tenantInfo: TenantItem | null = tenantData || null
 
-  const { data: usersList } = useQuery({
-    queryKey: ['settings-users', user?.tenantId],
-    queryFn: () => fetch(`/api/users?tenantId=${user?.tenantId}`).then(r => r.json()),
-    enabled: isAdmin,
-  })
-
-  const { data: currencies } = useQuery({
-    queryKey: ['currencies'],
-    queryFn: () => fetch('/api/currencies').then(r => r.json()),
-    enabled: isAdmin,
-  })
-
-  const updateProfile = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch(`/api/users/${user?.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-    onSuccess: () => { toast.success('Profil mis à jour'); qc.invalidateQueries({ queryKey: ['tenant'] }) },
-    onError: () => toast.error('Erreur'),
-  })
-
-  const createUserMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-    onSuccess: () => { toast.success('Utilisateur créé'); qc.invalidateQueries({ queryKey: ['settings-users'] }); setShowNewUser(false); setNewUser({ name: '', email: '', role: 'lawyer', password: '' }) },
-    onError: () => toast.error('Erreur lors de la création'),
-  })
-
-  const createCurrencyMut = useMutation({
-    mutationFn: (body: Record<string, unknown>) => fetch('/api/currencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-    onSuccess: () => { toast.success('Devise ajoutée'); qc.invalidateQueries({ queryKey: ['currencies'] }); setShowNewCurrency(false); setNewCurrency({ code: '', name: '', symbol: '' }) },
-    onError: () => toast.error('Erreur'),
-  })
+  const updateProfile = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch(`/api/users/${user?.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { toast.success('Profil mis à jour'); qc.invalidateQueries({ queryKey: ['tenant'] }) }, onError: () => toast.error('Erreur') })
+  const createUserMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { toast.success('Utilisateur créé'); qc.invalidateQueries({ queryKey: ['settings-users'] }); setShowNewUser(false); setNewUser({ name: '', email: '', role: 'lawyer', password: '' }) }, onError: () => toast.error('Erreur') })
+  const createCurrencyMut = useMutation({ mutationFn: (body: Record<string, unknown>) => fetch('/api/currencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()), onSuccess: () => { toast.success('Devise ajoutée'); qc.invalidateQueries({ queryKey: ['currencies'] }); setShowNewCurrency(false); setNewCurrency({ code: '', name: '', symbol: '' }) }, onError: () => toast.error('Erreur') })
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-3xl">
-      <h2 className="text-lg font-semibold">Paramètres</h2>
-
-      <Card><CardHeader><CardTitle className="text-sm font-semibold">Mon profil</CardTitle></CardHeader><CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label>Nom</Label><Input value={profileForm.name} onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))} /></div>
-          <div><Label>Email</Label><Input value={profileForm.email} onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))} /></div>
-        </div>
-        <div><Label>Téléphone</Label><Input value={profileForm.phone} onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))} /></div>
-        <Button size="sm" onClick={() => updateProfile.mutate(profileForm)} disabled={updateProfile.isPending}>Enregistrer</Button>
-      </CardContent></Card>
-
-      {tenantInfo && <Card><CardHeader><CardTitle className="text-sm font-semibold">Informations du cabinet</CardTitle></CardHeader><CardContent>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-slate-500">Nom :</span> <span className="font-medium">{tenantInfo.name}</span></div>
-          <div><span className="text-slate-500">Plan :</span> <Badge variant="outline" className="text-[10px]">{tenantInfo.plan}</Badge></div>
-          <div><span className="text-slate-500">Email :</span> <span className="font-medium">{tenantInfo.email || '—'}</span></div>
-          <div><span className="text-slate-500">Téléphone :</span> <span className="font-medium">{tenantInfo.phone || '—'}</span></div>
-          <div className="col-span-2"><span className="text-slate-500">Adresse :</span> <span className="font-medium">{tenantInfo.address || '—'}</span></div>
-        </div>
+    <div className="p-6 space-y-6 max-w-3xl">
+      <div><h2 className="text-xl font-bold text-foreground">Paramètres</h2><p className="text-sm text-muted-foreground">Configuration de votre compte</p></div>
+      <Card className="border-border rounded-xl shadow-sm"><CardHeader><CardTitle className="text-base font-semibold">Mon profil</CardTitle></CardHeader><CardContent className="space-y-3"><div className="grid grid-cols-2 gap-3"><div><Label>Nom</Label><Input value={profileForm.name} onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))} /></div><div><Label>Email</Label><Input value={profileForm.email} onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))} /></div></div><div><Label>Téléphone</Label><Input value={profileForm.phone} onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))} /></div><Button size="sm" onClick={() => updateProfile.mutate(profileForm)} disabled={updateProfile.isPending} className="bg-[#1E5A8A] hover:bg-[#144570]">Enregistrer</Button></CardContent></Card>
+      {tenantInfo && <Card className="border-border rounded-xl shadow-sm"><CardHeader><CardTitle className="text-base font-semibold">Informations du cabinet</CardTitle></CardHeader><CardContent><div className="grid grid-cols-2 gap-3 text-sm"><div><span className="text-muted-foreground">Nom :</span> <span className="font-medium">{tenantInfo.name}</span></div><div><span className="text-muted-foreground">Plan :</span> <Badge variant="outline" className="text-[10px]">{tenantInfo.plan}</Badge></div><div><span className="text-muted-foreground">Email :</span> <span className="font-medium">{tenantInfo.email || '—'}</span></div><div><span className="text-muted-foreground">Téléphone :</span> <span className="font-medium">{tenantInfo.phone || '—'}</span></div></div></CardContent></Card>}
+      {isAdmin && <Card className="border-border rounded-xl shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-base font-semibold">Utilisateurs</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewUser(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
+        {showNewUser && <div className="border border-border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-2 gap-2"><div><Label>Nom</Label><Input value={newUser.name} onChange={e => setNewUser(u => ({ ...u, name: e.target.value }))} /></div><div><Label>Email</Label><Input type="email" value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))} /></div><div><Label>Rôle</Label><Select value={newUser.role} onValueChange={v => setNewUser(u => ({ ...u, role: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="lawyer">Avocat</SelectItem><SelectItem value="jurist">Juriste</SelectItem><SelectItem value="assistant">Assistant</SelectItem><SelectItem value="accountant">Comptable</SelectItem></SelectContent></Select></div><div><Label>Mot de passe</Label><Input type="password" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createUserMut.mutate({ ...newUser, tenantId: user?.tenantId })} disabled={!newUser.name || !newUser.email} className="bg-[#1E5A8A] hover:bg-[#144570]">Créer</Button><Button size="sm" variant="outline" onClick={() => setShowNewUser(false)}>Annuler</Button></div></div>}
+        <div className="max-h-64 overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader><TableBody>{(usersList || []).map((u: UserItem) => (<TableRow key={u.id}><TableCell className="text-sm font-medium">{u.name}</TableCell><TableCell className="text-sm text-muted-foreground">{u.email}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell><TableCell><Badge variant={u.isActive ? 'default' : 'secondary'} className="text-[10px]">{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>))}</TableBody></Table></div>
       </CardContent></Card>}
-
-      {isAdmin && <Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-sm font-semibold">Utilisateurs</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewUser(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
-        {showNewUser && <div className="border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-2 gap-2"><div><Label>Nom</Label><Input value={newUser.name} onChange={e => setNewUser(u => ({ ...u, name: e.target.value }))} /></div><div><Label>Email</Label><Input type="email" value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))} /></div><div><Label>Rôle</Label><Select value={newUser.role} onValueChange={v => setNewUser(u => ({ ...u, role: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="lawyer">Avocat</SelectItem><SelectItem value="jurist">Juriste</SelectItem><SelectItem value="assistant">Assistant</SelectItem><SelectItem value="accountant">Comptable</SelectItem></SelectContent></Select></div><div><Label>Mot de passe</Label><Input type="password" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createUserMut.mutate({ ...newUser, tenantId: user?.tenantId })} disabled={!newUser.name || !newUser.email}>Créer</Button><Button size="sm" variant="outline" onClick={() => setShowNewUser(false)}>Annuler</Button></div></div>}
-        <div className="max-h-64 overflow-y-auto">
-          <Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader><TableBody>
-            {(usersList || []).map((u: UserItem) => (
-              <TableRow key={u.id}><TableCell className="text-sm font-medium">{u.name}</TableCell><TableCell className="text-sm text-slate-500">{u.email}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell><TableCell><Badge variant={u.isActive ? 'default' : 'secondary'} className="text-[10px]">{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>
-            ))}
-          </TableBody></Table>
-        </div>
+      {isAdmin && <Card className="border-border rounded-xl shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-base font-semibold">Devises</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
+        {showNewCurrency && <div className="border border-border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-3 gap-2"><div><Label>Code</Label><Input value={newCurrency.code} onChange={e => setNewCurrency(c => ({ ...c, code: e.target.value }))} placeholder="XAF" /></div><div><Label>Nom</Label><Input value={newCurrency.name} onChange={e => setNewCurrency(c => ({ ...c, name: e.target.value }))} placeholder="Franc CFA" /></div><div><Label>Symbole</Label><Input value={newCurrency.symbol} onChange={e => setNewCurrency(c => ({ ...c, symbol: e.target.value }))} placeholder="FCFA" /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createCurrencyMut.mutate(newCurrency)} disabled={!newCurrency.code || !newCurrency.name} className="bg-[#1E5A8A] hover:bg-[#144570]">Ajouter</Button><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(false)}>Annuler</Button></div></div>}
+        <div className="flex flex-wrap gap-2">{(currencies || []).map((c: CurrencyItem) => <Badge key={c.id} variant="outline" className="text-xs py-1 px-2">{c.code} — {c.symbol} ({c.name})</Badge>)}</div>
       </CardContent></Card>}
-
-      {isAdmin && <Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-sm font-semibold">Devises</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
-        {showNewCurrency && <div className="border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-3 gap-2"><div><Label>Code</Label><Input value={newCurrency.code} onChange={e => setNewCurrency(c => ({ ...c, code: e.target.value }))} placeholder="XAF" /></div><div><Label>Nom</Label><Input value={newCurrency.name} onChange={e => setNewCurrency(c => ({ ...c, name: e.target.value }))} placeholder="Franc CFA" /></div><div><Label>Symbole</Label><Input value={newCurrency.symbol} onChange={e => setNewCurrency(c => ({ ...c, symbol: e.target.value }))} placeholder="FCFA" /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createCurrencyMut.mutate(newCurrency)} disabled={!newCurrency.code || !newCurrency.name}>Ajouter</Button><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(false)}>Annuler</Button></div></div>}
-        <div className="flex flex-wrap gap-2">
-          {(currencies || []).map((c: CurrencyItem) => <Badge key={c.id} variant="outline" className="text-xs py-1 px-2">{c.code} — {c.symbol} ({c.name})</Badge>)}
-        </div>
-      </CardContent></Card>}
-
       <Button variant="outline" className="text-rose-600 hover:text-rose-700" onClick={logout}><LogOut className="size-4 mr-2" />Se déconnecter</Button>
     </div>
   )
@@ -1464,41 +804,22 @@ function SettingsView() {
 // ==================== ARCHIVES VIEW ====================
 function ArchivesView() {
   const { user } = useAppStore()
-
-  const { data: cases, isLoading } = useQuery({
-    queryKey: ['archived-cases', user?.tenantId],
-    queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}&status=archive`).then(r => r.json()),
-  })
-
+  const { data: cases, isLoading } = useQuery({ queryKey: ['archived-cases', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}&status=archive`).then(r => r.json()) })
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Archives</h2>
+    <div className="p-6 space-y-6">
+      <div><h2 className="text-xl font-bold text-foreground">Archives</h2><p className="text-sm text-muted-foreground">Dossiers clôturés et archivés</p></div>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
-        (cases || []).length === 0 ? <EmptyState icon={Archive} title="Aucun dossier archivé" /> :
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
-          {(cases || []).map((c: CaseItem) => (
-            <Card key={c.id} className="opacity-80">
-              <CardHeader className="pb-2"><div className="flex items-start justify-between"><CardTitle className="text-sm font-semibold">{c.reference}</CardTitle><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS.archive)}>{STATUS_LABELS.archive}</Badge></div><CardDescription className="text-xs mt-1 line-clamp-2">{c.title}</CardDescription></CardHeader>
-              <CardContent className="p-4 pt-0 space-y-1">
-                <p className="text-xs text-slate-500 dark:text-slate-400">{c.client ? `${c.client.firstName} ${c.client.lastName}` : '—'}</p>
-                <p className="text-xs text-slate-400">Type : {TYPE_LABELS[c.type] || c.type}</p>
-                {c.closingDate && <p className="text-xs text-slate-400">Clôture : {fmtDate(c.closingDate)}</p>}
-              </CardContent>
-            </Card>
-          ))}
-        </div>}
+        (cases || []).length === 0 ? <EmptyState icon={Inbox} title="Aucun dossier archivé" /> :
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">{(cases || []).map((c: CaseItem) => (
+          <Card key={c.id} className="border-border rounded-xl shadow-sm opacity-80"><CardHeader className="pb-2"><div className="flex items-start justify-between"><CardTitle className="text-sm font-semibold">{c.reference}</CardTitle><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS.archive)}>{STATUS_LABELS.archive}</Badge></div><CardDescription className="text-xs mt-1 line-clamp-2">{c.title}</CardDescription></CardHeader><CardContent className="p-4 pt-0 space-y-1"><p className="text-xs text-muted-foreground">{c.client ? `${c.client.firstName} ${c.client.lastName}` : '—'}</p><p className="text-xs text-muted-foreground">Type : {TYPE_LABELS[c.type] || c.type}</p>{c.closingDate && <p className="text-xs text-muted-foreground">Clôture : {fmtDate(c.closingDate)}</p>}</CardContent></Card>
+        ))}</div>}
     </div>
   )
 }
 
 // ==================== FOOTER ====================
 function Footer() {
-  return (
-    <footer className="mt-auto border-t dark:border-slate-800 px-4 py-3 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-950">
-      <span className="flex items-center gap-1"><Scale className="size-3.5" />JurisLink</span>
-      <span>v2.1.0</span>
-    </footer>
-  )
+  return (<footer className="mt-auto border-t border-border px-6 py-3 flex items-center justify-between text-xs text-muted-foreground bg-card"><span className="flex items-center gap-1.5"><Scale className="size-3.5" />JurisLink</span><span>v2.2.0</span></footer>)
 }
 
 // ==================== DASHBOARD ROUTER ====================
@@ -1523,22 +844,21 @@ function DashboardRouter() {
 
 // ==================== MAIN APP ====================
 export default function App() {
-  const { isAuthenticated, currentView } = useAppStore()
+  const { isAuthenticated } = useAppStore()
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <div className='min-h-screen flex flex-col bg-white dark:bg-slate-950'>
-        <div className='flex-1 flex flex-col'>
-          {!isAuthenticated ? <LoginPage /> : <>
-            <Sidebar />
-            <div className='lg:pl-[260px] flex-1 flex flex-col'>
-              <Header />
-              <main className='flex-1'><DashboardRouter /></main>
-              <Footer />
-            </div>
-          </>}
-        </div>
-          <Toaster richColors position='top-right' />
+        <div className="min-h-screen flex flex-col bg-[#F9FAFB] dark:bg-background">
+          <div className="flex-1 flex flex-col">
+            {!isAuthenticated ? <LoginPage /> : <>
+              <Sidebar />
+              <div className="lg:pl-[260px] flex-1 flex flex-col">
+                <Header />
+                <main className="flex-1"><DashboardRouter /></main>
+                <Footer />
+              </div>
+            </>}
+          </div>
         </div>
       </TooltipProvider>
     </QueryClientProvider>
