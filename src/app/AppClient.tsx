@@ -866,7 +866,7 @@ export default function AppClient() {
   const { isAuthenticated } = useAppStore()
   const { locale } = useLocale()
   return (
-    <ThemeProvider attribute='class' defaultTheme='light' enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute='class' defaultTheme='light' disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <div className='min-h-screen flex flex-col bg-[#F9FAFB] dark:bg-background' dir={RTL_LOCALES.has(locale) ? 'rtl' : 'ltr'}>
