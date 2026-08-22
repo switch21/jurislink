@@ -23,7 +23,42 @@ ALTER TABLE cases ADD COLUMN IF NOT EXISTS criticality TEXT DEFAULT 'normal';
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT 'autre';
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS folder TEXT;
 
--- 3. Fix the audit trigger to include tenant_id from NEW record
+-- 3. Convert enum columns to TEXT (the migration schema defines them as TEXT,
+--    but the original DB was created with custom enum types)
+DO $$ BEGIN
+  ALTER TABLE cases ALTER COLUMN status TYPE TEXT USING status::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE cases ALTER COLUMN outcome TYPE TEXT USING outcome::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE cases ALTER COLUMN payment_status TYPE TEXT USING payment_status::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE tasks ALTER COLUMN status TYPE TEXT USING status::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE events ALTER COLUMN event_type TYPE TEXT USING event_type::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE invoices ALTER COLUMN status TYPE TEXT USING status::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE users ALTER COLUMN role TYPE TEXT USING role::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE tenants ALTER COLUMN plan TYPE TEXT USING plan::TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- 4. Fix the audit trigger to include tenant_id from NEW record
 CREATE OR REPLACE FUNCTION public.handle_audit_trigger()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -57,7 +92,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 4. Drop old triggers and recreate with fixed function
+-- 5. Drop old triggers and recreate with fixed function
 DO $$ 
 DECLARE
   tr RECORD;
@@ -70,7 +105,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 5. Create proper audit triggers
+-- 6. Create proper audit triggers
 CREATE TRIGGER audit_clients_trigger AFTER INSERT OR UPDATE OR DELETE ON clients
   FOR EACH ROW EXECUTE FUNCTION public.handle_audit_trigger();
 CREATE TRIGGER audit_cases_trigger AFTER INSERT OR UPDATE OR DELETE ON cases
@@ -86,11 +121,11 @@ CREATE TRIGGER audit_invoices_trigger AFTER INSERT OR UPDATE OR DELETE ON invoic
 CREATE TRIGGER audit_users_trigger AFTER INSERT OR UPDATE OR DELETE ON users
   FOR EACH ROW EXECUTE FUNCTION public.handle_audit_trigger();
 
--- 6. Re-enable NOT NULL on tenant_id now that trigger is fixed
+-- 7. Re-enable NOT NULL on tenant_id now that trigger is fixed
 ALTER TABLE audit_logs ALTER COLUMN tenant_id SET NOT NULL;
 
 -- ============================================
--- 7. Seed EKOKA tenant data
+-- 8. Seed EKOKA tenant data
 -- ============================================
 
 -- Insert clients
@@ -192,7 +227,7 @@ FROM (VALUES
   ('AFF-2024-001', 'secretary', 'Factures_Mega_Import.pdf', '/cases/2024/factures.pdf', 189000, ARRAY['facture', 'preuve'], 'application/pdf', 1, false, 'piece', 'Preuves'),
   ('AFF-2024-002', 'lawyer', 'Convention_Divorce.docx', '/cases/2024/convention.docx', 156000, ARRAY['convention', 'divorce'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1, true, 'convention', 'Conventions'),
   ('AFF-2024-003', 'lawyer', 'Mise_en_Demeure.pdf', '/cases/2024/mise_en_demeure.pdf', 98000, ARRAY['mise_en_demeure'], 'application/pdf', 1, false, 'correspondance', 'Correspondance'),
-  ('AFF-2024-004', 'lawyer', 'Acte_de_Décès.pdf', '/cases/2024/acte_deces.pdf', 125000, ARRAY['succession', 'acte'], 'application/pdf', 1, false, 'acte', 'Succession')
+  ('AFF-2024-004', 'lawyer', 'Acte_de_Décès.pdf', '/cases/2024/act_deces.pdf', 125000, ARRAY['succession', 'acte'], 'application/pdf', 1, false, 'acte', 'Succession')
 ) AS d(case_ref, uploader, file_name, file_path, file_size, tags, mime_type, version, is_confidential, document_type, folder)
 JOIN ek_cases c ON c.reference = d.case_ref
 CROSS JOIN ek_lawyer l
