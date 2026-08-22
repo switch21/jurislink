@@ -446,3 +446,25 @@ Stage Summary:
 - Successfully executed in Supabase SQL editor
 - Remaining: rewrite seed files (006/006b) to match this schema column names
 
+---
+Task ID: UI-Redesign
+Agent: Main Agent
+Task: UI/UX Redesign of JurisLink based on reference image (Premium, Professionnelle, Juridique, Sobre)
+
+Work Log:
+- Analyzed reference image (exemple.jpg) via VLM to extract exact layout, colors, components, typography
+- Designed CSS custom property system mapping brand colors (#1E5A8A, #C8A45D) to light/dark themes
+- Rewrote globals.css (274 lines): new design system with :root/.dark CSS vars, custom .surface-card, .nav-item, .section-label, .progress-bar, .login-pattern classes
+- Rewrote page.tsx (867 lines, down from 1546): all 12 views + login/sidebar/header/footer with new professional design
+- Added recharts: PieChart (donut), BarChart (status), AreaChart (revenue) in Dashboard and Reports
+- Fixed 22 critical escaped template literal bugs (\${ → ${) that would have broken all API fetch calls
+- Browser-verified: Login page renders, Dashboard renders with light sidebar, all 12 views accessible, Settings view shows profile/users/currencies
+
+Stage Summary:
+- Design system: #FFFFFF primary, #1E5A8A blue, #C8A45D gold, #F9FAFB background, Inter typography
+- Sidebar: light gray (#F9FAFB) with blue active states, no dark slate/amber
+- 12 views: Dashboard, Dossiers, Clients, Tâches, Documents, Calendrier, Factures, Messages, Rapports, Journal d'audit, Paramètres, Archives
+- Lint: clean (0 errors)
+- Dev server: running, renders correctly
+- Remaining: seed data rewrite, Supabase backend testing with real data, Prisma remnants cleanup
+
