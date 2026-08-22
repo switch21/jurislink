@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts'
@@ -860,13 +861,10 @@ function DashboardRouter() {
   }
 }
 
-// ==================== MAIN APP ====================
-export default function App() {
+// ==================== MAIN APP (client-only, no SSR) ====================
+function AppInner() {
   const { isAuthenticated } = useAppStore()
   const { locale } = useLocale()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
-  if (!mounted) return null
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -886,3 +884,6 @@ export default function App() {
     </QueryClientProvider>
   )
 }
+
+const App = dynamic(() => Promise.resolve(AppInner), { ssr: false })
+export default App
