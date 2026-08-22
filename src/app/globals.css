@@ -301,3 +301,72 @@ html[dir='rtl'] .main-content {
     padding-right: 0;
   }
 }
+
+/* KPI Card shimmer */
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.kpi-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.kpi-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  transition: left 500ms ease;
+}
+.kpi-card:hover::after {
+  left: 100%;
+}
+
+/* Table row hover */
+table tbody tr {
+  transition: background-color 100ms ease;
+}
+
+/* Avatar gradient system */
+.avatar-grad-0 { background: linear-gradient(135deg, #1E5A8A, #2E7AB8); }
+.avatar-grad-1 { background: linear-gradient(135deg, #059669, #34D399); }
+.avatar-grad-2 { background: linear-gradient(135deg, #C8A45D, #E8C880); }
+.avatar-grad-3 { background: linear-gradient(135deg, #8B5CF6, #A78BFA); }
+.avatar-grad-4 { background: linear-gradient(135deg, #EC4899, #F472B6); }
+.avatar-grad-5 { background: linear-gradient(135deg, #E8A838, #FBBF24); }
+.avatar-grad-6 { background: linear-gradient(135deg, #6366F1, #818CF8); }
+.avatar-grad-7 { background: linear-gradient(135deg, #14B8A6, #5EEAD4); }
+
+/* Pulse dot for live indicators */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.5); }
+}
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Smooth view transitions */
+.view-enter {
+  animation: viewEnter 0.25s ease-out;
+}
+@keyframes viewEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Badge pill style */
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  border: 1px solid transparent;
+}

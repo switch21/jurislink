@@ -77,6 +77,8 @@ const TYPE_LABELS: Record<string, string> = { civil: 'Civil', commercial: 'Comme
 const PRIORITY_LABELS: Record<string, string> = { low: 'Basse', normal: 'Normal', high: 'Haute', urgent: 'Urgente', basse: 'Basse', haute: 'Haute', urgente: 'Urgente' }
 const BILLING_LABELS: Record<string, string> = { forfait: 'Forfait', horaire: 'Horaire', abonnement: 'Abonnement', success_fee: 'Success fee', provision: 'Provision', flat: 'Forfait', hourly: 'Horaire', subscription: 'Abonnement' }
 const EVENT_TYPE_LABELS: Record<string, string> = { audience: 'Audience', rdv: 'Rendez-vous', echeance: 'Échéance', depot: 'Dépôt', autre: 'Autre', hearing: 'Audience', appointment: 'Rendez-vous', deadline: 'Échéance', filing: 'Dépôt', other: 'Autre' }
+const ROLE_LABELS: Record<string, string> = { root_admin: 'Administrateur', firm_admin: 'Admin Cabinet', associate: 'Associé', lawyer: 'Avocat', jurist: 'Juriste', assistant: 'Assistant', accountant: 'Comptable', client: 'Client' }
+const ROLE_COLORS: Record<string, string> = { root_admin: 'bg-purple-50 text-purple-700', firm_admin: 'bg-blue-50 text-blue-700', associate: 'bg-indigo-50 text-indigo-700', lawyer: 'bg-[#E8F1F8] text-[#1E5A8A]', jurist: 'bg-teal-50 text-teal-700', assistant: 'bg-gray-100 text-gray-700', accountant: 'bg-amber-50 text-amber-700' }
 const CHART_COLORS = ['#1E5A8A', '#C8A45D', '#059669', '#E8A838', '#8B5CF6', '#EC4899']
 const CHART_COLORS_DARK = ['#60A5FA', '#FBBF24', '#34D399', '#FB923C', '#A78BFA', '#FB7185']
 
@@ -108,6 +110,7 @@ function fmtDateTime(d: string | null | undefined) { if (!d) return t('common.no
 function fmtMoney(amount: number, code: string = 'XAF') { return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(amount) }
 function fmtFileSize(bytes: number) { if (bytes < 1024) return bytes + ' o'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko'; return (bytes / 1048576).toFixed(1) + ' Mo' }
 function initials(name: string) { return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) }
+function avatarGrad(id: string) { let h = 0; for (let i = 0; i < id.length; i++) h = id.charCodeAt(i) + ((h << 5) - h); return `avatar-grad-${Math.abs(h) % 8}` }
 function taskStatusColor(s: string) { return STATUS_COLORS[s] || '' }
 function taskStatusLabel(s: string) { return SL(s) }
 
@@ -146,21 +149,21 @@ function LoginPage() {
   }
   return (
     <div className="min-h-screen flex items-center justify-center login-pattern p-4">
-      <div className="w-full max-w-md">
-        <Card className="shadow-lg border-border rounded-xl">
-          <CardHeader className="text-center pb-2 pt-8">
-            <div className="mx-auto mb-4 size-12 rounded-xl bg-[#1E5A8A] flex items-center justify-center shadow-md"><Scale className="size-6 text-white" /></div>
-            <div className="mb-1"><span className="text-2xl font-bold tracking-tight text-foreground">Juris</span><span className="text-2xl font-bold tracking-tight text-[#1E5A8A]">Link</span></div>
-            <CardDescription className="text-sm mt-1 text-muted-foreground">Le système d'exploitation de votre cabinet</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4">
+      <div className="w-full max-w-md animate-fade-in">
+        <Card className="shadow-xl border-border rounded-2xl overflow-hidden">
+          <div className="bg-[#1E5A8A] px-8 pt-8 pb-6 text-center">
+            <div className="mx-auto mb-3 size-14 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20"><Scale className="size-7 text-white" /></div>
+            <div className="mb-1"><span className="text-2xl font-bold tracking-tight text-white">Juris</span><span className="text-2xl font-bold tracking-tight text-[#F5EFE0]">Link</span></div>
+            <p className="text-sm text-blue-100/80">Le système d'exploitation de votre cabinet</p>
+          </div>
+          <CardContent className="pt-6 pb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2"><Label htmlFor="email">Adresse e-mail</Label><Input id="email" type="email" placeholder="email@jurislink.com" value={email} onChange={e => setEmail(e.target.value)} className="h-11 rounded-lg" /></div>
-              <div className="space-y-2"><Label htmlFor="password">Mot de passe</Label><Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="h-11 rounded-lg" /></div>
-              <Button type="submit" className="w-full h-11 bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg" disabled={loading}>{loading ? <RefreshCw className="size-4 animate-spin" /> : 'Se connecter'}</Button>
+              <div className="space-y-2"><Label htmlFor="email" className="text-xs font-medium">Adresse e-mail</Label><Input id="email" type="email" placeholder="email@jurislink.com" value={email} onChange={e => setEmail(e.target.value)} className="h-11 rounded-lg bg-muted/50" /></div>
+              <div className="space-y-2"><Label htmlFor="password" className="text-xs font-medium">Mot de passe</Label><Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="h-11 rounded-lg bg-muted/50" /></div>
+              <Button type="submit" className="w-full h-11 bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg font-medium shadow-md shadow-[#1E5A8A]/20 transition-all" disabled={loading}>{loading ? <RefreshCw className="size-4 animate-spin" /> : 'Se connecter'}</Button>
             </form>
           </CardContent>
-          <CardFooter className="flex-col gap-1 pb-8"><Separator className="mb-3" /><p className="text-xs text-muted-foreground">Compte démo</p><p className="text-xs text-muted-foreground font-mono bg-muted px-3 py-1.5 rounded-md">ngassa@jurislink.com / Admin@123</p></CardFooter>
+          <CardFooter className="flex-col gap-1.5 pb-6 bg-muted/30"><p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Accès démo</p><p className="text-xs text-muted-foreground font-mono bg-card border border-border px-3 py-1.5 rounded-md">pod126@yahoo.fr / votre mot de passe</p></CardFooter>
         </Card>
         <p className="text-center text-xs text-muted-foreground mt-6">© 2025 JurisLink — Tous droits réservés</p>
       </div>
@@ -199,7 +202,7 @@ function Sidebar() {
         <span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-foreground">Juris</span><span className="text-[#1E5A8A]">Link</span></span>
       </div>
       <ScrollArea className="flex-1 custom-scrollbar">{navContent}</ScrollArea>
-      <div className="p-4 border-t border-border"><div className="flex items-center gap-3"><Avatar className="size-8 shrink-0"><AvatarFallback className="bg-[#1E5A8A] text-white text-xs">{user?.name ? initials(user.name) : 'U'}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate text-foreground">{user?.name}</p><p className="text-xs text-muted-foreground truncate">{ROLE_LABELS[user?.role || ''] || user?.role}</p></div></div></div>
+      <div className="p-4 border-t border-border"><div className="flex items-center gap-3"><Avatar className="size-8 shrink-0"><AvatarFallback className={cn('text-white text-xs', avatarGrad(user?.id || '0'))}>{user?.name ? initials(user.name) : 'U'}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate text-foreground">{user?.name}</p><p className="text-xs text-muted-foreground truncate"><Badge variant="outline" className={cn('text-[10px]', ROLE_COLORS[user?.role || ''] || 'text-muted-foreground')}>{ROLE_LABELS[user?.role || ''] || user?.role}</Badge></p></div></div></div>
     </aside>
     <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}><SheetContent side="left" className="w-[280px] p-0 bg-[#F9FAFB] dark:bg-card border-border">
       <div className="flex items-center gap-3 px-4 h-16 border-b border-border shrink-0"><div className="size-8 rounded-lg bg-[#1E5A8A] flex items-center justify-center shrink-0"><Scale className="size-4 text-white" /></div><span className="text-lg font-bold tracking-tight whitespace-nowrap"><span className="text-foreground">Juris</span><span className="text-[#1E5A8A]">Link</span></span><Button variant="ghost" size="icon" className="ml-auto text-muted-foreground" onClick={() => setSidebarOpen(false)}><X className="size-5" /></Button></div>
@@ -307,11 +310,11 @@ function DashboardView() {
   const barData = statusChartData.map(d => ({ ...d, fill: d.name === 'En cours' ? (theme === 'dark' ? '#60A5FA' : '#1E5A8A') : (theme === 'dark' ? '#334155' : '#E8F1F8') }))
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       {/* Welcome */}
       <div className="flex items-center justify-between">
-        <div><h2 className="text-2xl font-bold text-foreground">{greeting}, {user?.name?.split(' ').slice(-1)}</h2><p className="text-sm text-muted-foreground mt-0.5">{format(now, 'EEEE d MMMM yyyy', { locale: fr })}</p></div>
-        <Button onClick={() => setCurrentView('cases')} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg hidden sm:flex"><Plus className="size-4 mr-1.5" />Nouveau dossier</Button>
+        <div><h2 className="text-2xl font-bold text-foreground">{greeting}, {user?.name?.split(' ').slice(-1)}</h2><p className="text-sm text-muted-foreground mt-0.5">{format(now, 'EEEE d MMMM yyyy', { locale: getDateLocale() })}</p></div>
+        <div className="flex gap-2 sm:flex hidden"><Button onClick={() => setCurrentView('cases')} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg shadow-sm"><Plus className="size-4 mr-1.5" />Nouveau dossier</Button><Button onClick={() => setCurrentView('tasks')} variant="outline" className="rounded-lg shadow-sm"><ClipboardList className="size-4 mr-1.5" />Nouvelle tâche</Button></div>
       </div>
 
       {/* KPI Card */}
@@ -320,11 +323,11 @@ function DashboardView() {
         <CardContent className="pt-0 pb-6">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {kpis.map(kpi => { const Icon = kpi.icon; return (
-              <div key={kpi.label} className="rounded-lg border border-border p-4">
-                <div className="flex items-center gap-3 mb-3"><div className={cn('size-10 rounded-lg flex items-center justify-center', kpi.bg)}><Icon className={cn('size-5', kpi.iconColor)} /></div></div>
+              <div key={kpi.label} className="kpi-card rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between mb-3"><div className={cn('size-10 rounded-lg flex items-center justify-center', kpi.bg)}><Icon className={cn('size-5', kpi.iconColor)} /></div><span className={cn('text-xs font-medium px-1.5 py-0.5 rounded', kpi.bg, kpi.iconColor)}>{kpi.pct > 0 ? `${Math.round(kpi.pct)}%` : ''}</span></div>
                 <p className="text-xs font-medium text-muted-foreground mb-0.5">{kpi.label}</p>
-                <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
-                <div className="progress-bar mt-2"><div className="progress-bar-fill" style={{ width: `${kpi.pct}%` }} /></div>
+                <p className="text-2xl font-bold text-foreground">{typeof kpi.value === 'number' ? kpi.value.toLocaleString('fr-FR') : kpi.value}</p>
+                <div className="progress-bar mt-2"><div className="progress-bar-fill" style={{ width: `${Math.min(kpi.pct, 100)}%` }} /></div>
               </div>
             )})}
           </div>
@@ -386,7 +389,7 @@ function DashboardView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 border-border rounded-xl shadow-sm">
           <CardHeader className="pb-3"><CardTitle className="text-base font-semibold flex items-center gap-2"><ClipboardList className="size-4 text-[#1E5A8A]" />Mes tâches</CardTitle></CardHeader>
-          <CardContent className="pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">{(stats.myTasks || []).length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">Aucune tâche</p> : (stats.myTasks || []).map(t => (<div key={t.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted cursor-pointer transition-colors" onClick={() => setCurrentView('tasks')}><span className={cn('size-2 rounded-full shrink-0', t.priority === 'urgente' ? 'bg-rose-500' : t.priority === 'haute' ? 'bg-orange-500' : 'bg-[#1E5A8A]')} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{t.title}</p><p className="text-xs text-muted-foreground">{t.caseReference ? `${t.caseReference} — ` : ''}{t.dueDate ? `Échéance: ${fmtDate(t.dueDate)}` : ''}</p></div></div>))}</div></CardContent>
+          <CardContent className="pt-0"><div className="space-y-2 max-h-64 overflow-y-auto">{(stats.myTasks || []).length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">Aucune tâche</p> : (stats.myTasks || []).map(t => (<div key={t.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted cursor-pointer transition-colors" onClick={() => setCurrentView('tasks')}><span className={cn('size-2 rounded-full shrink-0', (t.priority === 'urgent' || t.priority === 'urgente') ? 'bg-rose-500 pulse-dot' : (t.priority === 'high' || t.priority === 'haute') ? 'bg-orange-500' : 'bg-[#1E5A8A]')} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{t.title}</p><p className="text-xs text-muted-foreground">{t.caseReference ? `${t.caseReference} — ` : ''}{t.dueDate ? `Échéance: ${fmtDate(t.dueDate)}` : ''}</p></div></div>))}</div></CardContent>
         </Card>
         <Card className="border-border rounded-xl shadow-sm">
           <CardHeader className="pb-3"><CardTitle className="text-base font-semibold">Résumé financier</CardTitle></CardHeader>
@@ -428,7 +431,7 @@ function TasksView() {
   const tasks: TaskItem[] = tasksData || []
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div><h2 className="text-xl font-bold text-foreground">Tâches</h2><p className="text-sm text-muted-foreground">Gérez les tâches de votre cabinet</p></div>
         <Button onClick={() => { resetForm(); setDialogOpen(true) }} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouvelle tâche</Button>
@@ -475,7 +478,7 @@ function CasesView() {
   const getClientName = (c: CaseItem) => c.client ? `${c.client.firstName} ${c.client.lastName}` : '—'
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div><h2 className="text-xl font-bold text-foreground">Dossiers</h2><p className="text-sm text-muted-foreground">Gérez les dossiers de votre cabinet</p></div>
         <Button onClick={() => { resetForm(); setDialogOpen(true) }} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouveau dossier</Button>
@@ -532,7 +535,7 @@ function ClientsView() {
   const clients: Client[] = (clientsData?.clients || clientsData || [])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div><h2 className="text-xl font-bold text-foreground">Clients</h2><p className="text-sm text-muted-foreground">Gérez les clients de votre cabinet</p></div>
         <Button onClick={() => { resetForm(); setDialogOpen(true) }} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouveau client</Button>
@@ -569,7 +572,7 @@ function DocumentsView() {
   const grouped = useMemo(() => { const map: Record<string, Doc[]> = {}; for (const d of (docs || [])) { const key = d.case?.reference || 'Sans dossier'; if (!map[key]) map[key] = []; map[key].push(d) } return map }, [docs])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div><h2 className="text-xl font-bold text-foreground">Documents</h2><p className="text-sm text-muted-foreground">Tous les documents de votre cabinet</p></div>
         <Button onClick={() => setUploadOpen(true)} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Ajouter</Button>
@@ -606,7 +609,7 @@ function CalendarView() {
   const getEventsForDay = (day: Date) => (events || []).filter((e: EventItem) => isSameDay(parseISO(e.startTime), day))
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div><h2 className="text-xl font-bold text-foreground">Calendrier</h2><p className="text-sm text-muted-foreground">Planifiez vos audiences et rendez-vous</p></div>
         <Button onClick={() => setDialogOpen(true)} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouvel événement</Button>
@@ -646,7 +649,7 @@ function InvoicesView() {
   const invoices: Invoice[] = (invoicesData?.invoices || invoicesData || [])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div><h2 className="text-xl font-bold text-foreground">Factures</h2><p className="text-sm text-muted-foreground">Suivi de vos facturations</p></div>
         <Button onClick={() => setDialogOpen(true)} className="bg-[#1E5A8A] hover:bg-[#144570] text-white rounded-lg"><Plus className="size-4 mr-1.5" />Nouvelle facture</Button>
@@ -656,7 +659,7 @@ function InvoicesView() {
       </div>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         invoices.length === 0 ? <EmptyState icon={Receipt} title="Aucune facture" description="Créez votre première facture" /> :
-        <Card className="border-border rounded-xl shadow-sm"><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead className="hidden md:table-cell">Montant</TableHead><TableHead className="hidden sm:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Échéance</TableHead><TableHead className="w-32">Actions</TableHead></TableRow></TableHeader><TableBody>{invoices.map(inv => (<TableRow key={inv.id}><TableCell className="font-medium">{inv.reference}</TableCell><TableCell className="text-sm">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell><TableCell className="hidden md:table-cell text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell><TableCell className="hidden sm:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{fmtDate(inv.dueDate)}</TableCell><TableCell><div className="flex gap-1">{inv.status !== 'paye' && inv.status !== 'annule' && <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => updateMut.mutate({ id: inv.id, status: inv.status === 'partiel' ? 'paye' : 'partiel', paidAmount: inv.amount })}>{inv.status === 'partiel' ? 'Soldée' : 'Partiel'}</Button>}{inv.status === 'non_paye' && <Button variant="ghost" size="icon" className="size-7" onClick={() => window.open(`/api/invoices/${inv.id}/print`, '_blank')}><Download className="size-3.5" /></Button>}</div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>}
+        <Card className="border-border rounded-xl shadow-sm"><CardContent className="p-0"><div className="max-h-[500px] overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Référence</TableHead><TableHead>Client</TableHead><TableHead className="hidden md:table-cell">Montant</TableHead><TableHead className="hidden sm:table-cell">Statut</TableHead><TableHead className="hidden lg:table-cell">Échéance</TableHead><TableHead className="w-32">Actions</TableHead></TableRow></TableHeader><TableBody>{invoices.map(inv => (<TableRow key={inv.id}><TableCell className="font-medium">{inv.reference}</TableCell><TableCell className="text-sm">{inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : '—'}</TableCell><TableCell className="hidden md:table-cell text-sm font-medium">{fmtMoney(inv.amount, inv.currencyCode)}</TableCell><TableCell className="hidden sm:table-cell"><Badge variant="outline" className={cn('text-[10px]', STATUS_COLORS[inv.status])}>{STATUS_LABELS[inv.status] || inv.status}</Badge></TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{fmtDate(inv.dueDate)}</TableCell><TableCell><div className="flex gap-1">{inv.status !== 'paye' && inv.status !== 'paid' && inv.status !== 'annule' && inv.status !== 'cancelled' && <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => updateMut.mutate({ id: inv.id, status: (inv.status === 'partiel' || inv.status === 'partial') ? 'paye' : 'partiel', paidAmount: inv.amount })}>{(inv.status === 'partiel' || inv.status === 'partial') ? 'Soldée' : 'Partiel'}</Button>}{(inv.status === 'non_paye' || inv.status === 'unpaid') && <Button variant="ghost" size="icon" className="size-7" onClick={() => window.open(`/api/invoices/${inv.id}/print`, '_blank')}><Download className="size-3.5" /></Button>}</div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}><DialogContent className="max-w-md rounded-xl"><DialogHeader><DialogTitle>Nouvelle facture</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>Client *</Label><Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger><SelectContent>{(clients || []).map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}</SelectItem>)}</SelectContent></Select></div><div><Label>Dossier</Label><Select value={form.caseId} onValueChange={v => setForm(f => ({ ...f, caseId: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent>{(cases || []).map(c => <SelectItem key={c.id} value={c.id}>{c.reference} — {c.title}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-2 gap-3"><div><Label>Montant *</Label><Input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div><div><Label>Échéance</Label><Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label>Devise</Label><Select value={form.currencyCode} onValueChange={v => setForm(f => ({ ...f, currencyCode: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="XAF">XAF (FCFA)</SelectItem><SelectItem value="EUR">EUR (€)</SelectItem><SelectItem value="GBP">GBP (£)</SelectItem><SelectItem value="USD">USD ($)</SelectItem></SelectContent></Select></div><div><Label>Mode de paiement</Label><Select value={form.paymentMethod} onValueChange={v => setForm(f => ({ ...f, paymentMethod: v }))}><SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger><SelectContent><SelectItem value="especes">Espèces</SelectItem><SelectItem value="virement">Virement</SelectItem><SelectItem value="mobile_money">Mobile Money</SelectItem><SelectItem value="carte">Carte</SelectItem></SelectContent></Select></div></div><div><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button><Button onClick={() => { if (!form.clientId || !form.amount) return; createMut.mutate({ ...form, amount: parseFloat(form.amount), tenantId: user?.tenantId }) }} className="bg-[#1E5A8A] hover:bg-[#144570]" disabled={!form.clientId || !form.amount}>Créer</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )
@@ -681,7 +684,7 @@ function MessagesView() {
   const handleSend = () => { if (!newMessage.trim() || !selectedContact) return; sendMut.mutate(newMessage.trim()) }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div><h2 className="text-xl font-bold text-foreground">Messages</h2><p className="text-sm text-muted-foreground">Communiquez avec votre équipe</p></div>
       <Card className="border-border rounded-xl shadow-sm overflow-hidden"><div className="flex h-[500px]">
         <div className="w-64 border-r border-border flex-shrink-0 overflow-y-auto hidden sm:block">
@@ -721,9 +724,9 @@ function ReportsView() {
 
   const stats = useMemo(() => {
     const all = (invoices || []) as Invoice[]
-    const paid = all.filter(i => i.status === 'paye')
-    const unpaid = all.filter(i => i.status === 'non_paye')
-    const partial = all.filter(i => i.status === 'partiel')
+    const paid = all.filter(i => i.status === 'paid' || i.status === 'paye')
+    const unpaid = all.filter(i => i.status === 'unpaid' || i.status === 'non_paye' || i.status === 'overdue')
+    const partial = all.filter(i => i.status === 'partial' || i.status === 'partiel')
     const totalRevenue = paid.reduce((s, i) => s + i.amount, 0)
     const totalPending = unpaid.reduce((s, i) => s + i.amount, 0) + partial.reduce((s, i) => s + (i.amount - (i.paidAmount || 0)), 0)
     return { totalRevenue, totalPending, paidCount: paid.length, unpaidCount: unpaid.length + partial.length, totalInvoices: all.length }
@@ -732,19 +735,19 @@ function ReportsView() {
   const monthlyData = useMemo(() => {
     const all = (invoices || []) as Invoice[]
     const months: Record<string, { month: string; revenue: number }> = {}
-    for (const inv of all) { if (inv.status !== 'paye' || !inv.paidDate) continue; const m = format(parseISO(inv.paidDate), 'MMM yy', { locale: fr }); if (!months[m]) months[m] = { month: m, revenue: 0 }; months[m].revenue += inv.amount }
+    for (const inv of all) { const isPaid = inv.status === 'paid' || inv.status === 'paye'; if (!isPaid || !inv.paidDate) continue; const m = format(parseISO(inv.paidDate), 'MMM yy', { locale: getDateLocale() }); if (!months[m]) months[m] = { month: m, revenue: 0 }; months[m].revenue += inv.amount }
     return Object.values(months).sort((a, b) => a.month.localeCompare(b.month)).slice(-12)
   }, [invoices])
 
   const topClients = useMemo(() => {
     const all = (invoices || []) as Invoice[]
     const map: Record<string, { name: string; total: number }> = {}
-    for (const inv of all) { if (inv.status !== 'paye') continue; const name = inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : 'Inconnu'; if (!map[inv.clientId]) map[inv.clientId] = { name, total: 0 }; map[inv.clientId].total += inv.amount }
+    for (const inv of all) { const isPaid = inv.status === 'paid' || inv.status === 'paye'; if (!isPaid) continue; const name = inv.client ? `${inv.client.firstName} ${inv.client.lastName}` : 'Inconnu'; if (!map[inv.clientId]) map[inv.clientId] = { name, total: 0 }; map[inv.clientId].total += inv.amount }
     return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 5)
   }, [invoices])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div><h2 className="text-xl font-bold text-foreground">Rapports</h2><p className="text-sm text-muted-foreground">Analyse de vos performances</p></div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -768,7 +771,7 @@ function AuditLogsView() {
   const { data: logs, isLoading } = useQuery({ queryKey: ['audit-logs', user?.tenantId, resourceType], queryFn: () => { const p = new URLSearchParams(); if (user?.tenantId) p.set('tenantId', user.tenantId); if (resourceType !== 'all') p.set('resourceType', resourceType); return fetch(`/api/audit-logs?${p}`).then(r => r.json()) }, enabled: isAdmin })
   if (!isAdmin) return <div className="p-6"><EmptyState icon={Shield} title="Accès restreint" description="Réservé aux administrateurs" /></div>
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div><h2 className="text-xl font-bold text-foreground">Journal d'audit</h2><p className="text-sm text-muted-foreground">Historique des actions</p></div>
       <Select value={resourceType} onValueChange={setResourceType}><SelectTrigger className="w-[180px] h-9 text-sm"><SelectValue placeholder="Type de ressource" /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="Case">Dossier</SelectItem><SelectItem value="Client">Client</SelectItem><SelectItem value="User">Utilisateur</SelectItem><SelectItem value="Invoice">Facture</SelectItem><SelectItem value="Document">Document</SelectItem><SelectItem value="Task">Tâche</SelectItem></SelectContent></Select>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
@@ -805,7 +808,7 @@ function SettingsView() {
       {tenantInfo && <Card className="border-border rounded-xl shadow-sm"><CardHeader><CardTitle className="text-base font-semibold">Informations du cabinet</CardTitle></CardHeader><CardContent><div className="grid grid-cols-2 gap-3 text-sm"><div><span className="text-muted-foreground">Nom :</span> <span className="font-medium">{tenantInfo.name}</span></div><div><span className="text-muted-foreground">Plan :</span> <Badge variant="outline" className="text-[10px]">{tenantInfo.plan}</Badge></div><div><span className="text-muted-foreground">Email :</span> <span className="font-medium">{tenantInfo.email || '—'}</span></div><div><span className="text-muted-foreground">Téléphone :</span> <span className="font-medium">{tenantInfo.phone || '—'}</span></div></div></CardContent></Card>}
       {isAdmin && <Card className="border-border rounded-xl shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-base font-semibold">Utilisateurs</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewUser(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
         {showNewUser && <div className="border border-border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-2 gap-2"><div><Label>Nom</Label><Input value={newUser.name} onChange={e => setNewUser(u => ({ ...u, name: e.target.value }))} /></div><div><Label>Email</Label><Input type="email" value={newUser.email} onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))} /></div><div><Label>Rôle</Label><Select value={newUser.role} onValueChange={v => setNewUser(u => ({ ...u, role: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="lawyer">Avocat</SelectItem><SelectItem value="jurist">Juriste</SelectItem><SelectItem value="assistant">Assistant</SelectItem><SelectItem value="accountant">Comptable</SelectItem></SelectContent></Select></div><div><Label>Mot de passe</Label><Input type="password" value={newUser.password} onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))} /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createUserMut.mutate({ ...newUser, tenantId: user?.tenantId })} disabled={!newUser.name || !newUser.email} className="bg-[#1E5A8A] hover:bg-[#144570]">Créer</Button><Button size="sm" variant="outline" onClick={() => setShowNewUser(false)}>Annuler</Button></div></div>}
-        <div className="max-h-64 overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader><TableBody>{(usersList || []).map((u: UserItem) => (<TableRow key={u.id}><TableCell className="text-sm font-medium">{u.name}</TableCell><TableCell className="text-sm text-muted-foreground">{u.email}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell><TableCell><Badge variant={u.isActive ? 'default' : 'secondary'} className="text-[10px]">{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>))}</TableBody></Table></div>
+        <div className="max-h-64 overflow-y-auto"><Table><TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Email</TableHead><TableHead>Rôle</TableHead><TableHead>Statut</TableHead></TableRow></TableHeader><TableBody>{(usersList || []).map((u: UserItem) => (<TableRow key={u.id}><TableCell className="text-sm font-medium">{u.name}</TableCell><TableCell className="text-sm text-muted-foreground">{u.email}</TableCell><TableCell><Badge variant="outline" className={cn('text-[10px]', ROLE_COLORS[u.role] || '')}>{ROLE_LABELS[u.role] || u.role}</Badge></TableCell><TableCell><Badge variant={u.isActive ? 'default' : 'secondary'} className="text-[10px]">{u.isActive ? 'Actif' : 'Inactif'}</Badge></TableCell></TableRow>))}</TableBody></Table></div>
       </CardContent></Card>}
       {isAdmin && <Card className="border-border rounded-xl shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-base font-semibold">Devises</CardTitle><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(true)}><Plus className="size-3.5 mr-1" />Ajouter</Button></CardHeader><CardContent>
         {showNewCurrency && <div className="border border-border rounded-lg p-3 mb-3 space-y-2"><div className="grid grid-cols-3 gap-2"><div><Label>Code</Label><Input value={newCurrency.code} onChange={e => setNewCurrency(c => ({ ...c, code: e.target.value }))} placeholder="XAF" /></div><div><Label>Nom</Label><Input value={newCurrency.name} onChange={e => setNewCurrency(c => ({ ...c, name: e.target.value }))} placeholder="Franc CFA" /></div><div><Label>Symbole</Label><Input value={newCurrency.symbol} onChange={e => setNewCurrency(c => ({ ...c, symbol: e.target.value }))} placeholder="FCFA" /></div></div><div className="flex gap-2"><Button size="sm" onClick={() => createCurrencyMut.mutate(newCurrency)} disabled={!newCurrency.code || !newCurrency.name} className="bg-[#1E5A8A] hover:bg-[#144570]">Ajouter</Button><Button size="sm" variant="outline" onClick={() => setShowNewCurrency(false)}>Annuler</Button></div></div>}
@@ -821,7 +824,7 @@ function ArchivesView() {
   const { user } = useAppStore()
   const { data: cases, isLoading } = useQuery({ queryKey: ['archived-cases', user?.tenantId], queryFn: () => fetch(`/api/cases?tenantId=${user?.tenantId}&status=archive`).then(r => r.json()) })
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 view-enter">
       <div><h2 className="text-xl font-bold text-foreground">Archives</h2><p className="text-sm text-muted-foreground">Dossiers clôturés et archivés</p></div>
       {isLoading ? <div className="flex justify-center py-12"><Skeleton className="h-6 w-48" /></div> :
         (cases || []).length === 0 ? <EmptyState icon={Inbox} title="Aucun dossier archivé" /> :
