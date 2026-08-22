@@ -340,3 +340,24 @@ Stage Summary:
 - Frontend: Dashboard financial comparison section added, version v2.1.0
 - Known limitation: OOM prevents adding more Prisma models beyond 15
 - Remaining objectifs.md items: MFA, mobile, WhatsApp, offline, AI integration (frontend)
+---
+Task ID: seed-fix-i-to-m
+Agent: Main
+Task: Fix all remaining seed SQL blocks (B, I, J, K, L, M) with valid hex UUIDs and correct column names
+
+Work Log:
+- Analyzed error: `cur00001-...` currency IDs contain non-hex chars `r`, `u` → invalid UUID
+- Identified same issue across blocks I (g1...), J (h1...), K (i1...), L (j1...), M (k1...)
+- Identified column mismatches: invoices missing invoice_number, events use start_time/end_time, messages need receiver_id/read_status, notifications use 'read' + type/event_id/category/resource_type/resource_id
+- Regenerated all 6 blocks with hex-valid UUIDs (c2..., e2..., e3..., e4..., e5..., e6...)
+- Fixed all column names to match real schema from information_schema
+- Provided multi-line format for Supabase editor compatibility
+
+Stage Summary:
+- BLOC B-FIX: 4 currencies with IDs c2000000-...001 to ...004
+- BLOC I-FIX: 15 invoices with IDs e2000000-...001 to ...015, no invoice_number column
+- BLOC J-FIX: 10 events with IDs e3000000-...001 to ...010, start_time/end_time instead of event_date/location
+- BLOC K-FIX: 12 event_assignments with IDs e4000000-...001 to ...012, added assigned_by column
+- BLOC L-FIX: 12 messages with IDs e5000000-...001 to ...012, added receiver_id/read_status columns
+- BLOC M-FIX: 20 notifications with IDs e6000000-...001 to ...020, fixed 'read' column name, added type/event_id/category/resource_type/resource_id
+- User needs to execute: B-FIX → I-FIX → J-FIX → K-FIX → L-FIX → M-FIX → Z-FIX
