@@ -23,39 +23,61 @@ ALTER TABLE cases ADD COLUMN IF NOT EXISTS criticality TEXT DEFAULT 'normal';
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT 'autre';
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS folder TEXT;
 
--- 3. Convert enum columns to TEXT (the migration schema defines them as TEXT,
---    but the original DB was created with custom enum types)
+-- 3. Convert enum columns to TEXT (the original DB used custom enum types,
+--    but the migration schema defines them all as TEXT)
+--    We drop defaults first because they may reference the enum type.
 DO $$ BEGIN
+  ALTER TABLE cases ALTER COLUMN status DROP DEFAULT;
   ALTER TABLE cases ALTER COLUMN status TYPE TEXT USING status::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+  ALTER TABLE cases ALTER COLUMN status SET DEFAULT 'new';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'cases.status conversion skipped: %', SQLERRM;
 END $$;
 DO $$ BEGIN
+  ALTER TABLE cases ALTER COLUMN outcome DROP DEFAULT;
   ALTER TABLE cases ALTER COLUMN outcome TYPE TEXT USING outcome::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'cases.outcome conversion skipped: %', SQLERRM;
 END $$;
 DO $$ BEGIN
+  ALTER TABLE cases ALTER COLUMN payment_status DROP DEFAULT;
   ALTER TABLE cases ALTER COLUMN payment_status TYPE TEXT USING payment_status::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'cases.payment_status conversion skipped: %', SQLERRM;
 END $$;
 DO $$ BEGIN
+  ALTER TABLE tasks ALTER COLUMN status DROP DEFAULT;
   ALTER TABLE tasks ALTER COLUMN status TYPE TEXT USING status::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+  ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'todo';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'tasks.status conversion skipped: %', SQLERRM;
 END $$;
 DO $$ BEGIN
+  ALTER TABLE events ALTER COLUMN event_type DROP DEFAULT;
   ALTER TABLE events ALTER COLUMN event_type TYPE TEXT USING event_type::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'events.event_type conversion skipped: %', SQLERRM;
 END $$;
 DO $$ BEGIN
+  ALTER TABLE invoices ALTER COLUMN status DROP DEFAULT;
   ALTER TABLE invoices ALTER COLUMN status TYPE TEXT USING status::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+  ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'draft';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'invoices.status conversion skipped: %', SQLERRM;
 END $$;
 DO $$ BEGIN
+  ALTER TABLE users ALTER COLUMN role DROP DEFAULT;
   ALTER TABLE users ALTER COLUMN role TYPE TEXT USING role::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+  ALTER TABLE users ALTER COLUMN role SET DEFAULT 'lawyer';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'users.role conversion skipped: %', SQLERRM;
 END $$;
 DO $$ BEGIN
+  ALTER TABLE tenants ALTER COLUMN plan DROP DEFAULT;
   ALTER TABLE tenants ALTER COLUMN plan TYPE TEXT USING plan::TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
+  ALTER TABLE tenants ALTER COLUMN plan SET DEFAULT 'starter';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'tenants.plan conversion skipped: %', SQLERRM;
 END $$;
 
 -- 4. Fix the audit trigger to include tenant_id from NEW record
@@ -153,7 +175,7 @@ ek_admin AS (
 INSERT INTO cases (tenant_id, client_id, title, description, status, open_date, outcome, payment_status, is_secret, reference, case_type, priority, assigned_lawyer_id, next_deadline, adversary, jurisdiction, amount_in_dispute, billing_type, criticality)
 SELECT 
   '02f9415d-4985-460c-8bb0-b9f28b1ed6d5', c.id,
-  d.title, d.description, d.status, d.open_date::date, d.outcome, d.payment_status, d.is_secret, d.reference, d.case_type, d.priority,
+  d.title, d.description, d.status::case_status, d.open_date::date, d.outcome::case_outcome, d.payment_status::payment_status, d.is_secret, d.reference, d.case_type, d.priority,
   CASE d.assigned_role
     WHEN 'lawyer' THEN l.id
     WHEN 'admin' THEN a.id
@@ -189,7 +211,7 @@ SELECT
     WHEN 'secretary' THEN s.id
     WHEN 'admin' THEN a.id
   END,
-  d.title, d.description, d.due_date::timestamptz, d.status, d.priority
+  d.title, d.description, d.due_date::timestamptz, d.status::task_status, d.priority
 FROM (VALUES
   ('AFF-2024-001', 'lawyer', 'Rédiger assignation', 'Assignation en référé livraison', '2025-01-15T10:00:00Z', 'in_progress', 'haute'),
   ('AFF-2024-001', 'secretary', 'Collecter preuves documentaires', 'Factures et bons de livraison', '2025-01-10T10:00:00Z', 'done', 'haute'),
