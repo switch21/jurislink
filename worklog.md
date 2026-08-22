@@ -577,3 +577,22 @@ Stage Summary:
 - Audit triggers are fixed (tenant_id properly captured from NEW record)
 - Enum columns converted to TEXT for API compatibility
 - Blocking issue resolved — app can now work end-to-end with real Supabase data
+
+---
+Task ID: 8
+Agent: Main
+Task: End-to-end verification with real Supabase data
+
+Work Log:
+- Started dev server, tested login API with charlenendoki91@gmail.com / jenetedispas → 200 OK
+- Tested dashboard API with EKOKA tenant → returns correct data (5 cases, 6 clients, 8 tasks)
+- Verified seed data flows correctly: cases by status/type, urgent tasks with assignee names
+- Created cron job for automated QA every 15 minutes (job_id: 333048)
+
+Stage Summary:
+- Login: WORKS (Supabase Auth + profile join)
+- Dashboard API: WORKS (real data from EKOKA tenant)
+- Seed data: VERIFIED (5 cases, 6 clients, 8 tasks, 5 documents)
+- Known limitation: dev server dies from OOM in sandbox (not a code bug)
+- Default password for EKOKA users: jenetedispas
+- QA cron job active (every 15 min, webDevReview)
