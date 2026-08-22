@@ -59,18 +59,24 @@ interface CurrencyItem { id: string; code: string; name: string; symbol: string 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } })
 
 // ==================== Constants ====================
-const STATUS_COLORS: Record<string, string> = { nouveau: 'bg-blue-50 text-blue-700', ouvert: 'bg-cyan-50 text-cyan-700', en_cours: 'bg-amber-50 text-amber-700', en_attente: 'bg-orange-50 text-orange-700', clos: 'bg-emerald-50 text-emerald-700', archive: 'bg-gray-100 text-gray-600', non_paye: 'bg-rose-50 text-rose-700', partiel: 'bg-orange-50 text-orange-700', paye: 'bg-emerald-50 text-emerald-700', annule: 'bg-gray-100 text-gray-600', a_faire: 'bg-blue-50 text-blue-700', en_cours_t: 'bg-amber-50 text-amber-700', terminee: 'bg-emerald-50 text-emerald-700', annulee: 'bg-gray-100 text-gray-600' }
-const PRIORITY_COLORS: Record<string, string> = { basse: 'bg-gray-100 text-gray-600', normal: 'bg-blue-50 text-blue-700', haute: 'bg-orange-50 text-orange-700', urgente: 'bg-rose-50 text-rose-700' }
-const CRIT_COLORS: Record<string, string> = { basse: 'bg-gray-300', normal: 'bg-amber-400', haute: 'bg-orange-400', urgente: 'bg-rose-500' }
-const RISK_COLORS: Record<string, string> = { faible: 'bg-emerald-50 text-emerald-700', moyen: 'bg-amber-50 text-amber-700', eleve: 'bg-rose-50 text-rose-700' }
+const STATUS_COLORS: Record<string, string> = { open: 'bg-blue-50 text-blue-700', in_progress: 'bg-amber-50 text-amber-700', closed: 'bg-emerald-50 text-emerald-700', pending: 'bg-orange-50 text-orange-700', resolved: 'bg-emerald-50 text-emerald-700', archived: 'bg-gray-100 text-gray-600', draft: 'bg-gray-100 text-gray-600', overdue: 'bg-rose-50 text-rose-700', unpaid: 'bg-rose-50 text-rose-700', partial: 'bg-orange-50 text-orange-700', paid: 'bg-emerald-50 text-emerald-700', cancelled: 'bg-gray-100 text-gray-600', todo: 'bg-blue-50 text-blue-700', done: 'bg-emerald-50 text-emerald-700', nouveau: 'bg-blue-50 text-blue-700', ouvert: 'bg-cyan-50 text-cyan-700', en_cours: 'bg-amber-50 text-amber-700', en_attente: 'bg-orange-50 text-orange-700', clos: 'bg-emerald-50 text-emerald-700', archive: 'bg-gray-100 text-gray-600', non_paye: 'bg-rose-50 text-rose-700', partiel: 'bg-orange-50 text-orange-700', paye: 'bg-emerald-50 text-emerald-700', annule: 'bg-gray-100 text-gray-600', a_faire: 'bg-blue-50 text-blue-700', en_cours_t: 'bg-amber-50 text-amber-700', terminee: 'bg-emerald-50 text-emerald-700', annulee: 'bg-gray-100 text-gray-600' }
+const PRIORITY_COLORS: Record<string, string> = { low: 'bg-gray-100 text-gray-600', normal: 'bg-blue-50 text-blue-700', high: 'bg-orange-50 text-orange-700', urgent: 'bg-rose-50 text-rose-700', basse: 'bg-gray-100 text-gray-600', haute: 'bg-orange-50 text-orange-700', urgente: 'bg-rose-50 text-rose-700' }
+const CRIT_COLORS: Record<string, string> = { low: 'bg-gray-300', normal: 'bg-amber-400', high: 'bg-orange-400', urgent: 'bg-rose-500', basse: 'bg-gray-300', haute: 'bg-orange-400', urgente: 'bg-rose-500' }
+const RISK_COLORS: Record<string, string> = { faible: 'bg-emerald-50 text-emerald-700', moyen: 'bg-amber-50 text-amber-700', eleve: 'bg-rose-50 text-rose-700', low: 'bg-emerald-50 text-emerald-700', medium: 'bg-amber-50 text-amber-700', high: 'bg-rose-50 text-rose-700' }
 const SK = (k: string) => t(k)
-const SL = (s: string) => t(`status.${{ nouveau: 'new', ouvert: 'open', en_cours: 'inProgress', en_attente: 'waiting', clos: 'closed', archive: 'archived', non_paye: 'unpaid', partiel: 'partial', paye: 'paid', annule: 'cancelled', a_faire: 'todo', en_cours_t: 'inProgress', terminee: 'done', annulee: 'cancelled' }[s] || s}`)
+const SL = (s: string) => t(`status.${{ open: 'open', in_progress: 'inProgress', closed: 'closed', new: 'new', pending: 'waiting', resolved: 'resolved', archived: 'archived', draft: 'draft', overdue: 'overdue', unpaid: 'unpaid', partial: 'partial', paid: 'paid', cancelled: 'cancelled', todo: 'todo', done: 'done', in_progress: 'inProgress' }[s] || s}`)
 const PL = (s: string) => t(`priority.${{ basse: 'low', haute: 'high', urgente: 'urgent' }[s] || s}`)
 const TL = (s: string) => t(`type.${{ penal: 'criminal', administratif: 'administrative' }[s] || s}`)
 const EL = (s: string) => t(`eventType.${{ audience: 'hearing', rdv: 'appointment', echeance: 'deadline', depot: 'filing', autre: 'other' }[s] || s}`)
 const RL = (s: string) => t(`role.${{ root_admin: 'rootAdmin', firm_admin: 'firmAdmin' }[s] || s}`)
 const BL = (s: string) => t(`billing.${{ forfait: 'flat', horaire: 'hourly', abonnement: 'subscription', success_fee: 'successFee', provision: 'retainer' }[s] || s}`)
 const ML = (s: string) => t(`payment.${{ especes: 'cash', virement: 'transfer', mobile_money: 'mobileMoney', carte: 'card' }[s] || s}`)
+// Label lookup objects (used as STATUS_LABELS[x] || x fallback)
+const STATUS_LABELS: Record<string, string> = { open: 'Ouvert', in_progress: 'En cours', closed: 'Clôturé', pending: 'En attente', resolved: 'Résolu', archived: 'Archivé', draft: 'Brouillon', overdue: 'En retard', unpaid: 'Non payé', partial: 'Partiel', paid: 'Payé', cancelled: 'Annulé', todo: 'À faire', done: 'Terminé', nouveau: 'Nouveau', ouvert: 'Ouvert', en_cours: 'En cours', clos: 'Clôturé', archive: 'Archivé', non_paye: 'Non payé', partiel: 'Partiel', paye: 'Payé', annule: 'Annulé', a_faire: 'À faire', terminee: 'Terminé' }
+const TYPE_LABELS: Record<string, string> = { civil: 'Civil', commercial: 'Commercial', penal: 'Pénal', administratif: 'Administratif', familial: 'Familial', autre: 'Autre', criminal: 'Pénal', administrative: 'Administratif' }
+const PRIORITY_LABELS: Record<string, string> = { low: 'Basse', normal: 'Normal', high: 'Haute', urgent: 'Urgente', basse: 'Basse', haute: 'Haute', urgente: 'Urgente' }
+const BILLING_LABELS: Record<string, string> = { forfait: 'Forfait', horaire: 'Horaire', abonnement: 'Abonnement', success_fee: 'Success fee', provision: 'Provision', flat: 'Forfait', hourly: 'Horaire', subscription: 'Abonnement' }
+const EVENT_TYPE_LABELS: Record<string, string> = { audience: 'Audience', rdv: 'Rendez-vous', echeance: 'Échéance', depot: 'Dépôt', autre: 'Autre', hearing: 'Audience', appointment: 'Rendez-vous', deadline: 'Échéance', filing: 'Dépôt', other: 'Autre' }
 const CHART_COLORS = ['#1E5A8A', '#C8A45D', '#059669', '#E8A838', '#8B5CF6', '#EC4899']
 const CHART_COLORS_DARK = ['#60A5FA', '#FBBF24', '#34D399', '#FB923C', '#A78BFA', '#FB7185']
 
@@ -102,8 +108,8 @@ function fmtDateTime(d: string | null | undefined) { if (!d) return t('common.no
 function fmtMoney(amount: number, code: string = 'XAF') { return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(amount) }
 function fmtFileSize(bytes: number) { if (bytes < 1024) return bytes + ' o'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko'; return (bytes / 1048576).toFixed(1) + ' Mo' }
 function initials(name: string) { return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) }
-function taskStatusColor(s: string) { return STATUS_COLORS[s === 'en_cours' ? 'en_cours_t' : s] || '' }
-function taskStatusLabel(s: string) { return SL(s === 'en_cours' ? 'en_cours_t' : s) }
+function taskStatusColor(s: string) { return STATUS_COLORS[s] || '' }
+function taskStatusLabel(s: string) { return SL(s) }
 
 // ==================== Theme Toggle ====================
 function ThemeToggle() {

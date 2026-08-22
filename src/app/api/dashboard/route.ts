@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       unpaidRes, paidRes, revenueRes,
     ] = await Promise.all([
       supabase.from('cases').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
-      supabase.from('cases').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['open', 'new', 'in_progress', 'pending']),
+      supabase.from('cases').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['open', 'in_progress']),
       supabase.from('clients').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
       supabase.from('invoices').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['draft', 'overdue']),
       supabase.from('invoices').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'paid'),

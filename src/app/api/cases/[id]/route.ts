@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { toCamelCase, mapCase, mapClient, mapEvent, mapUser, toSnakeCase } from '@/lib/transform'
+import { toCamelCase, mapCase, mapClient, mapEvent, mapUser } from '@/lib/transform'
+
+// Frontend status → Supabase status mapping
+const STATUS_TO_SUPA: Record<string, string> = {
+  nouveau: 'open',
+  ouvert: 'open',
+  en_cours: 'in_progress',
+  clos: 'closed',
+}
 
 export async function GET(
   _request: Request,
@@ -74,7 +82,9 @@ export async function PUT(
     if (body.title !== undefined) updateData.title = body.title
     if (body.description !== undefined) updateData.description = body.description
     if (body.type !== undefined) updateData.case_type = body.type
-    if (body.status !== undefined) updateData.status = body.status
+    if (body.status !== undefined) {
+      updateData.status = STATUS_TO_SUPA[body.status] || body.status
+    }
     if (body.outcome !== undefined) updateData.outcome = body.outcome
     if (body.paymentStatus !== undefined) updateData.payment_status = body.paymentStatus
     if (body.priority !== undefined) updateData.priority = body.priority
@@ -90,7 +100,7 @@ export async function PUT(
       .single()
 
     if (error) throw error
-    return NextResponse.json(toCamelCase(data))
+    return NextResponse.json(mapCase(data))
   } catch (error) {
     console.error('Update case error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

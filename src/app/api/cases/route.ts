@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { toCamelCase, toSnakeCase, mapCase, mapClient } from '@/lib/transform'
+import { toCamelCase, mapCase, mapClient } from '@/lib/transform'
+
+// Frontend status → Supabase status mapping
+const STATUS_TO_SUPA: Record<string, string> = {
+  nouveau: 'open',
+  ouvert: 'open',
+  en_cours: 'in_progress',
+  clos: 'closed',
+}
 
 export async function GET(request: Request) {
   try {
@@ -13,7 +21,11 @@ export async function GET(request: Request) {
 
     let query = supabase.from('cases').select('*')
     if (tenantId) query = query.eq('tenant_id', tenantId)
-    if (status) query = query.eq('status', status)
+    if (status) {
+      // Map frontend status to DB status for filtering
+      const supaStatus = STATUS_TO_SUPA[status] || status
+      query = query.eq('status', supaStatus)
+    }
     if (type) query = query.eq('case_type', type)
     if (priority) query = query.eq('priority', priority)
     if (search) {
@@ -83,7 +95,7 @@ export async function POST(request: Request) {
         title: body.title,
         description: body.description || null,
         case_type: body.type || null,
-        status: body.status || 'new',
+        status: body.status ? (STATUS_TO_SUPA[body.status] || body.status) : 'open',
         priority: body.priority || null,
         is_secret: body.isSecret || false,
         next_deadline: body.nextDueDate || null,
@@ -93,7 +105,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) throw error
-    return NextResponse.json(toCamelCase(data), { status: 201 })
+    return NextResponse.json(mapCase(data), { status: 201 })
   } catch (error) {
     console.error('Create case error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

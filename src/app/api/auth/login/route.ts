@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
-import { toCamelCase, mapUser, mapTenant } from '@/lib/transform'
-import bcrypt from 'bcryptjs'
+import { supabase, supabaseAuth } from '@/lib/supabase'
+import { mapUser, mapTenant } from '@/lib/transform'
 
 export async function POST(request: Request) {
   try {
@@ -10,71 +9,55 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    // Find user in auth.users
-    const { data: authUser, error: authErr } = await supabase
-      .from('auth.users')
-      .select('id, email, encrypted_password, raw_user_meta_data')
-      .eq('email', email)
-      .single()
+    // Step 1: Authenticate via Supabase Auth
+    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-    // Fallback: try public.users if auth.users fails (RLS)
-    let userId = authUser?.id
-    let hashedPw = authUser?.encrypted_password
-
-    if (authErr || !authUser) {
-      const { data: pubUser } = await supabase
-        .from('users')
-        .select('id, email')
-        .eq('email', email)
-        .single()
-      if (!pubUser) {
-        return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-      }
-      userId = pubUser.id
-      // Get password from auth.users by ID
-      const { data: authById } = await supabase
-        .from('auth.users')
-        .select('encrypted_password')
-        .eq('id', pubUser.id)
-        .single()
-      hashedPw = authById?.encrypted_password
+    if (authError || !authData.user) {
+      return NextResponse.json({ error: 'Identifiants invalides' }, { status: 401 })
     }
 
-    if (!hashedPw) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-    }
+    const authUserId = authData.user.id
 
-    const valid = await bcrypt.compare(password, hashedPw)
-    if (!valid) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-    }
-
-    // Get full profile from public.users with tenant
+    // Step 2: Get full profile from public.users with tenant
     const { data: profile, error: profErr } = await supabase
       .from('users')
       .select('*, tenant:tenants(*)')
-      .eq('id', userId)
+      .eq('id', authUserId)
       .single()
 
     if (profErr || !profile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 401 })
+      return NextResponse.json({ error: 'Profil utilisateur non trouvé' }, { status: 401 })
     }
 
     if (!profile.is_active) {
-      return NextResponse.json({ error: 'Account is deactivated' }, { status: 401 })
+      return NextResponse.json({ error: 'Compte désactivé' }, { status: 401 })
     }
 
     const tenant = profile.tenant
     if (tenant && !tenant.is_active) {
-      return NextResponse.json({ error: 'Tenant is deactivated' }, { status: 401 })
+      return NextResponse.json({ error: 'Cabinet désactivé' }, { status: 401 })
     }
+
+    // Step 3: Update last login
+    await supabase
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', authUserId)
 
     const user = mapUser(profile)
     user.tenant = tenant ? mapTenant(tenant) : null
 
-    return NextResponse.json(user)
+    // Include the session tokens for frontend use
+    return NextResponse.json({
+      ...user,
+      accessToken: authData.session?.access_token,
+      refreshToken: authData.session?.refresh_token,
+    })
   } catch (error) {
     console.error('Login error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
 }
