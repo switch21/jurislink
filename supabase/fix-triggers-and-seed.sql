@@ -30,14 +30,12 @@ DECLARE
   v_tenant_id UUID;
   v_user_id UUID;
 BEGIN
-  -- Try to get tenant_id from the NEW record
   BEGIN
     v_tenant_id := (NEW).tenant_id;
   EXCEPTION WHEN OTHERS THEN
     v_tenant_id := NULL;
   END;
   
-  -- Try to get user_id from auth context
   BEGIN
     v_user_id := auth.uid();
   EXCEPTION WHEN OTHERS THEN
@@ -91,9 +89,9 @@ CREATE TRIGGER audit_users_trigger AFTER INSERT OR UPDATE OR DELETE ON users
 -- 6. Re-enable NOT NULL on tenant_id now that trigger is fixed
 ALTER TABLE audit_logs ALTER COLUMN tenant_id SET NOT NULL;
 
+-- ============================================
 -- 7. Seed EKOKA tenant data
--- Users: pod126@yahoo.fr (firm_admin), charlenendoki91@gmail.com (lawyer), thewarehouse.cm@gmail.com (secretary)
--- Get their IDs from the existing users table
+-- ============================================
 
 -- Insert clients
 INSERT INTO clients (tenant_id, full_name, company, phone, email, address, notes, status, niu, is_active, client_type, city, country, risk_level, source) VALUES
@@ -104,7 +102,7 @@ INSERT INTO clients (tenant_id, full_name, company, phone, email, address, notes
 ('02f9415d-4985-460c-8bb0-b9f28b1ed6d5', 'Camtel SA', 'Camtel SA', '+237233423111', 'juridique@camtel.cm', 'Boulevard de la Liberté, Yaoundé', 'Contrat de prestations', 'active', 'M7890123456E', true, 'entreprise', 'Yaoundé', 'Cameroun', 'faible', 'prospect')
 ON CONFLICT DO NOTHING;
 
--- Insert cases (using CTE to get client IDs dynamically)
+-- Insert cases (using CASE WHEN to resolve assigned_lawyer_id UUID from role text)
 WITH ek_clients AS (
   SELECT id, full_name FROM clients 
   WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9f28b1ed6d5' 
@@ -120,8 +118,13 @@ ek_admin AS (
 INSERT INTO cases (tenant_id, client_id, title, description, status, open_date, outcome, payment_status, is_secret, reference, case_type, priority, assigned_lawyer_id, next_deadline, adversary, jurisdiction, amount_in_dispute, billing_type, criticality)
 SELECT 
   '02f9415d-4985-460c-8bb0-b9f28b1ed6d5', c.id,
-  d.title, d.description, d.status, d.open_date, d.outcome, d.payment_status, d.is_secret, d.reference, d.case_type, d.priority,
-  COALESCE(d.assigned_role, l.id), d.next_deadline, d.adversary, d.jurisdiction, d.amount_in_dispute, d.billing_type, d.criticality
+  d.title, d.description, d.status, d.open_date::date, d.outcome, d.payment_status, d.is_secret, d.reference, d.case_type, d.priority,
+  CASE d.assigned_role
+    WHEN 'lawyer' THEN l.id
+    WHEN 'admin' THEN a.id
+    ELSE NULL
+  END,
+  d.next_deadline::date, d.adversary, d.jurisdiction, d.amount_in_dispute::numeric, d.billing_type, d.criticality
 FROM (VALUES
   ('Jean-Paul Nkoulou', 'Litige commercial Nkoulou SARL', 'Livraison non conforme de marchandises', 'in_progress', '2024-03-15', 'ongoing', 'pending', false, 'AFF-2024-001', 'commercial', 'high', 'lawyer', '2025-01-15', 'Société Mega Import', 'TPI Douala', 15000000, 'forfait', 'haute'),
   ('Marie-Claire Biyong', 'Divorce Biyong', 'Divorce par consentement mutuel', 'open', '2024-06-01', 'ongoing', 'paid', true, 'AFF-2024-002', 'civil', 'normal', 'lawyer', '2025-02-01', 'M. Biyong René', 'TGI Yaoundé', NULL, 'honoraire', 'normal'),
@@ -134,7 +137,7 @@ CROSS JOIN ek_lawyer l
 CROSS JOIN ek_admin a
 ON CONFLICT DO NOTHING;
 
--- Insert tasks
+-- Insert tasks (using CASE WHEN to resolve assignee_id UUID from role text)
 WITH ek_cases AS (
   SELECT id, reference FROM cases 
   WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9f28b1ed6d5' 
@@ -144,7 +147,14 @@ ek_lawyer AS (SELECT id FROM users WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9
 ek_secretary AS (SELECT id FROM users WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9f28b1ed6d5' AND role = 'secretary' LIMIT 1),
 ek_admin AS (SELECT id FROM users WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9f28b1ed6d5' AND role = 'firm_admin' LIMIT 1)
 INSERT INTO tasks (tenant_id, case_id, assignee_id, title, description, due_date, status, priority)
-SELECT '02f9415d-4985-460c-8bb0-b9f28b1ed6d5', c.id, d.assignee, d.title, d.description, d.due_date, d.status, d.priority
+SELECT 
+  '02f9415d-4985-460c-8bb0-b9f28b1ed6d5', c.id,
+  CASE d.assignee
+    WHEN 'lawyer' THEN l.id
+    WHEN 'secretary' THEN s.id
+    WHEN 'admin' THEN a.id
+  END,
+  d.title, d.description, d.due_date::timestamptz, d.status, d.priority
 FROM (VALUES
   ('AFF-2024-001', 'lawyer', 'Rédiger assignation', 'Assignation en référé livraison', '2025-01-15T10:00:00Z', 'in_progress', 'haute'),
   ('AFF-2024-001', 'secretary', 'Collecter preuves documentaires', 'Factures et bons de livraison', '2025-01-10T10:00:00Z', 'done', 'haute'),
@@ -156,12 +166,12 @@ FROM (VALUES
   ('AFF-2024-005', 'admin', 'Archiver le dossier Camtel', 'Classement et archivage final', '2025-01-05T10:00:00Z', 'done', 'basse')
 ) AS d(case_ref, assignee, title, description, due_date, status, priority)
 JOIN ek_cases c ON c.reference = d.case_ref
-JOIN ek_lawyer l ON d.assignee = 'lawyer'
-JOIN ek_secretary s ON d.assignee = 'secretary'
-JOIN ek_admin a ON d.assignee = 'admin'
+CROSS JOIN ek_lawyer l
+CROSS JOIN ek_secretary s
+CROSS JOIN ek_admin a
 ON CONFLICT DO NOTHING;
 
--- Insert documents
+-- Insert documents (using CASE WHEN to resolve uploader_id UUID from role text)
 WITH ek_cases AS (
   SELECT id, reference FROM cases 
   WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9f28b1ed6d5' 
@@ -170,7 +180,13 @@ WITH ek_cases AS (
 ek_lawyer AS (SELECT id FROM users WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9f28b1ed6d5' AND role = 'lawyer' LIMIT 1),
 ek_secretary AS (SELECT id FROM users WHERE tenant_id = '02f9415d-4985-460c-8bb0-b9f28b1ed6d5' AND role = 'secretary' LIMIT 1)
 INSERT INTO documents (tenant_id, case_id, uploader_id, file_name, file_path, file_size, tags, mime_type, version, is_confidential, document_type, folder)
-SELECT '02f9415d-4985-460c-8bb0-b9f28b1ed6d5', c.id, d.uploader, d.file_name, d.file_path, d.file_size, d.tags, d.mime_type, d.version, d.is_confidential, d.document_type, d.folder
+SELECT 
+  '02f9415d-4985-460c-8bb0-b9f28b1ed6d5', c.id,
+  CASE d.uploader
+    WHEN 'lawyer' THEN l.id
+    WHEN 'secretary' THEN s.id
+  END,
+  d.file_name, d.file_path, d.file_size, d.tags, d.mime_type, d.version, d.is_confidential, d.document_type, d.folder
 FROM (VALUES
   ('AFF-2024-001', 'lawyer', 'Assignation_Nkoulou.pdf', '/cases/2024/assignation.pdf', 245000, ARRAY['assignation', 'référé'], 'application/pdf', 1, false, 'assignation', 'Assignations'),
   ('AFF-2024-001', 'secretary', 'Factures_Mega_Import.pdf', '/cases/2024/factures.pdf', 189000, ARRAY['facture', 'preuve'], 'application/pdf', 1, false, 'piece', 'Preuves'),
@@ -179,8 +195,8 @@ FROM (VALUES
   ('AFF-2024-004', 'lawyer', 'Acte_de_Décès.pdf', '/cases/2024/acte_deces.pdf', 125000, ARRAY['succession', 'acte'], 'application/pdf', 1, false, 'acte', 'Succession')
 ) AS d(case_ref, uploader, file_name, file_path, file_size, tags, mime_type, version, is_confidential, document_type, folder)
 JOIN ek_cases c ON c.reference = d.case_ref
-JOIN ek_lawyer l ON d.uploader = 'lawyer'
-JOIN ek_secretary s ON d.uploader = 'secretary'
+CROSS JOIN ek_lawyer l
+CROSS JOIN ek_secretary s
 ON CONFLICT DO NOTHING;
 
 COMMIT;
