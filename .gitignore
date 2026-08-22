@@ -58,4 +58,7 @@ tool-results/
 /db/
 agent-ctx/
 download/
+upload/
 dev.log
+--timeout
+.prisma/

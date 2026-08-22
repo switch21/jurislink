@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, isSameMonth, differenceInDays, isBefore, addDays } from 'date-fns'
-import { fr } from 'date-fns/locale'
+import { fr, enUS, es, de, it } from 'date-fns/locale'
+import { t, useLocale, LOCALE_NAMES, LOCALE_FLAGS, RTL_LOCALES, type Locale } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import { useAppStore, type ViewName } from '@/store/appStore'
@@ -59,53 +60,60 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30
 
 // ==================== Constants ====================
 const STATUS_COLORS: Record<string, string> = { nouveau: 'bg-blue-50 text-blue-700', ouvert: 'bg-cyan-50 text-cyan-700', en_cours: 'bg-amber-50 text-amber-700', en_attente: 'bg-orange-50 text-orange-700', clos: 'bg-emerald-50 text-emerald-700', archive: 'bg-gray-100 text-gray-600', non_paye: 'bg-rose-50 text-rose-700', partiel: 'bg-orange-50 text-orange-700', paye: 'bg-emerald-50 text-emerald-700', annule: 'bg-gray-100 text-gray-600', a_faire: 'bg-blue-50 text-blue-700', en_cours_t: 'bg-amber-50 text-amber-700', terminee: 'bg-emerald-50 text-emerald-700', annulee: 'bg-gray-100 text-gray-600' }
-const STATUS_LABELS: Record<string, string> = { nouveau: 'Nouveau', ouvert: 'Ouvert', en_cours: 'En cours', en_attente: 'En attente', clos: 'Clos', archive: 'Archivé', non_paye: 'Non payé', partiel: 'Partiel', paye: 'Payé', annule: 'Annulé', a_faire: 'À faire', en_cours_t: 'En cours', terminee: 'Terminée', annulee: 'Annulée' }
 const PRIORITY_COLORS: Record<string, string> = { basse: 'bg-gray-100 text-gray-600', normal: 'bg-blue-50 text-blue-700', haute: 'bg-orange-50 text-orange-700', urgente: 'bg-rose-50 text-rose-700' }
-const PRIORITY_LABELS: Record<string, string> = { basse: 'Basse', normal: 'Normal', haute: 'Haute', urgente: 'Urgente' }
-const TYPE_LABELS: Record<string, string> = { civil: 'Civil', penal: 'Pénal', commercial: 'Commercial', social: 'Social', administratif: 'Administratif' }
-const EVENT_TYPE_LABELS: Record<string, string> = { audience: 'Audience', rdv: 'Rendez-vous', echeance: 'Échéance', depot: 'Dépôt', autre: 'Autre' }
 const CRIT_COLORS: Record<string, string> = { basse: 'bg-gray-300', normal: 'bg-amber-400', haute: 'bg-orange-400', urgente: 'bg-rose-500' }
-const ROLE_LABELS: Record<string, string> = { root_admin: 'Admin Racine', associate: 'Associé', firm_admin: 'Admin Cabinet', lawyer: 'Avocat', jurist: 'Juriste', assistant: 'Assistant', accountant: 'Comptable', client: 'Client' }
 const RISK_COLORS: Record<string, string> = { faible: 'bg-emerald-50 text-emerald-700', moyen: 'bg-amber-50 text-amber-700', eleve: 'bg-rose-50 text-rose-700' }
-const BILLING_LABELS: Record<string, string> = { forfait: 'Forfait', horaire: 'Horaire', abonnement: 'Abonnement', success_fee: 'Success fee', provision: 'Provision' }
-const METHOD_LABELS: Record<string, string> = { especes: 'Espèces', virement: 'Virement', mobile_money: 'Mobile Money', carte: 'Carte' }
+const SK = (k: string) => t(k)
+const SL = (s: string) => t(`status.${{ nouveau: 'new', ouvert: 'open', en_cours: 'inProgress', en_attente: 'waiting', clos: 'closed', archive: 'archived', non_paye: 'unpaid', partiel: 'partial', paye: 'paid', annule: 'cancelled', a_faire: 'todo', en_cours_t: 'inProgress', terminee: 'done', annulee: 'cancelled' }[s] || s}`)
+const PL = (s: string) => t(`priority.${{ basse: 'low', haute: 'high', urgente: 'urgent' }[s] || s}`)
+const TL = (s: string) => t(`type.${{ penal: 'criminal', administratif: 'administrative' }[s] || s}`)
+const EL = (s: string) => t(`eventType.${{ audience: 'hearing', rdv: 'appointment', echeance: 'deadline', depot: 'filing', autre: 'other' }[s] || s}`)
+const RL = (s: string) => t(`role.${{ root_admin: 'rootAdmin', firm_admin: 'firmAdmin' }[s] || s}`)
+const BL = (s: string) => t(`billing.${{ forfait: 'flat', horaire: 'hourly', abonnement: 'subscription', success_fee: 'successFee', provision: 'retainer' }[s] || s}`)
+const ML = (s: string) => t(`payment.${{ especes: 'cash', virement: 'transfer', mobile_money: 'mobileMoney', carte: 'card' }[s] || s}`)
 const CHART_COLORS = ['#1E5A8A', '#C8A45D', '#059669', '#E8A838', '#8B5CF6', '#EC4899']
 const CHART_COLORS_DARK = ['#60A5FA', '#FBBF24', '#34D399', '#FB923C', '#A78BFA', '#FB7185']
 
 const NAV_SECTIONS = [
-  { label: 'NAVIGATION', items: [
-    { view: 'dashboard' as ViewName, label: 'Tableau de bord', icon: LayoutDashboard },
-    { view: 'cases' as ViewName, label: 'Dossiers', icon: Briefcase },
-    { view: 'clients' as ViewName, label: 'Clients', icon: Users },
-    { view: 'tasks' as ViewName, label: 'Tâches', icon: ClipboardList },
-    { view: 'documents' as ViewName, label: 'Documents', icon: FileText },
-    { view: 'calendar' as ViewName, label: 'Calendrier', icon: Calendar },
+  { label: 'nav.sections.navigation', items: [
+    { view: 'dashboard' as ViewName, label: 'nav.dashboard', icon: LayoutDashboard },
+    { view: 'cases' as ViewName, label: 'nav.cases', icon: Briefcase },
+    { view: 'clients' as ViewName, label: 'nav.clients', icon: Users },
+    { view: 'tasks' as ViewName, label: 'nav.tasks', icon: ClipboardList },
+    { view: 'documents' as ViewName, label: 'nav.documents', icon: FileText },
+    { view: 'calendar' as ViewName, label: 'nav.calendar', icon: Calendar },
   ]},
-  { label: 'OUTILS', items: [
-    { view: 'invoices' as ViewName, label: 'Factures', icon: Receipt },
-    { view: 'messages' as ViewName, label: 'Messages', icon: MessageSquare },
-    { view: 'reports' as ViewName, label: 'Rapports', icon: BarChart3 },
+  { label: 'nav.sections.tools', items: [
+    { view: 'invoices' as ViewName, label: 'nav.invoices', icon: Receipt },
+    { view: 'messages' as ViewName, label: 'nav.messages', icon: MessageSquare },
+    { view: 'reports' as ViewName, label: 'nav.reports', icon: BarChart3 },
   ]},
-  { label: 'ADMINISTRATION', items: [
-    { view: 'audit-logs' as ViewName, label: "Journal d'audit", icon: Shield, adminOnly: true },
-    { view: 'settings' as ViewName, label: 'Paramètres', icon: Settings },
+  { label: 'nav.sections.administration', items: [
+    { view: 'audit-logs' as ViewName, label: 'nav.auditLogs', icon: Shield, adminOnly: true },
+    { view: 'settings' as ViewName, label: 'nav.settings', icon: Settings },
   ]},
 ]
 const NAV_ITEMS = NAV_SECTIONS.flatMap(s => s.items)
 
 // ==================== Helpers ====================
-function fmtDate(d: string | null | undefined) { if (!d) return '—'; try { return format(parseISO(d), 'dd/MM/yyyy', { locale: fr }) } catch { return '—' } }
-function fmtDateTime(d: string | null | undefined) { if (!d) return '—'; try { return format(parseISO(d), 'dd/MM/yyyy HH:mm', { locale: fr }) } catch { return '—' } }
+function getDateLocale() { const m: Record<string, any> = { fr, en: enUS, es, de, it }; return m[useLocaleStore.getState().locale] || fr }
+function fmtDate(d: string | null | undefined) { if (!d) return t('common.none'); try { return format(parseISO(d), 'dd/MM/yyyy', { locale: getDateLocale() }) } catch { return t('common.none') } }
+function fmtDateTime(d: string | null | undefined) { if (!d) return t('common.none'); try { return format(parseISO(d), 'dd/MM/yyyy HH:mm', { locale: getDateLocale() }) } catch { return t('common.none') } }
 function fmtMoney(amount: number, code: string = 'XAF') { return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(amount) }
 function fmtFileSize(bytes: number) { if (bytes < 1024) return bytes + ' o'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko'; return (bytes / 1048576).toFixed(1) + ' Mo' }
 function initials(name: string) { return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) }
 function taskStatusColor(s: string) { return STATUS_COLORS[s === 'en_cours' ? 'en_cours_t' : s] || '' }
-function taskStatusLabel(s: string) { return STATUS_LABELS[s === 'en_cours' ? 'en_cours_t' : s] || s }
+function taskStatusLabel(s: string) { return SL(s === 'en_cours' ? 'en_cours_t' : s) }
 
 // ==================== Theme Toggle ====================
 function ThemeToggle() {
   const { theme, setTheme } = useTheme()
-  return (<TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="text-muted-foreground" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><Sun className="size-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" /><Moon className="absolute size-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" /><span className="sr-only">Thème</span></Button></TooltipTrigger><TooltipContent>Thème</TooltipContent></Tooltip></TooltipProvider>)
+  return (<TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant='ghost' size='icon' className='text-muted-foreground' onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}><Sun className='size-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0' /><Moon className='absolute size-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100' /><span className='sr-only'>{t('theme.toggle')}</span></Button></TooltipTrigger><TooltipContent>{t('theme.toggle')}</TooltipContent></Tooltip></TooltipProvider>)
+}
+
+function LanguageSwitcher() {
+  const { locale, setLocale } = useLocale()
+  return (<DropdownMenu><DropdownMenuTrigger asChild><Button variant='ghost' size='sm' className='text-muted-foreground gap-1.5 text-xs font-medium'><span>{LOCALE_FLAGS[locale]}</span><span className='hidden sm:inline'>{LOCALE_NAMES[locale]}</span></Button></DropdownMenuTrigger><DropdownMenuContent align='end' className='w-44'>{(Object.entries(LOCALE_NAMES) as [Locale, string][]).map(([code, name]) => (<DropdownMenuItem key={code} onClick={() => setLocale(code)} className={cn('gap-2 text-sm', locale === code && 'bg-muted font-semibold')}><span>{LOCALE_FLAGS[code]}</span><span>{name}</span></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>)
 }
 
 // ==================== Empty State ====================
@@ -161,15 +169,15 @@ function Sidebar() {
   const navContent = (
     <div className="py-4 px-3">
       {NAV_SECTIONS.map(section => (
-        <div key={section.label} className="mb-4">
-          <p className="section-label mb-1">{section.label}</p>
+        <div key={t(section.label)} className="mb-4">
+          <p className="section-label mb-1">{t(section.label)}</p>
           <nav className="space-y-0.5">
             {section.items.filter(item => !item.adminOnly || isAdmin).map(item => {
               const Icon = item.icon; const active = currentView === item.view
               return (
                 <button key={item.view} onClick={() => { setCurrentView(item.view); setSidebarOpen(false) }}
                   className={cn('nav-item', active && 'active')}>
-                  <Icon className="size-[20px] shrink-0" /><span className="whitespace-nowrap">{item.label}</span>
+                  <Icon className="size-[20px] shrink-0" /><span className="whitespace-nowrap">{t(item.label)}</span>
                 </button>
               )
             })}
@@ -252,7 +260,8 @@ function Header() {
           <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="relative" onClick={() => setCurrentView('messages')}><MessageSquare className="size-[18px]" />{msgCount ? <span className="absolute top-1 right-1 size-2 rounded-full bg-[#1E5A8A]" /> : null}</Button></TooltipTrigger><TooltipContent>Messages</TooltipContent></Tooltip></TooltipProvider>
           <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="size-[18px]" />{unreadCount ? <span className="absolute top-1 right-1 size-2 rounded-full bg-rose-500" /> : null}</Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto"><DropdownMenuLabel>Notifications ({unreadCount})</DropdownMenuLabel><DropdownMenuSeparator />{(notifs?.notifications || []).slice(0, 8).map((n: Notification) => (<DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 p-3 cursor-pointer" onClick={() => { const vmap: Record<string, ViewName> = { dossier: 'cases', echeance: 'calendar', facture: 'invoices', document: 'documents', tache: 'tasks', message: 'messages' }; setCurrentView(vmap[n.category] || 'dashboard'); setNotifOpen(false) }}><p className={cn('text-sm font-medium', !n.isRead && 'text-foreground')}>{n.title}</p><p className="text-xs text-muted-foreground line-clamp-2">{n.message}</p></DropdownMenuItem>))}</DropdownMenuContent></DropdownMenu>
           <ThemeToggle />
-          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><LogOut className="size-[18px] text-muted-foreground" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={logout} className="text-rose-600 cursor-pointer"><LogOut className="size-4 mr-2" />Déconnexion</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+          <LanguageSwitcher />
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><LogOut className="size-[18px] text-muted-foreground" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={logout} className="text-rose-600 cursor-pointer"><LogOut className="size-4 mr-2" />{t('settings.logout')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
         </div>
       </div>
     </header>
@@ -845,14 +854,15 @@ function DashboardRouter() {
 // ==================== MAIN APP ====================
 export default function App() {
   const { isAuthenticated } = useAppStore()
+  const { locale } = useLocale()
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <div className="min-h-screen flex flex-col bg-[#F9FAFB] dark:bg-background">
+        <div className="min-h-screen flex flex-col bg-[#F9FAFB] dark:bg-background" dir={RTL_LOCALES.has(locale) ? 'rtl' : 'ltr'}>
           <div className="flex-1 flex flex-col">
             {!isAuthenticated ? <LoginPage /> : <>
               <Sidebar />
-              <div className="lg:pl-[260px] flex-1 flex flex-col">
+              <div className="lg:pl-[260px] rtl:lg:pl-0 rtl:lg:pr-[260px] flex-1 flex flex-col">
                 <Header />
                 <main className="flex-1"><DashboardRouter /></main>
                 <Footer />

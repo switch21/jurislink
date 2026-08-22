@@ -272,3 +272,32 @@
 .dark .progress-bar-fill {
   background: #60A5FA;
 }
+
+/* RTL Support */
+html[dir='rtl'] .nav-item.active {
+  border-left: none;
+  border-right: 3px solid #1E5A8A;
+  border-radius: 8px 0 0 8px;
+  padding-right: 9px;
+  padding-left: 12px;
+}
+html[dir='rtl'] .dark .nav-item.active {
+  border-left-color: transparent;
+  border-right-color: #60A5FA;
+}
+html[dir='rtl'] .section-label {
+  text-align: right;
+}
+html[dir='rtl'] .sidebar-desktop {
+  right: 0;
+  left: auto;
+}
+html[dir='rtl'] .main-content {
+  padding-right: 260px;
+  padding-left: 0;
+}
+@media (max-width: 1023px) {
+  html[dir='rtl'] .main-content {
+    padding-right: 0;
+  }
+}

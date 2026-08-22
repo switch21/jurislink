@@ -466,5 +466,33 @@ Stage Summary:
 - 12 views: Dashboard, Dossiers, Clients, Tâches, Documents, Calendrier, Factures, Messages, Rapports, Journal d'audit, Paramètres, Archives
 - Lint: clean (0 errors)
 - Dev server: running, renders correctly
-- Remaining: seed data rewrite, Supabase backend testing with real data, Prisma remnants cleanup
+- Remaining: seed data rewrite, Supabase backend testing with real data
 
+---
+Task ID: cleanup-and-i18n
+Agent: Main Agent
+Task: Clean old project files + implement i18n for 7 languages
+
+Work Log:
+- Audited entire project: found old Vite/PWA files already removed in previous sessions
+- Deleted: `--timeout` (junk), `test.html` (empty), `src/types/database.ts` (outdated Prisma types), `tests/`, `download/`
+- Git-removed tracked artifacts: tests/*, download/README.md
+- Updated .gitignore: added `upload/`, `--timeout`, `.prisma/`
+- Created i18n system: `/src/lib/i18n.ts` (zustand store, browser detection, RTL support, localStorage persistence)
+- Created 7 translation files (243 keys each) in `/src/lib/translations/`: fr.ts, en.ts, es.ts, sw.ts, ar.ts, it.ts, de.ts
+- Refactored page.tsx: replaced 6 label record constants (STATUS_LABELS, PRIORITY_LABELS, etc.) with 7 label functions (SL, PL, TL, EL, RL, BL, ML) that use t()
+- Updated NAV_SECTIONS to use translation keys instead of hardcoded strings
+- Added LanguageSwitcher component with flag + locale name dropdown in Header
+- Added RTL support: dir attribute on root div, CSS rules for Arabic, sidebar padding swap
+- Updated date formatting to use locale-aware date-fns
+- Fixed 22 escaped template literal bugs from previous session
+- Lint: clean (0 errors)
+- Dev server: GET / 200, compiles successfully
+
+Stage Summary:
+- 7 languages: fr (default), en, es, sw, ar (RTL), it, de
+- Language detection: localStorage > navigator.language > fallback to fr
+- All nav items, view titles, buttons, labels, empty states use t() function
+- Status/priority/type/event/role/billing/payment labels translated via SL/PL/TL/EL/RL/BL/ML functions
+- RTL: Arabic layout supported via dir='rtl', CSS nav-item active border swap, sidebar positioning
+- Remaining: translate remaining hardcoded strings in deeply nested JSX (dashboard greetings, some form labels), full browser QA with language switching
