@@ -559,3 +559,21 @@ Stage Summary:
 - View transition animations
 - BLOCKING REMAINS: User must run supabase/fix-triggers-and-seed.sql in Supabase SQL Editor
 - Server instability: dev server dies under load, needs memory optimization
+
+---
+Task ID: 7
+Agent: Main
+Task: Fix SQL seed script - enum type mismatches
+
+Work Log:
+- Fixed COALESCE(text, uuid) type mismatch → replaced with CASE WHEN to resolve UUID from role text
+- Fixed broken JOINs on tasks/documents → replaced with CROSS JOIN + CASE WHEN
+- Added explicit casts for enum columns: d.status::case_status, d.outcome::case_outcome, d.payment_status::payment_status, d.status::task_status
+- Added ALTER TABLE to convert enum columns to TEXT (DROP DEFAULT first, then SET DEFAULT after)
+- User successfully executed SQL in Supabase SQL Editor
+
+Stage Summary:
+- EKOKA tenant now has seed data: 6 clients, 5 cases, 8 tasks, 5 documents
+- Audit triggers are fixed (tenant_id properly captured from NEW record)
+- Enum columns converted to TEXT for API compatibility
+- Blocking issue resolved — app can now work end-to-end with real Supabase data
