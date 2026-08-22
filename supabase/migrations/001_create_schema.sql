@@ -65,10 +65,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Fonction : slug à partir du nom
-CREATE OR REPLACE FUNCTION public.generate_slug(p_name TEXT)
+DROP FUNCTION IF EXISTS public.generate_slug(TEXT);
+CREATE FUNCTION public.generate_slug(name TEXT)
 RETURNS TEXT AS $$
 BEGIN
-  RETURN LOWER(REGEXP_REPLACE(COALESCE(p_name, ''), '[^a-z0-9]+', '-', 'gi'));
+  RETURN LOWER(REGEXP_REPLACE(COALESCE(name, ''), '[^a-z0-9]+', '-', 'gi'));
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
