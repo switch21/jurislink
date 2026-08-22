@@ -361,3 +361,25 @@ Stage Summary:
 - BLOC L-FIX: 12 messages with IDs e5000000-...001 to ...012, added receiver_id/read_status columns
 - BLOC M-FIX: 20 notifications with IDs e6000000-...001 to ...020, fixed 'read' column name, added type/event_id/category/resource_type/resource_id
 - User needs to execute: B-FIX → I-FIX → J-FIX → K-FIX → L-FIX → M-FIX → Z-FIX
+
+---
+Task ID: audit-frontend-db-alignment
+Agent: Main
+Task: Audit complet frontend ↔ base de données, état des lieux
+
+Work Log:
+- Decouvert que le projet utilise Prisma + SQLite localement, PAS Supabase
+- @supabase/supabase-js n'est pas installe, pas de SUPABASE_URL dans .env
+- Base SQLite (db/custom.db) a 15 tables mais 0 enregistrements partout
+- /api/seed est un stub qui retourne { ok: true } sans inserer
+- Frontend (page.tsx 1547 lignes monolithique) parle aux 27 routes API Prisma
+- Conventions camelCase coherentes entre Prisma et frontend
+- 4 bugs identifiés: messages count toujours 0, client _count.invoices manquant, dashboard financial stub, notification priority non cree
+- Seed SQL Supabase incompatible avec SQLite (syntaxe PG, snake_case, auth.users)
+
+Stage Summary:
+- Blocage principal: base SQLite vide, app non fonctionnelle
+- Priorite P1: seed Prisma + corriger 3 bugs simples
+- Priorite P2: implementer stats financieres dashboard
+- Priorite P3: refactor monolithique, middleware, connexion Supabase
+- Fichiers cle: prisma/schema.prisma, src/app/page.tsx, src/app/api/*/route.ts
