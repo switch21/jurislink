@@ -496,3 +496,30 @@ Stage Summary:
 - Status/priority/type/event/role/billing/payment labels translated via SL/PL/TL/EL/RL/BL/ML functions
 - RTL: Arabic layout supported via dir='rtl', CSS nav-item active border swap, sidebar positioning
 - Remaining: translate remaining hardcoded strings in deeply nested JSX (dashboard greetings, some form labels), full browser QA with language switching
+
+---
+Task ID: db-connection-and-alignment
+Agent: Main
+Task: Connect to Supabase, fix login auth, align frontend/backend, commit & push
+
+Work Log:
+- Configured .env with user-provided Supabase credentials (URL, anon key, service role key)
+- Verified Supabase connection: 10 tenants, 34 users, 39 clients, 40 cases, 30 tasks, 16 docs, 284 audit logs, 5 currencies
+- Identified mismatch: EKOKA tenant (user's firm) has 3 users but NO cases/clients/tasks (all data on seed a1000000-* tenants)
+- Discovered audit_logs trigger bug: trigger on INSERT/UPDATE/DELETE fires on all tables but doesn't set tenant_id (NOT NULL), blocking all inserts
+- Fixed login route: replaced auth.users query (inaccessible via PostgREST) with supabase.auth.signInWithPassword() using anon client
+- Added supabaseAuth (anon key) client to supabase.ts alongside service-role client
+- Fixed undefined STATUS_LABELS, TYPE_LABELS, PRIORITY_LABELS, BILLING_LABELS, EVENT_TYPE_LABELS in page.tsx (removed during i18n refactor but still referenced)
+- Extended STATUS_COLORS to handle both DB values (open/in_progress/closed) and French frontend values
+- Extended PRIORITY_COLORS and CRIT_COLORS with both French and English keys
+- API routes (cases, tasks) already had correct status mapping (nouveau→open, a_faire→todo, etc.)
+- Dashboard API already had correct status filters (open, in_progress for active cases)
+- Created supabase/fix-triggers-and-seed.sql: ALTER TABLE for missing columns (task.priority, client.city/country/risk_level/etc., case.adversary/jurisdiction/etc., document.document_type/folder), trigger fix, and EKOKA tenant seed data (5 clients, 5 cases, 8 tasks, 5 documents)
+- Committed and pushed to GitHub
+
+Stage Summary:
+- Login: now uses proper Supabase Auth (signInWithPassword)
+- Frontend: all label/color constants properly defined for both French and English status values
+- DB: SQL file ready to run in Supabase SQL Editor (fix-triggers-and-seed.sql)
+- BLOCKING: User must run supabase/fix-triggers-and-seed.sql in Supabase SQL Editor to fix triggers, add columns, and seed EKOKA data
+- After SQL execution: app should work end-to-end with login + real data
