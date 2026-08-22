@@ -179,10 +179,11 @@ CREATE TABLE IF NOT EXISTS public.currencies (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code        TEXT NOT NULL,
   name        TEXT NOT NULL,
-  symbol      TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  symbol      TEXT
 );
+
+DO $$ BEGIN ALTER TABLE public.currencies ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(); EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE public.currencies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(); EXCEPTION WHEN others THEN NULL; END $$;
 
 
 -- ---------------------------------------------------------------
@@ -1222,14 +1223,17 @@ DO $$ BEGIN CREATE POLICY "Service role full access" ON public.permissions FOR A
 -- PARTIE 10 — DONNÉES DE RÉFÉRENCE
 -- ==============================================================
 
-INSERT INTO public.currencies (id, code, name, symbol, created_at, updated_at)
-VALUES
-  ('c2000000-0000-0000-0000-000000000001', 'XAF', 'Franc CFA (BEAC)', 'FCFA', NOW(), NOW()),
-  ('c2000000-0000-0000-0000-000000000002', 'EUR', 'Euro', 'E', NOW(), NOW()),
-  ('c2000000-0000-0000-0000-000000000003', 'GBP', 'Livre Sterling', '£', NOW(), NOW()),
-  ('c2000000-0000-0000-0000-000000000004', 'XOF', 'Franc CFA (BCEAO)', 'FCFA', NOW(), NOW()),
-  ('c2000000-0000-0000-0000-000000000005', 'USD', 'Dollar US', '$', NOW(), NOW())
-ON CONFLICT (code) DO NOTHING;
+DO $$ BEGIN
+  INSERT INTO public.currencies (id, code, name, symbol, created_at, updated_at)
+  VALUES
+    ('c2000000-0000-0000-0000-000000000001', 'XAF', 'Franc CFA (BEAC)', 'FCFA', NOW(), NOW()),
+    ('c2000000-0000-0000-0000-000000000002', 'EUR', 'Euro', 'E', NOW(), NOW()),
+    ('c2000000-0000-0000-0000-000000000003', 'GBP', 'Livre Sterling', '£', NOW(), NOW()),
+    ('c2000000-0000-0000-0000-000000000004', 'XOF', 'Franc CFA (BCEAO)', 'FCFA', NOW(), NOW()),
+    ('c2000000-0000-0000-0000-000000000005', 'USD', 'Dollar US', '$', NOW(), NOW())
+  ON CONFLICT (code) DO NOTHING;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 
 -- ==============================================================
