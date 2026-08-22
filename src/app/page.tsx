@@ -864,6 +864,9 @@ function DashboardRouter() {
 export default function App() {
   const { isAuthenticated } = useAppStore()
   const { locale } = useLocale()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
