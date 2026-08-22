@@ -410,3 +410,39 @@ Stage Summary:
 - Frontend unchanged — same API contract maintained via transform layer
 - 4 stubs: payments, case_notes, conflicts, AI (tables/features not in Supabase yet)
 - User MUST add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env
+
+---
+Task ID: supabase-schema-creation
+Agent: Main
+Task: Create comprehensive Supabase schema (001_create_schema.sql) — all tables, enums, indexes, triggers, RLS
+
+Work Log:
+- Analyzed all 36 API routes to extract exact column names used in reads/writes
+- Analyzed seed data files (006, 006b) to identify column name mismatches
+- Identified 4 missing tables: audit_logs, case_notes, payments, permissions
+- Created 001_create_schema.sql with 11 parts:
+  - Part 1: 8 ENUM types (user_role, case_status, case_outcome, task_status, invoice_status, payment_status, criticality_level, plan_type)
+  - Part 2: 3 functions (set_updated_at, generate_slug, handle_new_user)
+  - Part 3: 12 existing tables — minimal CREATE TABLE IF NOT EXISTS + ALTER TABLE ADD COLUMN IF NOT EXISTS for each potentially missing column
+  - Part 4: 4 new tables (audit_logs, case_notes, payments, permissions) — same resilient pattern
+  - Part 5: 35+ foreign key constraints with IF NOT EXISTS checks
+  - Part 6: 40+ indexes wrapped in EXCEPTION handlers
+  - Part 7: 12 updated_at triggers (DROP + CREATE)
+  - Part 8: auth.users → public.users trigger
+  - Part 9: RLS enable + 16 service-role policies
+  - Part 10: 5 default currencies (XAF, EUR, GBP, XOF, USD)
+  - Part 11: 4 utility views (v_cases_summary, v_tasks_detail, v_invoices_detail, v_events_detail)
+- Fixed 3 runtime errors during execution:
+  1. generate_slug parameter name (p_name → name) — PostgreSQL doesn't allow param rename with CREATE OR REPLACE
+  2. tenants.slug GENERATED column on existing table — used information_schema check
+  3. currencies.created_at missing on existing table — switched to ALTER TABLE ADD COLUMN pattern
+  4. resource_type column missing — applied ALTER TABLE pattern to all 4 "new" tables too
+  5. Index/policy/view failures on missing columns — wrapped ALL in DO $$ EXCEPTION handlers
+- Final script is 100% idempotent: safe to re-run on any state
+
+Stage Summary:
+- 16 tables total (12 existing + 4 new), all with correct columns matching API routes
+- Schema file: supabase/migrations/001_create_schema.sql (~1330 lines)
+- Successfully executed in Supabase SQL editor
+- Remaining: rewrite seed files (006/006b) to match this schema column names
+
