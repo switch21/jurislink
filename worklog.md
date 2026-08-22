@@ -621,3 +621,30 @@ Stage Summary:
 - CRITICAL: User must verify on Vercel that the new deployment has a DIFFERENT bundle hash
 - If bundle hash is still `1b722dc42a67f14a`, Vercel build is failing — check Vercel dashboard for build errors
 - If bundle hash changed but error persists, there's another hydration source beyond page.tsx
+
+---
+Task ID: 10
+Agent: Main
+Task: Deep analysis and fix of ALL hydration error #185 root causes
+
+Work Log:
+- Analyzed pre-rendered HTML from .next/server/app/index.html to understand what server actually outputs
+- Discovered `1b722dc42a67f14a.js` is React core (unchanged across builds), not our page code
+- Found ROOT CAUSE #1: i18n.ts lines 65-69 had module-level DOM mutation (`document.documentElement.lang` and `.dir`) that ran BEFORE React hydration when modules loaded on client
+- Found ROOT CAUSE #2: sidebar.tsx SidebarMenuSkeleton used `Math.random()` in useMemo, producing different skeleton widths on server vs client
+- Found ROOT CAUSE #3: Previous useSyncExternalStore approach still imported AppClient at module level, triggering the entire dependency chain (including i18n.ts DOM mutation) before hydration
+- Fix #1: Removed module-level DOM mutation from i18n.ts (lines 65-69 deleted)
+- Fix #2: Replaced Math.random() in sidebar.tsx with deterministic "75%" width
+- Fix #3: Reverted to dynamic(ssr:false) pattern which creates a `BAILOUT_TO_CLIENT_SIDE_RENDERING` boundary in Next.js
+- Build verified: new build ID `MDXEkT1mbDkJZ0sKDYE9z`, new page chunk `1c050ba9f6b559f5.js`
+- Key HTML artifact: `<template data-dgst="BAILOUT_TO_CLIENT_SIDE_RENDERING">` tells React to skip hydration for AppClient entirely
+- Lint: 0 errors
+- Committed: cf9604b, pushed to origin/main
+
+Stage Summary:
+- 3 root causes fixed in a single commit
+- The combination of dynamic(ssr:false) + removed i18n DOM mutation should completely eliminate hydration error
+- dynamic(ssr:false) prevents AppClient module from loading during hydration (lazy import)
+- Removed DOM mutation prevents any pre-hydration DOM changes
+- suppressHydrationWarning on html+body provides additional safety net
+- User should verify error is gone on Vercel after this deployment
