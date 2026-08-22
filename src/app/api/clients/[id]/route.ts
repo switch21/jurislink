@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapClient } from '@/lib/transform'
 
 export async function GET(
   _request: Request,
@@ -7,16 +8,17 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const client = await db.client.findUnique({
-      where: { id },
-      include: {
-        _count: { select: { cases: true, invoices: true } },
-        tenant: true,
-      },
-    })
-    if (!client) {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
+
+    const client = mapClient(data)
     return NextResponse.json(client)
   } catch (error) {
     console.error('Get client error:', error)
@@ -31,26 +33,29 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const client = await db.client.update({
-      where: { id },
-      data: {
-        firstName: body.firstName,
-        lastName: body.lastName,
-        company: body.company,
-        clientType: body.clientType,
-        niu: body.niu,
-        email: body.email,
-        phone: body.phone,
-        address: body.address,
-        city: body.city,
-        country: body.country,
-        notes: body.notes,
-        riskLevel: body.riskLevel,
-        source: body.source,
-        isActive: body.isActive,
-      },
-    })
-    return NextResponse.json(client)
+
+    const updateData: Record<string, any> = {}
+    if (body.firstName !== undefined || body.lastName !== undefined) {
+      const first = body.firstName || ''
+      const last = body.lastName || ''
+      updateData.full_name = `${first} ${last}`.trim()
+    }
+    if (body.company !== undefined) updateData.company = body.company
+    if (body.email !== undefined) updateData.email = body.email
+    if (body.phone !== undefined) updateData.phone = body.phone
+    if (body.address !== undefined) updateData.address = body.address
+    if (body.niu !== undefined) updateData.niu = body.niu
+    if (body.isActive !== undefined) updateData.is_active = body.isActive
+
+    const { data, error } = await supabase
+      .from('clients')
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapClient(data))
   } catch (error) {
     console.error('Update client error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -63,7 +68,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    await db.client.delete({ where: { id } })
+    const { error } = await supabase.from('clients').delete().eq('id', id)
+    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete client error:', error)

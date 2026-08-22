@@ -1,22 +1,15 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
 
 export async function POST(request: Request) {
   try {
     const { userId, tenantId } = await request.json()
+    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 })
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 })
-    }
-
-    const where: Record<string, unknown> = { userId, isRead: false }
-    if (tenantId) where.tenantId = tenantId
-
-    await db.notification.updateMany({
-      where,
-      data: { isRead: true },
-    })
-
+    let query = supabase.from('notifications').update({ "read": true }).eq('user_id', userId).eq('"read"', false)
+    if (tenantId) query = query.eq('tenant_id', tenantId)
+    const { error } = await query
+    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Mark all notifications as read error:', error)

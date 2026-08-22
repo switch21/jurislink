@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapClient, toSnakeCase } from '@/lib/transform'
 
 export async function GET(request: Request) {
   try {
@@ -8,27 +9,19 @@ export async function GET(request: Request) {
     const search = searchParams.get('search')
     const status = searchParams.get('status')
 
-    const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
-    if (status === 'active') where.isActive = true
-    if (status === 'inactive') where.isActive = false
+    let query = supabase.from('clients').select('*')
+    if (tenantId) query = query.eq('tenant_id', tenantId)
+    if (status === 'active') query = query.eq('is_active', true)
+    if (status === 'inactive') query = query.eq('is_active', false)
     if (search) {
-      where.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { company: { contains: search } },
-        { email: { contains: search } },
-      ]
+      query = query.or(`full_name.ilike.%${search}%,company.ilike.%${search}%,email.ilike.%${search}%`)
     }
+    query = query.order('created_at', { ascending: false }).range(0, 99)
 
-    const clients = await db.client.findMany({
-      where,
-      include: {
-        _count: { select: { cases: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    })
+    const { data, error } = await query
+    if (error) throw error
+
+    const clients = (data || []).map(mapClient)
     return NextResponse.json(clients)
   } catch (error) {
     console.error('List clients error:', error)
@@ -39,26 +32,26 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const client = await db.client.create({
-      data: {
-        firstName: body.firstName,
-        lastName: body.lastName,
-        company: body.company,
-        clientType: body.clientType,
-        niu: body.niu,
-        email: body.email,
-        phone: body.phone,
-        address: body.address,
-        city: body.city,
-        country: body.country,
-        notes: body.notes,
-        riskLevel: body.riskLevel,
-        source: body.source,
-        isActive: body.isActive ?? true,
-        tenantId: body.tenantId,
-      },
-    })
-    return NextResponse.json(client, { status: 201 })
+    // Frontend sends firstName + lastName, Supabase stores full_name
+    const fullName = `${body.firstName || ''} ${body.lastName || ''}`.trim()
+
+    const { data, error } = await supabase
+      .from('clients')
+      .insert({
+        tenant_id: body.tenantId,
+        full_name: fullName,
+        company: body.company || null,
+        email: body.email || null,
+        phone: body.phone || null,
+        address: body.address || null,
+        niu: body.niu || null,
+        is_active: body.isActive !== undefined ? body.isActive : true,
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapClient(data), { status: 201 })
   } catch (error) {
     console.error('Create client error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

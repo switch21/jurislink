@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapUser } from '@/lib/transform'
 import bcrypt from 'bcryptjs'
 
 export async function GET(
@@ -8,29 +9,21 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const user = await db.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        avatarUrl: true,
-        phone: true,
-        preferredLanguage: true,
-        isActive: true,
-        failedLoginAttempts: true,
-        lockedUntil: true,
-        lastLoginAt: true,
-        mfaEnabled: true,
-        createdAt: true,
-        updatedAt: true,
-        tenantId: true,
-      },
-    })
-    if (!user) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
+
+    const user = mapUser(data)
+    user.failedLoginAttempts = 0
+    user.lockedUntil = null
+    user.lastLoginAt = null
+    user.mfaEnabled = false
     return NextResponse.json(user)
   } catch (error) {
     console.error('Get user error:', error)
@@ -46,42 +39,37 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    const data: Record<string, unknown> = {
-      email: body.email,
-      name: body.name,
-      role: body.role,
-      avatarUrl: body.avatarUrl,
-      phone: body.phone,
-      preferredLanguage: body.preferredLanguage,
-      isActive: body.isActive,
-      mfaEnabled: body.mfaEnabled,
-    }
+    const updateData: Record<string, any> = {}
+    if (body.email !== undefined) updateData.email = body.email
+    if (body.name !== undefined) updateData.full_name = body.name
+    if (body.role !== undefined) updateData.role = body.role
+    if (body.avatarUrl !== undefined) updateData.avatar_url = body.avatarUrl
+    if (body.phone !== undefined) updateData.phone = body.phone
+    if (body.preferredLanguage !== undefined) updateData.preferred_language = body.preferredLanguage
+    if (body.isActive !== undefined) updateData.is_active = body.isActive
 
+    // Update password in auth.users if provided
     if (body.password) {
-      data.password = await bcrypt.hash(body.password, 10)
+      const hashed = await bcrypt.hash(body.password, 10)
+      await supabase
+        .from('auth.users')
+        .update({ encrypted_password: hashed })
+        .eq('id', id)
     }
 
-    const user = await db.user.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        avatarUrl: true,
-        phone: true,
-        preferredLanguage: true,
-        isActive: true,
-        failedLoginAttempts: true,
-        lockedUntil: true,
-        lastLoginAt: true,
-        mfaEnabled: true,
-        createdAt: true,
-        updatedAt: true,
-        tenantId: true,
-      },
-    })
+    const { data, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    const user = mapUser(data)
+    user.failedLoginAttempts = 0
+    user.lockedUntil = null
+    user.lastLoginAt = null
+    user.mfaEnabled = false
     return NextResponse.json(user)
   } catch (error) {
     console.error('Update user error:', error)
@@ -95,7 +83,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    await db.user.delete({ where: { id } })
+    await supabase.from('users').delete().eq('id', id)
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete user error:', error)

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapTask } from '@/lib/transform'
+
+const STATUS_TO_SUPA: Record<string, string> = { a_faire: 'todo', en_cours: 'in_progress', terminee: 'done', annulee: 'done' }
 
 export async function GET(
   _request: Request,
@@ -7,20 +10,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const task = await db.task.findUnique({
-      where: { id },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        creator: { select: { id: true, name: true } },
-        case: { select: { id: true, reference: true, title: true } },
-        event: { select: { id: true, title: true } },
-      },
-    })
-
-    if (!task) {
+    const { data, error } = await supabase.from('tasks').select('*').eq('id', id).single()
+    if (error || !data) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
-    return NextResponse.json(task)
+    return NextResponse.json(mapTask(data))
   } catch (error) {
     console.error('Get task error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -35,44 +29,26 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    const updateData: Record<string, unknown> = {}
+    const updateData: Record<string, any> = {}
     if (body.title !== undefined) updateData.title = body.title
     if (body.description !== undefined) updateData.description = body.description
-    if (body.priority !== undefined) updateData.priority = body.priority
-    if (body.dueDate !== undefined) {
-      updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null
-    }
-    if (body.userId !== undefined) {
-      updateData.userId = body.userId ?? null
-    }
-    if (body.caseId !== undefined) {
-      updateData.caseId = body.caseId ?? null
-    }
-    if (body.eventId !== undefined) {
-      updateData.eventId = body.eventId ?? null
-    }
+    if (body.dueDate !== undefined) updateData.due_date = body.dueDate
+    if (body.userId !== undefined) updateData.assignee_id = body.userId
+    if (body.caseId !== undefined) updateData.case_id = body.caseId
 
-    // Handle status transition
     if (body.status !== undefined) {
-      updateData.status = body.status
-      if (body.status === 'terminee') {
-        updateData.completedAt = new Date()
-      } else {
-        updateData.completedAt = null
-      }
+      updateData.status = STATUS_TO_SUPA[body.status] || body.status
     }
 
-    const task = await db.task.update({
-      where: { id },
-      data: updateData,
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        creator: { select: { id: true, name: true } },
-        case: { select: { id: true, reference: true, title: true } },
-        event: { select: { id: true, title: true } },
-      },
-    })
-    return NextResponse.json(task)
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapTask(data))
   } catch (error) {
     console.error('Update task error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -85,7 +61,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    await db.task.delete({ where: { id } })
+    const { error } = await supabase.from('tasks').delete().eq('id', id)
+    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete task error:', error)

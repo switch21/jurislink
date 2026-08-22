@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapTenant, toSnakeCase } from '@/lib/transform'
 
 export async function GET() {
   try {
-    const tenants = await db.tenant.findMany({
-      include: {
-        _count: { select: { users: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-    return NextResponse.json(tenants)
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return NextResponse.json((data || []).map(mapTenant))
   } catch (error) {
     console.error('List tenants error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -19,10 +20,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const tenant = await db.tenant.create({
-      data: {
+    const { data, error } = await supabase
+      .from('tenants')
+      .insert(toSnakeCase({
         name: body.name,
-        slug: body.slug,
         logoUrl: body.logoUrl,
         address: body.address,
         phone: body.phone,
@@ -30,9 +31,12 @@ export async function POST(request: Request) {
         plan: body.plan,
         maxUsers: body.maxUsers,
         maxStorageGb: body.maxStorageGb,
-      },
-    })
-    return NextResponse.json(tenant, { status: 201 })
+      }))
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapTenant(data), { status: 201 })
   } catch (error) {
     console.error('Create tenant error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { toCamelCase, mapEvent } from '@/lib/transform'
 
 export async function GET(
   _request: Request,
@@ -7,22 +8,26 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const event = await db.event.findUnique({
-      where: { id },
-      include: {
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
-        case: { select: { id: true, reference: true, title: true } },
-        tenant: true,
-      },
-    })
-    if (!event) {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*, assignments:event_assignments(*, user:users(id, full_name, email)), case:cases(id, reference, title)')
+      .eq('id', id)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
-    return NextResponse.json(event)
+
+    const result = mapEvent(data)
+    result.assignments = (data.assignments || []).map((a: any) => ({
+      userId: a.user_id,
+      user: a.user ? { id: a.user.id, name: a.user.full_name, email: a.user.email } : null,
+    }))
+    if (data.case) {
+      result.case = { id: data.case.id, reference: data.case.reference, title: data.case.title }
+    }
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Get event error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -36,19 +41,24 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const event = await db.event.update({
-      where: { id },
-      data: {
-        title: body.title,
-        description: body.description,
-        startTime: body.startTime ? new Date(body.startTime) : undefined,
-        endTime: body.endTime ? new Date(body.endTime) : null,
-        eventType: body.eventType,
-        criticality: body.criticality,
-        location: body.location,
-      },
-    })
-    return NextResponse.json(event)
+
+    const updateData: Record<string, any> = {}
+    if (body.title !== undefined) updateData.title = body.title
+    if (body.description !== undefined) updateData.description = body.description
+    if (body.startTime !== undefined) updateData.start_time = body.startTime
+    if (body.endTime !== undefined) updateData.end_time = body.endTime
+    if (body.eventType !== undefined) updateData.event_type = body.eventType
+    if (body.criticality !== undefined) updateData.criticality = body.criticality
+
+    const { data, error } = await supabase
+      .from('events')
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapEvent(data))
   } catch (error) {
     console.error('Update event error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -61,7 +71,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    await db.event.delete({ where: { id } })
+    // Delete event_assignments first, then event
+    await supabase.from('event_assignments').delete().eq('event_id', id)
+    const { error } = await supabase.from('events').delete().eq('id', id)
+    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete event error:', error)

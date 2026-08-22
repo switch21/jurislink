@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapNotification } from '@/lib/transform'
 
-export async function PUT(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const notification = await db.notification.update({
-      where: { id },
-      data: { isRead: true },
-    })
-    return NextResponse.json(notification)
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ "read": true })
+      .eq('id', id)
+      .select('*')
+      .single()
+    if (error) throw error
+    return NextResponse.json(mapNotification(data))
   } catch (error) {
     console.error('Mark notification as read error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { toCamelCase, toSnakeCase } from '@/lib/transform'
 
 export async function GET(request: Request) {
   try {
@@ -9,21 +10,26 @@ export async function GET(request: Request) {
     const action = searchParams.get('action')
     const resourceType = searchParams.get('resourceType')
 
-    const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
-    if (userId) where.userId = userId
-    if (action) where.action = action
-    if (resourceType) where.resourceType = resourceType
+    let query = supabase.from('audit_logs').select('*, user:users(id, full_name, email)')
+    if (tenantId) query = query.eq('tenant_id', tenantId)
+    if (userId) query = query.eq('user_id', userId)
+    if (action) query = query.eq('action', action)
+    if (resourceType) query = query.eq('resource_type', resourceType)
+    query = query.order('created_at', { ascending: false }).range(0, 99)
 
-    const auditLogs = await db.auditLog.findMany({
-      where,
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+    const { data, error } = await query
+    if (error) throw error
+
+    const logs = (data || []).map((row: any) => {
+      const mapped = toCamelCase(row)
+      if (mapped.user) {
+        mapped.user = { id: mapped.user.id, name: mapped.user.fullName, email: mapped.user.email }
+        delete mapped.user.fullName
+      }
+      return mapped
     })
-    return NextResponse.json(auditLogs)
+
+    return NextResponse.json(logs)
   } catch (error) {
     console.error('List audit logs error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -33,19 +39,23 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const auditLog = await db.auditLog.create({
-      data: {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .insert(toSnakeCase({
         action: body.action,
         resourceType: body.resourceType,
         resourceId: body.resourceId,
-        metadata: body.metadata,
+        metadata: body.metadata ? JSON.stringify(body.metadata) : null,
         ipAddress: body.ipAddress,
         userAgent: body.userAgent,
         tenantId: body.tenantId,
         userId: body.userId,
-      },
-    })
-    return NextResponse.json(auditLog, { status: 201 })
+      }))
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(toCamelCase(data), { status: 201 })
   } catch (error) {
     console.error('Create audit log error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

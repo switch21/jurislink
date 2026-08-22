@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapTenant, toSnakeCase } from '@/lib/transform'
 
 export async function GET(
   _request: Request,
@@ -7,16 +8,16 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const tenant = await db.tenant.findUnique({
-      where: { id },
-      include: {
-        _count: { select: { users: true, clients: true, cases: true } },
-      },
-    })
-    if (!tenant) {
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
     }
-    return NextResponse.json(tenant)
+    return NextResponse.json(mapTenant(data))
   } catch (error) {
     console.error('Get tenant error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -30,22 +31,26 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const tenant = await db.tenant.update({
-      where: { id },
-      data: {
-        name: body.name,
-        slug: body.slug,
-        logoUrl: body.logoUrl,
-        address: body.address,
-        phone: body.phone,
-        email: body.email,
-        plan: body.plan,
-        maxUsers: body.maxUsers,
-        maxStorageGb: body.maxStorageGb,
-        isActive: body.isActive,
-      },
-    })
-    return NextResponse.json(tenant)
+    const updateData: Record<string, any> = {}
+    if (body.name !== undefined) updateData.name = body.name
+    if (body.logoUrl !== undefined) updateData.logo_url = body.logoUrl
+    if (body.address !== undefined) updateData.address = body.address
+    if (body.phone !== undefined) updateData.phone = body.phone
+    if (body.email !== undefined) updateData.email = body.email
+    if (body.plan !== undefined) updateData.plan = body.plan
+    if (body.maxUsers !== undefined) updateData.max_users = body.maxUsers
+    if (body.maxStorageGb !== undefined) updateData.max_storage_gb = body.maxStorageGb
+    if (body.isActive !== undefined) updateData.is_active = body.isActive
+
+    const { data, error } = await supabase
+      .from('tenants')
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapTenant(data))
   } catch (error) {
     console.error('Update tenant error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -58,7 +63,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    await db.tenant.delete({ where: { id } })
+    const { error } = await supabase.from('tenants').delete().eq('id', id)
+    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete tenant error:', error)

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapMessage, mapUser } from '@/lib/transform'
 
 export async function GET(request: Request) {
   try {
@@ -8,30 +9,36 @@ export async function GET(request: Request) {
     const userId = searchParams.get('userId')
     const contactId = searchParams.get('contactId')
 
-    const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    let query = supabase.from('messages').select('*')
+    if (tenantId) query = query.eq('tenant_id', tenantId)
 
     if (userId && contactId) {
-      where.OR = [
-        { senderId: userId, receiverId: contactId },
-        { senderId: contactId, receiverId: userId },
-      ]
+      query = query.or(`and(sender_id.eq.${userId},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${userId})`)
     } else if (userId) {
-      where.OR = [
-        { senderId: userId },
-        { receiverId: userId },
-      ]
+      query = query.or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+    }
+    query = query.order('created_at', { ascending: true }).range(0, 199)
+
+    const { data, error } = await query
+    if (error) throw error
+
+    // Get sender/receiver user info
+    const userIds = [...new Set((data || []).flatMap((m: any) => [m.sender_id, m.receiver_id]).filter(Boolean))]
+    let userMap: Record<string, any> = {}
+    if (userIds.length > 0) {
+      const { data: users } = await supabase.from('users').select('id, full_name, avatar_url').in('id', userIds)
+      if (users) userMap = Object.fromEntries(users.map((u: any) => [u.id, u]))
     }
 
-    const messages = await db.message.findMany({
-      where,
-      include: {
-        sender: { select: { id: true, name: true, avatarUrl: true } },
-        receiver: { select: { id: true, name: true, avatarUrl: true } },
-      },
-      orderBy: { createdAt: 'asc' },
-      take: 200,
+    const messages = (data || []).map((row: any) => {
+      const mapped = mapMessage(row)
+      const sender = userMap[row.sender_id]
+      const receiver = userMap[row.receiver_id]
+      mapped.sender = sender ? { id: sender.id, name: sender.full_name, avatarUrl: sender.avatar_url } : null
+      mapped.receiver = receiver ? { id: receiver.id, name: receiver.full_name, avatarUrl: receiver.avatar_url } : null
+      return mapped
     })
+
     return NextResponse.json(messages)
   } catch (error) {
     console.error('List messages error:', error)
@@ -42,15 +49,21 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const message = await db.message.create({
-      data: {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        tenant_id: body.tenantId,
+        sender_id: body.senderId,
+        receiver_id: body.receiverId,
+        case_id: body.caseId || null,
         content: body.content,
-        tenantId: body.tenantId,
-        senderId: body.senderId,
-        receiverId: body.receiverId,
-      },
-    })
-    return NextResponse.json(message, { status: 201 })
+        read_status: false,
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapMessage(data), { status: 201 })
   } catch (error) {
     console.error('Send message error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

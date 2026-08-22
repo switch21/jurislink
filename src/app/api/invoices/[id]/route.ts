@@ -1,64 +1,47 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { toCamelCase, mapInvoice } from '@/lib/transform'
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const STATUS_TO_SUPA: Record<string, string> = { non_paye: 'draft', envoyee: 'sent', paye: 'paid', annule: 'cancelled', partiel: 'sent' }
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const invoice = await db.invoice.findUnique({
-      where: { id },
-      include: {
-        client: true,
-        case: { select: { id: true, reference: true, title: true } },
-        tenant: true,
-      },
-    })
-    if (!invoice) {
-      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
-    }
-    return NextResponse.json(invoice)
+    const { data, error } = await supabase.from('invoices').select('*').eq('id', id).single()
+    if (error || !data) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+    return NextResponse.json(mapInvoice(data))
   } catch (error) {
     console.error('Get invoice error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await request.json()
-    const invoice = await db.invoice.update({
-      where: { id },
-      data: {
-        reference: body.reference,
-        amount: body.amount,
-        status: body.status,
-        dueDate: body.dueDate ? new Date(body.dueDate) : null,
-        paidDate: body.paidDate ? new Date(body.paidDate) : null,
-        paidAmount: body.paidAmount,
-        notes: body.notes,
-        currencyCode: body.currencyCode,
-      },
-    })
-    return NextResponse.json(invoice)
+    const updateData: Record<string, any> = {}
+    if (body.amount !== undefined) updateData.amount = body.amount
+    if (body.status !== undefined) updateData.status = STATUS_TO_SUPA[body.status] || body.status
+    if (body.dueDate !== undefined) updateData.due_date = body.dueDate
+    if (body.issueDate !== undefined) updateData.issue_date = body.issueDate
+    if (body.clientId !== undefined) updateData.client_id = body.clientId
+    if (body.caseId !== undefined) updateData.case_id = body.caseId
+
+    const { data, error } = await supabase.from('invoices').update(updateData).eq('id', id).select('*').single()
+    if (error) throw error
+    return NextResponse.json(mapInvoice(data))
   } catch (error) {
     console.error('Update invoice error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    await db.invoice.delete({ where: { id } })
+    const { error } = await supabase.from('invoices').delete().eq('id', id)
+    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Delete invoice error:', error)

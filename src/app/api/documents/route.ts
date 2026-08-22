@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { toCamelCase, toSnakeCase } from '@/lib/transform'
 
 export async function GET(request: Request) {
   try {
@@ -7,20 +8,14 @@ export async function GET(request: Request) {
     const tenantId = searchParams.get('tenantId')
     const caseId = searchParams.get('caseId')
 
-    const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
-    if (caseId) where.caseId = caseId
+    let query = supabase.from('documents').select('*')
+    if (tenantId) query = query.eq('tenant_id', tenantId)
+    if (caseId) query = query.eq('case_id', caseId)
+    query = query.is('deleted_at', 'null').order('created_at', { ascending: false }).range(0, 99)
 
-    const documents = await db.document.findMany({
-      where,
-      include: {
-        user: { select: { id: true, name: true } },
-        case: { select: { id: true, reference: true, title: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    })
-    return NextResponse.json(documents)
+    const { data, error } = await query
+    if (error) throw error
+    return NextResponse.json((data || []).map(toCamelCase))
   } catch (error) {
     console.error('List documents error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -30,21 +25,24 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const document = await db.document.create({
-      data: {
-        name: body.name,
-        fileName: body.fileName,
-        fileType: body.fileType,
-        fileSize: body.fileSize,
-        filePath: body.filePath,
-        version: body.version,
-        description: body.description,
-        tenantId: body.tenantId,
-        caseId: body.caseId,
-        userId: body.userId,
-      },
-    })
-    return NextResponse.json(document, { status: 201 })
+    const { data, error } = await supabase
+      .from('documents')
+      .insert({
+        tenant_id: body.tenantId,
+        case_id: body.caseId || null,
+        uploader_id: body.userId,
+        file_name: body.fileName || body.name || 'document',
+        file_path: body.filePath || '',
+        file_size: body.fileSize || 0,
+        mime_type: body.fileType || body.mimeType || 'application/octet-stream',
+        tags: body.tags || null,
+        version: body.version || 1,
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(toCamelCase(data), { status: 201 })
   } catch (error) {
     console.error('Create document error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

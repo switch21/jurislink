@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { toCamelCase } from '@/lib/transform'
 
-type TaskTemplate = {
-  title: string
-  daysOffset: number
-  priority: string
-}
+const STATUS_TO_SUPA: Record<string, string> = { a_faire: 'todo', en_cours: 'in_progress', terminee: 'done' }
 
-const WORKFLOW_TEMPLATES: Record<string, TaskTemplate[]> = {
+const WORKFLOW_TEMPLATES: Record<string, Array<{ title: string; daysOffset: number; priority: string }>> = {
   audience: [
     { title: 'Vérifier dossier complet', daysOffset: -7, priority: 'normal' },
     { title: 'Préparer les pièces', daysOffset: -5, priority: 'normal' },
@@ -29,80 +26,31 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { tenantId, eventId, caseId, assigneeId } = body
+    if (!tenantId || !eventId) return NextResponse.json({ error: 'tenantId and eventId are required' }, { status: 400 })
 
-    if (!tenantId || !eventId) {
-      return NextResponse.json(
-        { error: 'tenantId and eventId are required' },
-        { status: 400 }
-      )
-    }
+    const { data: event } = await supabase.from('events').select('*').eq('id', eventId).single()
+    if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 })
 
-    // Fetch the event to get its type and date
-    const event = await db.event.findUnique({
-      where: { id: eventId },
-      include: { case: { select: { id: true, reference: true } } },
-    })
+    const template = WORKFLOW_TEMPLATES[event.event_type]
+    if (!template) return NextResponse.json({ error: `No workflow for type '${event.event_type}'` }, { status: 400 })
 
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
-    }
-
-    const template = WORKFLOW_TEMPLATES[event.eventType]
-    if (!template) {
-      return NextResponse.json(
-        { error: `No workflow template for event type '${event.eventType}'` },
-        { status: 400 }
-      )
-    }
-
-    // Check if tasks were already generated for this event
-    const existingCount = await db.task.count({
-      where: { eventId, tenantId },
-    })
-    if (existingCount > 0) {
-      return NextResponse.json(
-        { error: 'Tasks already generated for this event' },
-        { status: 409 }
-      )
-    }
-
-    const eventDate = new Date(event.startTime)
-    const linkedCaseId = caseId ?? event.caseId ?? null
+    const eventDate = new Date(event.start_time)
+    const linkedCaseId = caseId || event.case_id || null
 
     const tasksData = template.map((t) => {
       const dueDate = new Date(eventDate)
       dueDate.setDate(dueDate.getDate() + t.daysOffset)
       return {
-        title: t.title,
-        tenantId,
-        caseId: linkedCaseId,
-        eventId,
-        userId: assigneeId ?? null,
-        status: 'a_faire',
-        priority: t.priority,
-        dueDate,
+        tenant_id: tenantId, case_id: linkedCaseId, event_id: eventId,
+        assignee_id: assigneeId || null, title: t.title,
+        description: null, due_date: dueDate.toISOString(), status: 'todo',
       }
     })
 
-    const createdTasks = await db.task.createMany({
-      data: tasksData,
-    })
+    const { data, error } = await supabase.from('tasks').insert(tasksData).select('*')
+    if (error) throw error
 
-    // Fetch created tasks with relations
-    const tasks = await db.task.findMany({
-      where: { eventId, tenantId },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        case: { select: { id: true, reference: true, title: true } },
-        event: { select: { id: true, title: true } },
-      },
-      orderBy: { dueDate: 'asc' },
-    })
-
-    return NextResponse.json({
-      count: createdTasks.count,
-      tasks,
-    }, { status: 201 })
+    return NextResponse.json({ count: data?.length || 0, tasks: (data || []).map(toCamelCase) }, { status: 201 })
   } catch (error) {
     console.error('Generate workflow tasks error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

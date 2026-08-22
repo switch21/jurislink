@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { toCamelCase, mapEvent, toSnakeCase } from '@/lib/transform'
 
 export async function GET(request: Request) {
   try {
@@ -8,34 +9,45 @@ export async function GET(request: Request) {
     const month = searchParams.get('month')
     const userId = searchParams.get('userId')
 
-    const where: Record<string, unknown> = {}
-    if (tenantId) where.tenantId = tenantId
+    let query = supabase
+      .from('events')
+      .select('*, assignments:event_assignments(*, user:users(id, full_name)), case:cases(id, reference, title)')
+
+    if (tenantId) query = query.eq('tenant_id', tenantId)
 
     if (month) {
       const [year, mon] = month.split('-').map(Number)
-      const startDate = new Date(year, mon - 1, 1)
-      const endDate = new Date(year, mon, 0, 23, 59, 59, 999)
-      where.startTime = { gte: startDate, lte: endDate }
+      const startDate = new Date(year, mon - 1, 1).toISOString()
+      const endDate = new Date(year, mon, 0, 23, 59, 59, 999).toISOString()
+      query = query.gte('start_time', startDate).lt('start_time', endDate)
     }
 
+    query = query.order('start_time', { ascending: true }).range(0, 199)
+
+    const { data, error } = await query
+    if (error) throw error
+
+    // If userId filter, filter in JS (for event_assignments join)
+    let events = data || []
     if (userId) {
-      where.assignments = { some: { userId } }
+      events = events.filter((e: any) =>
+        e.assignments?.some((a: any) => a.user_id === userId)
+      )
     }
 
-    const events = await db.event.findMany({
-      where,
-      include: {
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true } },
-          },
-        },
-        case: { select: { id: true, reference: true, title: true } },
-      },
-      orderBy: { startTime: 'asc' },
-      take: 200,
+    const result = events.map((e: any) => {
+      const mapped = mapEvent(e)
+      mapped.assignments = (e.assignments || []).map((a: any) => ({
+        userId: a.user_id,
+        user: a.user ? { id: a.user.id, name: a.user.full_name } : null,
+      }))
+      if (e.case) {
+        mapped.case = { id: e.case.id, reference: e.case.reference, title: e.case.title }
+      }
+      return mapped
     })
-    return NextResponse.json(events)
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error('List events error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -45,20 +57,23 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const event = await db.event.create({
-      data: {
+    const { data, error } = await supabase
+      .from('events')
+      .insert({
+        tenant_id: body.tenantId,
+        case_id: body.caseId || null,
         title: body.title,
-        description: body.description,
-        startTime: new Date(body.startTime),
-        endTime: body.endTime ? new Date(body.endTime) : null,
-        eventType: body.eventType,
-        criticality: body.criticality,
-        location: body.location,
-        tenantId: body.tenantId,
-        caseId: body.caseId,
-      },
-    })
-    return NextResponse.json(event, { status: 201 })
+        description: body.description || null,
+        start_time: body.startTime,
+        end_time: body.endTime,
+        event_type: body.eventType || null,
+        criticality: body.criticality || 'medium',
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return NextResponse.json(mapEvent(data), { status: 201 })
   } catch (error) {
     console.error('Create event error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { mapUser } from '@/lib/transform'
 
 export async function GET(
   _request: Request,
@@ -7,33 +8,17 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .single()
 
-    const user = await db.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        avatarUrl: true,
-        phone: true,
-        preferredLanguage: true,
-        isActive: true,
-        failedLoginAttempts: true,
-        lockedUntil: true,
-        lastLoginAt: true,
-        mfaEnabled: true,
-        createdAt: true,
-        updatedAt: true,
-        tenantId: true,
-      },
-    })
-
-    if (!user) {
+    if (error || !data) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    return NextResponse.json(user)
+    return NextResponse.json(mapUser(data))
   } catch (error) {
     console.error('Get user error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

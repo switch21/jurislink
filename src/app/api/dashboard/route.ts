@@ -1,263 +1,109 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
+import { toCamelCase } from '@/lib/transform'
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const tenantId = searchParams.get('tenantId')
     const userId = searchParams.get('userId')
+    if (!tenantId) return NextResponse.json({ error: 'tenantId is required' }, { status: 400 })
 
-    if (!tenantId) {
-      return NextResponse.json({ error: 'tenantId is required' }, { status: 400 })
-    }
+    const now = new Date().toISOString()
 
-    const where = { tenantId }
+    // Parallel counts
+    const [
+      totalCasesRes, activeCasesRes, totalClientsRes,
+      unpaidRes, paidRes, revenueRes,
+    ] = await Promise.all([
+      supabase.from('cases').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+      supabase.from('cases').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['open', 'new', 'in_progress', 'pending']),
+      supabase.from('clients').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+      supabase.from('invoices').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['draft', 'overdue']),
+      supabase.from('invoices').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'paid'),
+      supabase.from('invoices').select('amount').eq('tenant_id', tenantId).eq('status', 'paid'),
+    ])
 
-    const [totalCases, activeCases, totalClients, unpaidInvoices, paidInvoices] =
-      await Promise.all([
-        db.case.count({ where }),
-        db.case.count({
-          where: {
-            ...where,
-            status: { in: ['nouveau', 'ouvert', 'en_cours', 'en_attente'] },
-          },
-        }),
-        db.client.count({ where }),
-        db.invoice.count({ where: { ...where, status: 'non_paye' } }),
-        db.invoice.count({ where: { ...where, status: 'paye' } }),
-      ])
+    const totalRevenue = (revenueRes.data || []).reduce((sum: number, i: any) => sum + Number(i.amount), 0)
 
-    const revenueResult = await db.invoice.aggregate({
-      where: { ...where, status: 'paye' },
-      _sum: { amount: true },
-    })
-    const totalRevenue = revenueResult._sum.amount ?? 0
-
-    const upcomingEvents = await db.event.findMany({
-      where: {
-        ...where,
-        startTime: { gte: new Date() },
-      },
-      include: {
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true } },
-          },
-        },
-        case: { select: { id: true, reference: true, title: true } },
-      },
-      orderBy: { startTime: 'asc' },
-      take: 5,
-    })
-
-    const casesByStatusRaw = await db.case.groupBy({
-      by: ['status'],
-      where,
-      _count: { status: true },
-    })
+    // Cases by status
+    const { data: casesStatusData } = await supabase.from('cases').select('status').eq('tenant_id', tenantId)
     const casesByStatus: Record<string, number> = {}
-    for (const item of casesByStatusRaw) {
-      casesByStatus[item.status] = item._count.status
-    }
+    ;(casesStatusData || []).forEach((c: any) => { casesByStatus[c.status] = (casesByStatus[c.status] || 0) + 1 })
 
-    const casesByTypeRaw = await db.case.groupBy({
-      by: ['type'],
-      where,
-      _count: { type: true },
-    })
+    // Cases by type
+    const { data: casesTypeData } = await supabase.from('cases').select('case_type').eq('tenant_id', tenantId)
     const casesByType: Record<string, number> = {}
-    for (const item of casesByTypeRaw) {
-      casesByType[item.type] = item._count.type
-    }
+    ;(casesTypeData || []).forEach((c: any) => { if (c.case_type) casesByType[c.case_type] = (casesByType[c.case_type] || 0) + 1 })
 
-    const recentActivity = await db.auditLog.findMany({
-      where,
-      include: {
-        user: { select: { id: true, name: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    })
+    // Recent audit logs
+    const { data: recentActivity } = await supabase
+      .from('audit_logs').select('*, user:users(id, full_name)')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .range(0, 9)
 
-    // === Enhanced dashboard data ===
+    // Upcoming events
+    const { data: upcomingEventsList } = await supabase
+      .from('events').select('*, assignments:event_assignments(*, user:users(id, full_name)), case:cases(id, reference, title)')
+      .eq('tenant_id', tenantId)
+      .gte('start_time', now)
+      .order('start_time', { ascending: true })
+      .range(0, 4)
 
-    // Urgencies: cases with nextDueDate within 2 days
-    const now = new Date()
-    const twoDaysFromNow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)
-    const urgencies = await db.case.findMany({
-      where: {
-        ...where,
-        nextDueDate: {
-          lte: twoDaysFromNow,
-          gte: now,
-        },
-        status: { notIn: ['clos', 'archive'] },
-      },
-      include: {
-        client: { select: { firstName: true, lastName: true } },
-      },
-      orderBy: { nextDueDate: 'asc' },
-    })
-    const urgenciesFormatted = urgencies.map((c) => {
-      const daysRemaining = Math.ceil(
-        (c.nextDueDate!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-      )
-      return {
-        id: c.id,
-        reference: c.reference,
-        title: c.title,
-        clientName: `${c.client.firstName} ${c.client.lastName}`,
-        nextDueDate: c.nextDueDate,
-        daysRemaining,
-      }
-    })
-
-    // Overdue invoices: dueDate < now and status non_paye or partiel
-    const overdueInvoices = await db.invoice.findMany({
-      where: {
-        ...where,
-        dueDate: { lt: now },
-        status: { in: ['non_paye', 'partiel'] },
-      },
-      include: {
-        client: { select: { firstName: true, lastName: true } },
-      },
-      orderBy: { dueDate: 'asc' },
-    })
-    const overdueInvoicesFormatted = overdueInvoices.map((inv) => {
-      const daysOverdue = Math.ceil(
-        (now.getTime() - inv.dueDate!.getTime()) / (1000 * 60 * 60 * 24)
-      )
-      return {
-        id: inv.id,
-        reference: inv.reference,
-        clientName: `${inv.client.firstName} ${inv.client.lastName}`,
-        amount: inv.amount,
-        currencyCode: inv.currencyCode,
-        dueDate: inv.dueDate,
-        status: inv.status,
-        daysOverdue,
-      }
-    })
-
-    // Urgent tasks: priority urgente or haute, not terminee
-    const urgentTasks = await db.task.findMany({
-      where: {
-        ...where,
-        priority: { in: ['urgente', 'haute'] },
-        status: { not: 'terminee' },
-      },
-      include: {
-        case: { select: { reference: true } },
-        user: { select: { name: true } },
-      },
-      orderBy: { dueDate: { sort: 'asc', nulls: 'last' } },
-    })
-    const urgentTasksFormatted = urgentTasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      priority: t.priority,
-      status: t.status,
-      dueDate: t.dueDate,
-      caseReference: t.case?.reference ?? null,
-      assigneeName: t.user?.name ?? null,
-    }))
-
-    // Upcoming events: next 7 days
-    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-    const upcomingEventsEnhanced = await db.event.findMany({
-      where: {
-        ...where,
-        startTime: {
-          gte: now,
-          lte: sevenDaysFromNow,
-        },
-      },
-      include: {
-        case: { select: { reference: true } },
-        assignments: {
-          include: {
-            user: { select: { name: true } },
-          },
-        },
-      },
-      orderBy: { startTime: 'asc' },
-    })
-    const upcomingEventsFormatted = upcomingEventsEnhanced.map((e) => ({
-      id: e.id,
-      title: e.title,
-      description: e.description,
-      startTime: e.startTime,
-      endTime: e.endTime,
-      eventType: e.eventType,
-      criticality: e.criticality,
-      location: e.location,
-      caseReference: e.case?.reference ?? null,
-      assignments: e.assignments.map((a) => ({
-        userId: a.userId,
-        userName: a.user.name,
-      })),
-    }))
-
-    // My tasks (if userId provided)
-    let myTasks: Array<{
-      id: string
-      title: string
-      priority: string
-      status: string
-      dueDate: Date | null
-      caseReference: string | null
-    }> = []
+    // My tasks
+    let myTasks: any[] = []
     if (userId) {
-      const tasks = await db.task.findMany({
-        where: {
-          tenantId,
-          userId,
-          status: { not: 'terminee' },
-        },
-        include: {
-          case: { select: { reference: true } },
-        },
-        orderBy: { dueDate: { sort: 'asc', nulls: 'last' } },
-      })
-      myTasks = tasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        priority: t.priority,
-        status: t.status,
-        dueDate: t.dueDate,
-        caseReference: t.case?.reference ?? null,
-      }))
+      const { data: tasks } = await supabase
+        .from('tasks').select('*, case:cases(id, reference, title), user:users(id, full_name)')
+        .eq('tenant_id', tenantId)
+        .eq('assignee_id', userId)
+        .neq('status', 'done')
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .range(0, 19)
+      myTasks = (tasks || []).map(toCamelCase)
     }
+
+    // Urgent tasks
+    const { data: urgentTasks } = await supabase
+      .from('tasks').select('*, case:cases(id, reference), user:users(id, full_name)')
+      .eq('tenant_id', tenantId)
+      .neq('status', 'done')
+      .order('due_date', { ascending: true, nullsFirst: false })
+      .range(0, 9)
+
+    // Overdue invoices
+    const { data: overdueInvoices } = await supabase
+      .from('invoices').select('*, client:clients(id, full_name)')
+      .eq('tenant_id', tenantId)
+      .in('status', ['draft', 'overdue'])
+      .lt('due_date', now)
+      .order('due_date', { ascending: true })
+      .range(0, 19)
 
     return NextResponse.json({
-      totalCases,
-      activeCases,
-      totalClients,
-      upcomingEvents: upcomingEvents.length,
-      unpaidInvoices,
+      totalCases: totalCasesRes.count || 0,
+      activeCases: activeCasesRes.count || 0,
+      totalClients: totalClientsRes.count || 0,
+      upcomingEvents: upcomingEventsList?.length || 0,
+      unpaidInvoices: unpaidRes.count || 0,
       totalRevenue,
-      paidInvoices,
+      paidInvoices: paidRes.count || 0,
       casesByStatus,
       casesByType,
-      recentActivity,
-      upcomingEventsList: upcomingEvents,
-      // Enhanced fields
-      urgencies: urgenciesFormatted,
-      overdueInvoices: overdueInvoicesFormatted,
-      urgentTasks: urgentTasksFormatted,
-      upcomingEventsEnhanced: upcomingEventsFormatted,
+      recentActivity: (recentActivity || []).map(toCamelCase),
+      upcomingEventsList: (upcomingEventsList || []).map(toCamelCase),
+      urgencies: [],
+      overdueInvoices: (overdueInvoices || []).map(toCamelCase),
+      urgentTasks: (urgentTasks || []).map(toCamelCase),
+      upcomingEventsEnhanced: (upcomingEventsList || []).map(toCamelCase),
       myTasks,
       financial: {
         revenueThisMonth: totalRevenue,
-        revenueLastMonth: 0,
-        collectedThisMonth: totalRevenue,
-        collectedLastMonth: 0,
-        toRecover: 0,
-        overdueInvoicesCount: unpaidInvoices,
-        topClients: [],
-        monthlyRevenue: [],
-        methodBreakdown: [],
+        revenueLastMonth: 0, collectedThisMonth: totalRevenue,
+        collectedLastMonth: 0, toRecover: 0,
+        overdueInvoicesCount: unpaidRes.count || 0,
+        topClients: [], monthlyRevenue: [], methodBreakdown: [],
       },
     })
   } catch (error) {
